@@ -1,26 +1,227 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens — carried over from the approved design preview
+ * (design-tokens.css / data-table-modular.css reference), applied here as
+ * the app's real Tailwind v4 theme instead of a mockup's inline styles.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  --color-brand-50: #edf4fd;
+  --color-brand-100: #d5e6fa;
+  --color-brand-200: #abcff6;
+  --color-brand-300: #75b0f0;
+  --color-brand-400: #3e8de9;
+  --color-brand-500: #1d70e2;
+  --color-brand-600: #0f52ba;
+  --color-brand-700: #0c4196;
+  --color-brand-800: #093273;
+  --color-brand-900: #051f49;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-success-solid: #16a34a;
+  --color-success-subtle: #f0fdf4;
+  --color-success-border: #bbf7d0;
+  --color-success-text: #166534;
+
+  --color-warning-solid: #d97706;
+  --color-warning-subtle: #fffbeb;
+  --color-warning-border: #fde68a;
+  --color-warning-text: #92400e;
+
+  --color-error-solid: #dc2626;
+  --color-error-subtle: #fef2f2;
+  --color-error-border: #fecaca;
+  --color-error-text: #991b1b;
+
+  --color-info-solid: #0284c7;
+  --color-info-subtle: #f0f9ff;
+  --color-info-border: #bae6fd;
+  --color-info-text: #075985;
+
+  --bg-app: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-surface-subtle: #f1f5f9;
+  --bg-surface-hover: #f8fafc;
+  --bg-surface-selected: #edf4fd;
+
+  --border-subtle: #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+
+  --shadow-xs: 0px 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-sm: 0px 1px 3px rgba(15, 23, 42, 0.1), 0px 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0px 4px 6px -1px rgba(15, 23, 42, 0.1), 0px 2px 4px -1px rgba(15, 23, 42, 0.06);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg-app: #0b0f19;
+    --bg-surface: #111827;
+    --bg-surface-subtle: #1f2937;
+    --bg-surface-hover: #1e293b;
+    --bg-surface-selected: #1e3a8a40;
+
+    --border-subtle: #374151;
+    --border-strong: #4b5563;
+
+    --text-primary: #f9fafb;
+    --text-secondary: #9ca3af;
+    --text-muted: #6b7280;
+
+    --color-success-subtle: #0f2a1b;
+    --color-warning-subtle: #2e2007;
+    --color-error-subtle: #2e1212;
+    --color-info-subtle: #082333;
   }
 }
 
+@theme inline {
+  --color-brand-50: var(--color-brand-50);
+  --color-brand-100: var(--color-brand-100);
+  --color-brand-200: var(--color-brand-200);
+  --color-brand-300: var(--color-brand-300);
+  --color-brand-400: var(--color-brand-400);
+  --color-brand-500: var(--color-brand-500);
+  --color-brand-600: var(--color-brand-600);
+  --color-brand-700: var(--color-brand-700);
+  --color-brand-800: var(--color-brand-800);
+  --color-brand-900: var(--color-brand-900);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+/* ===== Modular data table (same system as the approved preview) ===== */
+.dt-container {
+  width: 100%;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+.dt-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+.dt-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: left;
+  font-size: 0.875rem;
+}
+.dt-head {
+  background: var(--bg-surface-subtle);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.dt-th {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.dt-row {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  transition: background-color 0.15s ease;
+  position: relative;
+}
+.dt-row:hover {
+  background: var(--bg-surface-hover) !important;
+}
+.dt-td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.875rem;
+  vertical-align: middle;
+}
+.dt-row:last-child .dt-td {
+  border-bottom: none;
+}
+.dt-row--status-good .dt-td:first-child {
+  border-left: 3px solid var(--color-success-solid);
+}
+.dt-row--status-warn .dt-td:first-child {
+  border-left: 3px solid var(--color-warning-solid);
+}
+.dt-row--status-bad .dt-td:first-child {
+  border-left: 3px solid var(--color-error-solid);
+}
+.dt-row--status-info .dt-td:first-child {
+  border-left: 3px solid var(--color-info-solid);
+}
+.dt-footer {
+  padding: 12px 16px;
+  background: var(--bg-surface-subtle);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.dt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dt-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.dt-badge--success {
+  background: var(--color-success-subtle);
+  color: var(--color-success-text);
+  border: 1px solid var(--color-success-border);
+}
+.dt-badge--success .dt-badge-dot {
+  background: var(--color-success-solid);
+}
+.dt-badge--warning {
+  background: var(--color-warning-subtle);
+  color: var(--color-warning-text);
+  border: 1px solid var(--color-warning-border);
+}
+.dt-badge--warning .dt-badge-dot {
+  background: var(--color-warning-solid);
+}
+.dt-badge--error {
+  background: var(--color-error-subtle);
+  color: var(--color-error-text);
+  border: 1px solid var(--color-error-border);
+}
+.dt-badge--error .dt-badge-dot {
+  background: var(--color-error-solid);
+}
+.dt-badge--info {
+  background: var(--color-info-subtle);
+  color: var(--color-info-text);
+  border: 1px solid var(--color-info-border);
+}
+.dt-badge--info .dt-badge-dot {
+  background: var(--color-info-solid);
 }
