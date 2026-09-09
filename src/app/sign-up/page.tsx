@@ -38,11 +38,24 @@ export default function SignUpPage() {
       name: shopName,
       slug: `${slugify(shopName)}-${Math.random().toString(36).slice(2, 6)}`,
     });
-    setLoading(false);
     if (orgResult.error) {
+      setLoading(false);
       setError(
         orgResult.error.message ??
           "Your account was created, but setting up the shop failed — try signing in and creating it from settings."
+      );
+      return;
+    }
+
+    // organization.create is supposed to set this org active on the session
+    // automatically, but that didn't happen reliably in testing — set it
+    // explicitly rather than trust the side effect.
+    const setActiveResult = await authClient.organization.setActive({ organizationId: orgResult.data.id });
+    setLoading(false);
+    if (setActiveResult.error) {
+      setError(
+        setActiveResult.error.message ??
+          "Your shop was created, but activating it failed — try signing in again."
       );
       return;
     }

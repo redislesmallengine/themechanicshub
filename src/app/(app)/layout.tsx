@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { AppShell } from "@/components/app-shell";
 
 // Real enforcement lives here, in the Server Component — not in proxy.ts.
@@ -10,10 +11,27 @@ import { AppShell } from "@/components/app-shell";
 // authentication must be checked again at the point that actually renders
 // or mutates data, not just at the edge.
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const reqHeaders = await headers();
+  const session = await auth.api.getSession({ headers: reqHeaders });
 
   if (!session) {
     redirect("/sign-in");
+  }
+
+  // Defensive auto-heal: every page under here assumes an active
+  // organization exists on the session (staff list, invites, and every
+  // later phase's data all scope by it). It's supposed to be set
+  // automatically when an org is created or joined, but a signup-flow bug
+  // showed that side effect isn't fully reliable — so recover here instead
+  // of letting downstream pages throw "No active organization".
+  if (!session.session.activeOrganizationId) {
+    const membership = await prisma.member.findFirst({ where: { userId: session.user.id } });
+    if (membership) {
+      await auth.api.setActiveOrganization({
+        headers: reqHeaders,
+        body: { organizationId: membership.organizationId },
+      });
+    }
   }
 
   return <AppShell user={session.user}>{children}</AppShell>;
