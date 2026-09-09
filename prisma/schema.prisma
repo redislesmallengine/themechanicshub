@@ -105,6 +105,7 @@ model Organization {
   invitations   Invitation[]
   teams         Team[]
   emailSettings EmailSettings?
+  emailLogs     EmailLog[]
 }
 
 // =============================================================================
@@ -112,22 +113,43 @@ model Organization {
 // =============================================================================
 
 // Per-shop outbound email configuration, editable from Settings → Email
-// instead of Coolify env vars. `credentials` holds provider-specific secrets
-// (API keys / SMTP password) AES-256-GCM encrypted at the application layer
-// (src/lib/crypto.ts) before they ever reach the database — never plaintext
-// at rest. Falls back to the platform's own Hostinger SMTP env vars
-// (src/lib/email.ts) when no shop has configured this yet.
+// instead of Coolify env vars. A shop can configure any/all of the three
+// providers; src/lib/email.ts sends through them in priority order —
+// Resend, then SendGrid, then this shop's own SMTP, then the platform's
+// Hostinger env-var default — falling through to the next whenever the
+// current one is out of quota (tracked via EmailLog) or the send itself
+// fails. Each *Credentials field is JSON, AES-256-GCM encrypted at the
+// application layer (src/lib/crypto.ts) before it ever reaches the
+// database — never plaintext at rest. Null means that provider isn't
+// configured for this shop and is skipped.
 model EmailSettings {
+  id                String   @id @default(cuid())
+  organizationId    String   @unique
+  fromName          String
+  fromEmail         String
+  resendCredentials   String? // encrypted { apiKey }
+  sendgridCredentials String? // encrypted { apiKey }
+  smtpCredentials     String? // encrypted { host, port, user, password }
+  updatedAt         DateTime @updatedAt
+  createdAt         DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+// One row per send attempt, per provider — purely so src/lib/email.ts can
+// count "how many did Resend/SendGrid/SMTP already send in the current
+// window" and know when to fall through to the next provider in the
+// cascade before that provider's own free-tier cap gets hit.
+model EmailLog {
   id             String   @id @default(cuid())
-  organizationId String   @unique
+  organizationId String
   provider       String // "resend" | "sendgrid" | "smtp"
-  fromName       String
-  fromEmail      String
-  credentials    String // JSON, AES-256-GCM encrypted (see src/lib/crypto.ts)
-  updatedAt      DateTime @updatedAt
+  success        Boolean
   createdAt      DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, provider, createdAt])
 }
 
 model Member {

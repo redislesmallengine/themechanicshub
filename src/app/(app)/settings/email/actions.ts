@@ -6,7 +6,6 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/crypto";
 import { sendMail } from "@/lib/email";
-import type { EmailProvider } from "@/lib/email";
 
 async function requireCanManageSettings() {
   const reqHeaders = await headers();
@@ -25,30 +24,52 @@ async function requireCanManageSettings() {
 export async function saveEmailSettings(formData: FormData) {
   const { organizationId } = await requireCanManageSettings();
 
-  const provider = formData.get("provider") as EmailProvider;
   const fromName = String(formData.get("fromName") ?? "");
   const fromEmail = String(formData.get("fromEmail") ?? "");
+  if (!fromName || !fromEmail) return { error: "From Name and From Email are both required." };
 
-  let credentials: Record<string, string | number>;
-  if (provider === "resend" || provider === "sendgrid") {
-    const apiKey = String(formData.get("apiKey") ?? "");
-    if (!apiKey) return { error: "API key is required." };
-    credentials = { apiKey };
-  } else {
-    const host = String(formData.get("host") ?? "");
-    const port = Number(formData.get("port") ?? 465);
-    const user = String(formData.get("user") ?? "");
-    const password = String(formData.get("password") ?? "");
-    if (!host || !user || !password) return { error: "Host, username, and password are all required." };
-    credentials = { host, port, user, password };
+  const existing = await prisma.emailSettings.findUnique({ where: { organizationId } });
+
+  // Each provider section is independent and optional. An empty field means
+  // "leave the currently-saved value alone" (so re-saving the form doesn't
+  // wipe a credential you're not touching); an explicit "Disconnect" clears
+  // one section without affecting the others — see clearEmailProvider below.
+  const resendApiKey = String(formData.get("resendApiKey") ?? "").trim();
+  const resendCredentials = resendApiKey
+    ? encrypt(JSON.stringify({ apiKey: resendApiKey }))
+    : (existing?.resendCredentials ?? null);
+
+  const sendgridApiKey = String(formData.get("sendgridApiKey") ?? "").trim();
+  const sendgridCredentials = sendgridApiKey
+    ? encrypt(JSON.stringify({ apiKey: sendgridApiKey }))
+    : (existing?.sendgridCredentials ?? null);
+
+  const smtpHost = String(formData.get("smtpHost") ?? "").trim();
+  const smtpUser = String(formData.get("smtpUser") ?? "").trim();
+  const smtpPassword = String(formData.get("smtpPassword") ?? "").trim();
+  const smtpPort = Number(formData.get("smtpPort") ?? 465);
+  let smtpCredentials = existing?.smtpCredentials ?? null;
+  if (smtpHost || smtpUser || smtpPassword) {
+    if (!smtpHost || !smtpUser || !smtpPassword) {
+      return { error: "SMTP host, username, and password are all required to save that section." };
+    }
+    smtpCredentials = encrypt(JSON.stringify({ host: smtpHost, port: smtpPort, user: smtpUser, password: smtpPassword }));
   }
 
   await prisma.emailSettings.upsert({
     where: { organizationId },
-    create: { organizationId, provider, fromName, fromEmail, credentials: encrypt(JSON.stringify(credentials)) },
-    update: { provider, fromName, fromEmail, credentials: encrypt(JSON.stringify(credentials)) },
+    create: { organizationId, fromName, fromEmail, resendCredentials, sendgridCredentials, smtpCredentials },
+    update: { fromName, fromEmail, resendCredentials, sendgridCredentials, smtpCredentials },
   });
 
+  revalidatePath("/settings/email");
+  return { success: true };
+}
+
+export async function clearEmailProvider(provider: "resend" | "sendgrid" | "smtp") {
+  const { organizationId } = await requireCanManageSettings();
+  const field = provider === "resend" ? "resendCredentials" : provider === "sendgrid" ? "sendgridCredentials" : "smtpCredentials";
+  await prisma.emailSettings.update({ where: { organizationId }, data: { [field]: null } });
   revalidatePath("/settings/email");
   return { success: true };
 }

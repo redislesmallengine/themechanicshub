@@ -1,14 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveEmailSettings, sendTestEmail } from "@/app/(app)/settings/email/actions";
+import { saveEmailSettings, sendTestEmail, clearEmailProvider } from "@/app/(app)/settings/email/actions";
 import type { EmailProvider } from "@/lib/email";
-
-const PROVIDERS: { value: EmailProvider; label: string; blurb: string }[] = [
-  { value: "resend", label: "Resend", blurb: "Free tier (3,000/mo), best fit for this app, built-in delivery tracking." },
-  { value: "sendgrid", label: "SendGrid", blurb: "Free tier (100/day), the most established transactional provider." },
-  { value: "smtp", label: "Hostinger Email (SMTP)", blurb: "Free mailbox already on your domain. Lower sending limit, no delivery tracking." },
-];
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -16,20 +10,96 @@ const inputStyle = {
   color: "var(--text-primary)",
 };
 
+type Usage = Record<EmailProvider, { used: number; limit: number; window: "day" | "month" }>;
+
+function UsageBar({ used, limit, window }: { used: number; limit: number; window: "day" | "month" }) {
+  const pct = Math.min(100, Math.round((used / limit) * 100));
+  const color = pct >= 90 ? "var(--color-error-solid)" : pct >= 60 ? "var(--color-warning-solid)" : "var(--color-success-solid)";
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between text-[10px] mb-1" style={{ color: "var(--text-muted)" }}>
+        <span>
+          {used.toLocaleString()} / {limit.toLocaleString()} this {window}
+        </span>
+        <span>{pct}%</span>
+      </div>
+      <div className="h-1.5 rounded-full" style={{ background: "var(--bg-surface-subtle)" }}>
+        <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, background: color }} />
+      </div>
+    </div>
+  );
+}
+
+function ProviderCard({
+  title,
+  badge,
+  connected,
+  usage,
+  onDisconnect,
+  disconnecting,
+  children,
+}: {
+  title: string;
+  badge: string;
+  connected: boolean;
+  usage?: { used: number; limit: number; window: "day" | "month" };
+  onDisconnect: () => void;
+  disconnecting: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg p-4" style={{ border: "1px solid var(--border-subtle)", background: "var(--bg-surface)" }}>
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
+            {title}
+          </span>
+          {connected ? (
+            <span className="dt-badge dt-badge--success">
+              <span className="dt-badge-dot" />
+              Connected
+            </span>
+          ) : (
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded" style={{ color: "var(--text-muted)", background: "var(--bg-surface-subtle)" }}>
+              Not connected
+            </span>
+          )}
+        </div>
+        {connected && (
+          <button
+            type="button"
+            onClick={onDisconnect}
+            disabled={disconnecting}
+            className="text-[11px] font-semibold disabled:opacity-50"
+            style={{ color: "var(--color-error-solid)" }}
+          >
+            {disconnecting ? "…" : "Disconnect"}
+          </button>
+        )}
+      </div>
+      <p className="text-[11px] mb-3" style={{ color: "var(--text-muted)" }}>
+        {badge}
+      </p>
+      {children}
+      {connected && usage && <UsageBar used={usage.used} limit={usage.limit} window={usage.window} />}
+    </div>
+  );
+}
+
 export function EmailSettingsForm({
-  initialProvider,
   initialFromName,
   initialFromEmail,
-  hasCredentials,
+  connected,
+  usage,
 }: {
-  initialProvider: EmailProvider;
   initialFromName: string;
   initialFromEmail: string;
-  hasCredentials: boolean;
+  connected: Record<EmailProvider, boolean>;
+  usage: Usage;
 }) {
-  const [provider, setProvider] = useState<EmailProvider>(initialProvider);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [testMessage, setTestMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [disconnecting, setDisconnecting] = useState<EmailProvider | null>(null);
   const [saving, startSaving] = useTransition();
   const [testing, startTesting] = useTransition();
 
@@ -37,11 +107,7 @@ export function EmailSettingsForm({
     setMessage(null);
     startSaving(async () => {
       const result = await saveEmailSettings(formData);
-      if (result?.error) {
-        setMessage({ type: "error", text: result.error });
-      } else {
-        setMessage({ type: "success", text: "Email settings saved." });
-      }
+      setMessage(result?.error ? { type: "error", text: result.error } : { type: "success", text: "Email settings saved." });
     });
   }
 
@@ -49,12 +115,17 @@ export function EmailSettingsForm({
     setTestMessage(null);
     startTesting(async () => {
       const result = await sendTestEmail();
-      if (result?.error) {
-        setTestMessage({ type: "error", text: result.error });
-      } else {
-        setTestMessage({ type: "success", text: "Test email sent — check your inbox." });
-      }
+      setTestMessage(
+        result?.error ? { type: "error", text: result.error } : { type: "success", text: "Test email sent — check your inbox." }
+      );
     });
+  }
+
+  async function handleDisconnect(provider: EmailProvider) {
+    if (!confirm(`Disconnect ${provider}? Sending will skip straight to the next provider in line.`)) return;
+    setDisconnecting(provider);
+    await clearEmailProvider(provider);
+    setDisconnecting(null);
   }
 
   return (
@@ -72,7 +143,7 @@ export function EmailSettingsForm({
             </svg>
           </span>
           <h3 className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
-            Outbound Email Provider
+            Outbound Email
           </h3>
         </div>
         <span className="text-[11px] text-brand-600 font-bold bg-brand-50 px-2 py-0.5 rounded border border-brand-200 font-mono">
@@ -80,28 +151,13 @@ export function EmailSettingsForm({
         </span>
       </div>
 
-      <div>
-        <label className="block font-bold mb-2 text-xs" style={{ color: "var(--text-secondary)" }}>
-          Provider
-        </label>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          {PROVIDERS.map((p) => (
-            <label
-              key={p.value}
-              className="rounded-lg p-3 cursor-pointer text-xs"
-              style={{
-                border: provider === p.value ? "2px solid var(--color-brand-600, #0F52BA)" : "1px solid var(--border-strong)",
-                background: provider === p.value ? "var(--bg-surface-selected)" : "var(--bg-surface)",
-              }}
-            >
-              <input type="radio" name="provider" value={p.value} checked={provider === p.value} onChange={() => setProvider(p.value)} className="hidden" />
-              <div className="font-bold mb-1" style={{ color: "var(--text-primary)" }}>
-                {p.label}
-              </div>
-              <div style={{ color: "var(--text-muted)" }}>{p.blurb}</div>
-            </label>
-          ))}
-        </div>
+      <div
+        className="p-3 rounded-lg text-xs"
+        style={{ background: "var(--color-info-subtle)", border: "1px solid var(--color-info-border)", color: "var(--color-info-text)" }}
+      >
+        Connect as many as you like — sending goes <b>Resend → SendGrid → SMTP</b> in that order, moving to the next one
+        automatically once the current one is out of free quota (or fails). Leave any section&apos;s fields blank to keep what&apos;s
+        already saved there.
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
@@ -119,60 +175,63 @@ export function EmailSettingsForm({
         </div>
       </div>
 
-      {(provider === "resend" || provider === "sendgrid") && (
-        <div className="text-xs">
-          <label htmlFor="apiKey" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-            API Key
-          </label>
+      <div className="space-y-3">
+        <ProviderCard
+          title="1. Resend"
+          badge="Tried first. Free tier: 3,000/month."
+          connected={connected.resend}
+          usage={usage.resend}
+          onDisconnect={() => handleDisconnect("resend")}
+          disconnecting={disconnecting === "resend"}
+        >
           <input
-            id="apiKey"
-            name="apiKey"
+            name="resendApiKey"
             type="password"
-            placeholder={hasCredentials ? "•••••••••••••••• (leave blank to keep current)" : "re_... or SG...."}
+            placeholder={connected.resend ? "•••••••••••••••• (leave blank to keep current)" : "re_..."}
             className="w-full px-3 py-2 rounded-lg text-xs font-mono"
             style={inputStyle}
           />
-          <span className="text-[10px] mt-0.5 block" style={{ color: "var(--text-muted)" }}>
-            {provider === "resend" ? "From resend.com → API Keys." : "From SendGrid → Settings → API Keys."}
-          </span>
-        </div>
-      )}
+        </ProviderCard>
 
-      {provider === "smtp" && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
-          <div>
-            <label htmlFor="host" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-              SMTP Host
-            </label>
-            <input id="host" name="host" type="text" placeholder="smtp.hostinger.com" className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
-          </div>
-          <div>
-            <label htmlFor="port" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-              Port
-            </label>
-            <input id="port" name="port" type="number" defaultValue={465} className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
-          </div>
-          <div>
-            <label htmlFor="user" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-              Username
-            </label>
-            <input id="user" name="user" type="text" placeholder="noreply@redislesmallengine.com" className="w-full px-3 py-2 rounded-lg text-xs" style={inputStyle} />
-          </div>
-          <div>
-            <label htmlFor="password" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-              Password
-            </label>
+        <ProviderCard
+          title="2. SendGrid"
+          badge="Tried once Resend is exhausted. Free tier: 100/day."
+          connected={connected.sendgrid}
+          usage={usage.sendgrid}
+          onDisconnect={() => handleDisconnect("sendgrid")}
+          disconnecting={disconnecting === "sendgrid"}
+        >
+          <input
+            name="sendgridApiKey"
+            type="password"
+            placeholder={connected.sendgrid ? "•••••••••••••••• (leave blank to keep current)" : "SG...."}
+            className="w-full px-3 py-2 rounded-lg text-xs font-mono"
+            style={inputStyle}
+          />
+        </ProviderCard>
+
+        <ProviderCard
+          title="3. SMTP (Hostinger, or any mailbox)"
+          badge="Last resort. Falls back further to the platform default if this isn't set either."
+          connected={connected.smtp}
+          usage={usage.smtp}
+          onDisconnect={() => handleDisconnect("smtp")}
+          disconnecting={disconnecting === "smtp"}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <input name="smtpHost" type="text" placeholder="smtp.hostinger.com" className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
+            <input name="smtpPort" type="number" defaultValue={465} className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
+            <input name="smtpUser" type="text" placeholder="noreply@yourshop.com" className="w-full px-3 py-2 rounded-lg text-xs" style={inputStyle} />
             <input
-              id="password"
-              name="password"
+              name="smtpPassword"
               type="password"
-              placeholder={hasCredentials ? "•••••••• (leave blank to keep current)" : ""}
+              placeholder={connected.smtp ? "•••••••• (keep current)" : "password"}
               className="w-full px-3 py-2 rounded-lg text-xs"
               style={inputStyle}
             />
           </div>
-        </div>
-      )}
+        </ProviderCard>
+      </div>
 
       {message && (
         <p className="text-xs font-semibold" style={{ color: message.type === "error" ? "var(--color-error-solid)" : "var(--color-success-solid)" }}>

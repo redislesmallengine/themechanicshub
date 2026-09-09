@@ -2,8 +2,8 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getUsageSummary } from "@/lib/email";
 import { EmailSettingsForm } from "@/components/email-settings-form";
-import type { EmailProvider } from "@/lib/email";
 
 export default async function EmailSettingsPage() {
   const reqHeaders = await headers();
@@ -16,9 +16,11 @@ export default async function EmailSettingsPage() {
   });
   if (!allowed.success) redirect("/dashboard");
 
-  const settings = await prisma.emailSettings.findUnique({
-    where: { organizationId: session.session.activeOrganizationId },
-  });
+  const organizationId = session.session.activeOrganizationId;
+  const [settings, usage] = await Promise.all([
+    prisma.emailSettings.findUnique({ where: { organizationId } }),
+    getUsageSummary(organizationId),
+  ]);
 
   return (
     <div className="p-6">
@@ -27,16 +29,20 @@ export default async function EmailSettingsPage() {
           Email Settings
         </h1>
         <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-          Choose which provider sends staff invites and password resets, and what customers see as the sender.
+          Connect one or more providers for staff invites and password resets — sending cascades through them in order.
         </p>
       </div>
 
       <div className="max-w-3xl">
         <EmailSettingsForm
-          initialProvider={(settings?.provider as EmailProvider) ?? "smtp"}
           initialFromName={settings?.fromName ?? "Mechanic Shop Hub"}
           initialFromEmail={settings?.fromEmail ?? ""}
-          hasCredentials={!!settings}
+          connected={{
+            resend: !!settings?.resendCredentials,
+            sendgrid: !!settings?.sendgridCredentials,
+            smtp: !!settings?.smtpCredentials,
+          }}
+          usage={usage}
         />
       </div>
     </div>
