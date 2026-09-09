@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { AppShell } from "@/components/app-shell";
+import { ROLE_LABELS, type RoleKey } from "@/lib/permissions";
 
 // Real enforcement lives here, in the Server Component — not in proxy.ts.
 // Per Next.js's own guidance (node_modules/next/dist/docs .../proxy.md):
@@ -24,15 +25,24 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // automatically when an org is created or joined, but a signup-flow bug
   // showed that side effect isn't fully reliable — so recover here instead
   // of letting downstream pages throw "No active organization".
+  let membership = null;
   if (!session.session.activeOrganizationId) {
-    const membership = await prisma.member.findFirst({ where: { userId: session.user.id } });
+    membership = await prisma.member.findFirst({ where: { userId: session.user.id } });
     if (membership) {
       await auth.api.setActiveOrganization({
         headers: reqHeaders,
         body: { organizationId: membership.organizationId },
       });
     }
+  } else {
+    membership = await prisma.member.findFirst({ where: { userId: session.user.id } });
   }
 
-  return <AppShell user={session.user}>{children}</AppShell>;
+  const roleLabel = membership ? (ROLE_LABELS[membership.role as RoleKey] ?? membership.role) : undefined;
+
+  return (
+    <AppShell user={session.user} roleLabel={roleLabel}>
+      {children}
+    </AppShell>
+  );
 }
