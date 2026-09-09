@@ -116,7 +116,11 @@ export default function SignInPage() {
             className="text-xs mt-6 pt-5 text-center"
             style={{ color: "var(--text-muted)", borderTop: "1px solid var(--border-subtle)" }}
           >
-            New to the shop? Ask your owner or manager for an invite.
+            New to the shop? Ask your owner or manager for an invite. Setting up a{" "}
+            <a href="/sign-up" className="font-semibold text-brand-600">
+              new shop
+            </a>{" "}
+            for the first time instead?
           </p>
         </div>
       </div>
