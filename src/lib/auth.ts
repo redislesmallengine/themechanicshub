@@ -1,32 +1,9 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { organization } from "better-auth/plugins/organization";
-import nodemailer from "nodemailer";
 import { prisma } from "@/lib/prisma";
+import { sendMail } from "@/lib/email";
 import { ac, ROLES, ROLE_LABELS, type RoleKey } from "@/lib/permissions";
-
-// Hostinger Email (Titan) via SMTP — see the build plan's Stack table for why:
-// free (bundled with hosting), no separate vendor account. Known sending-limit
-// tradeoff is accepted for now; swapping to another SMTP provider later is a
-// config change here only, nothing downstream needs to know.
-const mailer = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT ?? 465),
-  secure: true,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASSWORD,
-  },
-});
-
-async function sendMail(to: string, subject: string, html: string) {
-  await mailer.sendMail({
-    from: process.env.SMTP_FROM ?? process.env.SMTP_USER,
-    to,
-    subject,
-    html,
-  });
-}
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
@@ -37,13 +14,17 @@ export const auth = betterAuth({
     enabled: true,
     requireEmailVerification: false, // staff are invited by an Owner/Manager, not self-registering
     sendResetPassword: async ({ user, url }) => {
-      await sendMail(
-        user.email,
-        "Reset your Mechanic Shop Hub password",
-        `<p>Someone requested a password reset for your account.</p>
-         <p><a href="${url}">Reset your password</a></p>
-         <p>If this wasn't you, you can ignore this email.</p>`
-      );
+      // No organization context at this point in the flow — resolveConfig
+      // in src/lib/email.ts falls back to the platform default provider.
+      const membership = await prisma.member.findFirst({ where: { userId: user.id } });
+      await sendMail({
+        to: user.email,
+        subject: "Reset your Mechanic Shop Hub password",
+        html: `<p>Someone requested a password reset for your account.</p>
+               <p><a href="${url}">Reset your password</a></p>
+               <p>If this wasn't you, you can ignore this email.</p>`,
+        organizationId: membership?.organizationId,
+      });
     },
   },
 
@@ -57,12 +38,13 @@ export const auth = betterAuth({
       sendInvitationEmail: async (data) => {
         const url = `${process.env.BETTER_AUTH_URL}/accept-invite?id=${data.id}`;
         const roleLabel = ROLE_LABELS[data.role as RoleKey] ?? data.role;
-        await sendMail(
-          data.email,
-          `You're invited to join ${data.organization.name} on Mechanic Shop Hub`,
-          `<p>${data.inviter.user.name} invited you to join <b>${data.organization.name}</b> as a <b>${roleLabel}</b>.</p>
-           <p><a href="${url}">Accept the invite</a></p>`
-        );
+        await sendMail({
+          to: data.email,
+          subject: `You're invited to join ${data.organization.name} on Mechanic Shop Hub`,
+          html: `<p>${data.inviter.user.name} invited you to join <b>${data.organization.name}</b> as a <b>${roleLabel}</b>.</p>
+                 <p><a href="${url}">Accept the invite</a></p>`,
+          organizationId: data.organization.id,
+        });
       },
     }),
   ],

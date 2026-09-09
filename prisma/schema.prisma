@@ -101,9 +101,33 @@ model Organization {
   metadata  String? // JSON-encoded; Better Auth reads/writes this as a string
   createdAt DateTime @default(now())
 
-  members     Member[]
-  invitations Invitation[]
-  teams       Team[]
+  members       Member[]
+  invitations   Invitation[]
+  teams         Team[]
+  emailSettings EmailSettings?
+}
+
+// =============================================================================
+// Mechanic Shop Hub — app-owned tables (not part of Better Auth)
+// =============================================================================
+
+// Per-shop outbound email configuration, editable from Settings → Email
+// instead of Coolify env vars. `credentials` holds provider-specific secrets
+// (API keys / SMTP password) AES-256-GCM encrypted at the application layer
+// (src/lib/crypto.ts) before they ever reach the database — never plaintext
+// at rest. Falls back to the platform's own Hostinger SMTP env vars
+// (src/lib/email.ts) when no shop has configured this yet.
+model EmailSettings {
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  provider       String // "resend" | "sendgrid" | "smtp"
+  fromName       String
+  fromEmail      String
+  credentials    String // JSON, AES-256-GCM encrypted (see src/lib/crypto.ts)
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
 model Member {

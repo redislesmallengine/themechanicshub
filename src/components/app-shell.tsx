@@ -12,6 +12,7 @@ import {
   InventoryIcon,
   InvoiceIcon,
   StaffIcon,
+  SettingsIcon,
 } from "@/components/icons";
 
 // Icon color per item matches the reference design's pattern: every nav
@@ -125,10 +126,12 @@ function Header({ user, roleLabel }: { user: { name: string; email: string }; ro
 export function AppShell({
   user,
   roleLabel,
+  canManageSettings,
   children,
 }: {
   user: { name: string; email: string };
   roleLabel?: string;
+  canManageSettings?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -162,7 +165,7 @@ export function AppShell({
           <div className="px-2 text-[11px] font-semibold uppercase tracking-wider mb-1 font-mono" style={{ color: "#64748B" }}>
             Security &amp; Staff
           </div>
-          <nav className="space-y-0.5 flex-1">
+          <nav className="space-y-0.5 mb-4">
             <Link
               href="/staff"
               className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition"
@@ -172,6 +175,24 @@ export function AppShell({
               Staff &amp; Roles
             </Link>
           </nav>
+
+          {canManageSettings && (
+            <>
+              <div className="px-2 text-[11px] font-semibold uppercase tracking-wider mb-1 font-mono" style={{ color: "#64748B" }}>
+                Shop
+              </div>
+              <nav className="space-y-0.5 flex-1">
+                <Link
+                  href="/settings/email"
+                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition"
+                  style={pathname.startsWith("/settings") ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
+                >
+                  <SettingsIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/settings") ? "text-white" : "text-rose-400"}`} />
+                  Settings
+                </Link>
+              </nav>
+            </>
+          )}
         </aside>
 
         <div className="flex-1 flex flex-col min-w-0">

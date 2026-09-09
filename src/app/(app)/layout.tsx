@@ -39,9 +39,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   }
 
   const roleLabel = membership ? (ROLE_LABELS[membership.role as RoleKey] ?? membership.role) : undefined;
+  const canManageSettings = membership?.role === "owner" || membership?.role === "manager";
 
   return (
-    <AppShell user={session.user} roleLabel={roleLabel}>
+    <AppShell user={session.user} roleLabel={roleLabel} canManageSettings={canManageSettings}>
       {children}
     </AppShell>
   );
