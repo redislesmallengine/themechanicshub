@@ -39,16 +39,21 @@ export default async function StaffPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-extrabold text-lg" style={{ color: "var(--text-primary)" }}>
-          Staff &amp; Roles
-        </h1>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
+            Staff &amp; Roles
+          </h1>
+          <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+            Who has access to Red Isle Small Engine, and what they can do.
+          </p>
+        </div>
         <a
           href="/staff/invite"
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold text-white bg-brand-600"
+          className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition"
         >
-          <InviteIcon className="w-4 h-4" />
-          Invite Staff
+          <InviteIcon className="w-3.5 h-3.5" />
+          + Invite Staff
         </a>
       </div>
 
@@ -60,10 +65,10 @@ export default async function StaffPage() {
                 <th className="dt-th w-10 text-center">
                   <input type="checkbox" className="rounded" style={{ accentColor: "#0F52BA" }} />
                 </th>
-                <th className="dt-th">Name</th>
-                <th className="dt-th">Role</th>
-                <th className="dt-th">Status</th>
-                <th className="dt-th">Joined</th>
+                <th className="dt-th text-left">Name</th>
+                <th className="dt-th text-left">Role</th>
+                <th className="dt-th text-left">Status</th>
+                <th className="dt-th text-left">Joined</th>
                 <th className="dt-th text-right">Actions</th>
               </tr>
             </thead>
@@ -71,7 +76,7 @@ export default async function StaffPage() {
               {members.map((m) => {
                 const isSelf = m.userId === session?.user.id;
                 return (
-                  <tr key={m.id} className="dt-row dt-row--status-good group">
+                  <tr key={m.id} className="dt-row group">
                     <td className="dt-td text-center">
                       <input type="checkbox" className="rounded" style={{ accentColor: "#0F52BA" }} />
                     </td>

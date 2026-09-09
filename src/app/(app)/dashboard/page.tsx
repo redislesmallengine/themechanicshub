@@ -50,10 +50,13 @@ const TILES = [
 export default function DashboardPage() {
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-extrabold text-lg" style={{ color: "var(--text-primary)" }}>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
           Dashboard
         </h1>
+        <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+          Today&apos;s shop-floor snapshot for Red Isle Small Engine.
+        </p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
@@ -77,7 +80,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="flex items-baseline justify-between mb-2">
-        <h2 className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
+        <h2 className="text-lg font-bold" style={{ color: "var(--text-primary)" }}>
           Today&apos;s Work Orders
         </h2>
         <span className="text-xs italic" style={{ color: "var(--text-muted)" }}>
@@ -90,21 +93,23 @@ export default function DashboardPage() {
           <table className="dt-table" style={{ minWidth: 640 }}>
             <thead className="dt-head">
               <tr>
-                <th className="dt-th">WO#</th>
-                <th className="dt-th">Customer</th>
-                <th className="dt-th">Equipment</th>
-                <th className="dt-th">Status</th>
-                <th className="dt-th">Updated</th>
+                <th className="dt-th text-left">WO#</th>
+                <th className="dt-th text-left">Customer</th>
+                <th className="dt-th text-left">Equipment</th>
+                <th className="dt-th text-left">Status</th>
+                <th className="dt-th text-right">Updated</th>
               </tr>
             </thead>
             <tbody>
               {SAMPLE_WORK_ORDERS.map((wo) => (
-                <tr key={wo.id} className={`dt-row dt-row--status-${wo.status}`}>
+                <tr key={wo.id} className="dt-row">
                   <td className="dt-td num" style={{ color: "var(--text-muted)" }}>
                     {wo.id}
                   </td>
                   <td className="dt-td">
-                    <div className="font-semibold text-sm">{wo.customer}</div>
+                    <div className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
+                      {wo.customer}
+                    </div>
                     <div className="text-xs" style={{ color: "var(--text-muted)" }}>
                       {wo.phone}
                     </div>
@@ -116,7 +121,7 @@ export default function DashboardPage() {
                       {wo.label}
                     </span>
                   </td>
-                  <td className="dt-td num text-sm">{wo.updated}</td>
+                  <td className="dt-td num text-sm text-right">{wo.updated}</td>
                 </tr>
               ))}
             </tbody>
