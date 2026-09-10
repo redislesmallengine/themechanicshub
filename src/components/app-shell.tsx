@@ -14,6 +14,7 @@ import {
   StaffIcon,
   SettingsIcon,
   ShieldIcon,
+  StoreIcon,
 } from "@/components/icons";
 
 // Icon color per item matches the reference design's pattern: every nav
@@ -186,12 +187,20 @@ export function AppShell({
               </div>
               <nav className="space-y-0.5 mb-4">
                 <Link
+                  href="/settings/shop"
+                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition"
+                  style={pathname.startsWith("/settings/shop") ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
+                >
+                  <StoreIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/settings/shop") ? "text-white" : "text-teal-400"}`} />
+                  Shop Profile
+                </Link>
+                <Link
                   href="/settings/email"
                   className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition"
-                  style={pathname.startsWith("/settings") ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
+                  style={pathname.startsWith("/settings/email") ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
                 >
-                  <SettingsIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/settings") ? "text-white" : "text-rose-400"}`} />
-                  Settings
+                  <SettingsIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/settings/email") ? "text-white" : "text-rose-400"}`} />
+                  Email
                 </Link>
               </nav>
             </>

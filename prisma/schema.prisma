@@ -116,6 +116,7 @@ model Organization {
   emailSettings     EmailSettings?
   emailLogs         EmailLog[]
   organizationRoles OrganizationRole[]
+  shopProfile       ShopProfile?
 }
 
 // =============================================================================
@@ -160,6 +161,31 @@ model EmailLog {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, provider, createdAt])
+}
+
+// Phase 2 — Shop Configuration. Everything later phases read as "the
+// shop's own settings" that Better Auth's Organization model doesn't cover
+// (name/slug/logo live there already; this is the rest — branding beyond
+// the logo, contact info, and the billing defaults invoicing (Phase 6)
+// pulls in automatically instead of asking for labor rate/tax on every
+// invoice). One row per shop, created on first save (upsert), so it's
+// fine for a brand-new shop to have none yet — Settings -> Shop Profile
+// just shows empty fields.
+model ShopProfile {
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  logoKey        String? // object key in the Garage/S3 bucket (src/lib/storage.ts) — not a public URL, served via /api/shop-logo/[organizationId]
+  address        String?
+  phone          String?
+  laborRate      Decimal? @db.Decimal(10, 2) // per hour
+  diagnosticFee  Decimal? @db.Decimal(10, 2) // flat fee
+  taxRate        Decimal? @db.Decimal(5, 2) // percentage, e.g. 15.00
+  taxLabel       String? // e.g. "HST", "GST+PST"
+  province       String?
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
 model Member {

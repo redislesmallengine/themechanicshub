@@ -1,0 +1,130 @@
+"use server";
+
+import { headers } from "next/headers";
+import { revalidatePath } from "next/cache";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { uploadLogo, deleteLogo } from "@/lib/storage";
+
+const MAX_LOGO_BYTES = 4 * 1024 * 1024; // 4MB — well under the 5mb server-action body limit (next.config.ts) once multipart overhead is accounted for
+
+async function requireCanManageShopSettings() {
+  const reqHeaders = await headers();
+  const session = await auth.api.getSession({ headers: reqHeaders });
+  if (!session?.session.activeOrganizationId) throw new Error("Not signed in to a shop.");
+
+  const allowed = await auth.api.hasPermission({
+    headers: reqHeaders,
+    body: { permissions: { shopSettings: ["update"] } },
+  });
+  if (!allowed.success) throw new Error("You don't have permission to change shop settings.");
+
+  return { organizationId: session.session.activeOrganizationId, reqHeaders };
+}
+
+/** Parses an optional decimal form field: "" -> null, otherwise a validated non-negative number as a string (what Prisma's Decimal columns want). */
+function parseDecimal(raw: FormDataEntryValue | null, label: string): { value: string | null } | { error: string } {
+  const text = String(raw ?? "").trim();
+  if (!text) return { value: null };
+  const num = Number(text);
+  if (!Number.isFinite(num) || num < 0) return { error: `${label} needs to be a positive number.` };
+  return { value: num.toFixed(2) };
+}
+
+export async function saveShopProfile(formData: FormData) {
+  const { organizationId, reqHeaders } = await requireCanManageShopSettings();
+
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return { error: "Shop name is required." };
+
+  const address = String(formData.get("address") ?? "").trim();
+  const phone = String(formData.get("phone") ?? "").trim();
+  const taxLabel = String(formData.get("taxLabel") ?? "").trim();
+  const province = String(formData.get("province") ?? "").trim();
+
+  const laborRate = parseDecimal(formData.get("laborRate"), "Labor rate");
+  if ("error" in laborRate) return { error: laborRate.error };
+  const diagnosticFee = parseDecimal(formData.get("diagnosticFee"), "Diagnostic fee");
+  if ("error" in diagnosticFee) return { error: diagnosticFee.error };
+  const taxRate = parseDecimal(formData.get("taxRate"), "Tax rate");
+  if ("error" in taxRate) return { error: taxRate.error };
+
+  // Organization.name is Better Auth's own field (organization plugin) —
+  // update it there rather than duplicating a name column on ShopProfile.
+  // Better Auth checks its own "organization:update" permission on top of
+  // the shopSettings check above (a custom role could have one but not the
+  // other), so this can throw even after requireCanManageShopSettings()
+  // passed — catch it rather than let it surface as an unhandled 500.
+  try {
+    const updateResult = await auth.api.updateOrganization({
+      headers: reqHeaders,
+      body: { organizationId, data: { name } },
+    });
+    if (!updateResult) return { error: "Couldn't update the shop name." };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Couldn't update the shop name." };
+  }
+
+  await prisma.shopProfile.upsert({
+    where: { organizationId },
+    create: {
+      organizationId,
+      address: address || null,
+      phone: phone || null,
+      laborRate: laborRate.value,
+      diagnosticFee: diagnosticFee.value,
+      taxRate: taxRate.value,
+      taxLabel: taxLabel || null,
+      province: province || null,
+    },
+    update: {
+      address: address || null,
+      phone: phone || null,
+      laborRate: laborRate.value,
+      diagnosticFee: diagnosticFee.value,
+      taxRate: taxRate.value,
+      taxLabel: taxLabel || null,
+      province: province || null,
+    },
+  });
+
+  revalidatePath("/settings/shop");
+  return { success: true };
+}
+
+export async function uploadShopLogo(formData: FormData) {
+  const { organizationId } = await requireCanManageShopSettings();
+
+  const file = formData.get("logo");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose an image to upload." };
+  if (!file.type.startsWith("image/")) return { error: "Logo needs to be an image file (PNG, JPG, etc.)." };
+  if (file.size > MAX_LOGO_BYTES) return { error: "That image is too large — keep it under 4MB." };
+
+  const existing = await prisma.shopProfile.findUnique({ where: { organizationId }, select: { logoKey: true } });
+
+  const key = await uploadLogo(organizationId, file);
+
+  await prisma.shopProfile.upsert({
+    where: { organizationId },
+    create: { organizationId, logoKey: key },
+    update: { logoKey: key },
+  });
+
+  if (existing?.logoKey) await deleteLogo(existing.logoKey); // best-effort, after the new one is safely saved
+
+  revalidatePath("/settings/shop");
+  return { success: true };
+}
+
+export async function removeShopLogo() {
+  const { organizationId } = await requireCanManageShopSettings();
+
+  const existing = await prisma.shopProfile.findUnique({ where: { organizationId }, select: { logoKey: true } });
+  if (!existing?.logoKey) return { success: true };
+
+  await prisma.shopProfile.update({ where: { organizationId }, data: { logoKey: null } });
+  await deleteLogo(existing.logoKey);
+
+  revalidatePath("/settings/shop");
+  return { success: true };
+}
