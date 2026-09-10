@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { deleteImage } from "@/lib/storage";
 
 async function requireCanManageCustomers(action: "create" | "update" = "create") {
   const reqHeaders = await headers();
@@ -61,4 +62,23 @@ export async function updateCustomer(customerId: string, formData: FormData) {
   revalidatePath("/customers");
   revalidatePath(`/customers/${customerId}`);
   redirect(`/customers/${customerId}`);
+}
+
+/** Deletes a customer and, via Equipment's onDelete: Cascade, every piece of their equipment too — confirmed client-side (delete-customer-button.tsx) before this is ever called. */
+export async function deleteCustomer(customerId: string) {
+  const { organizationId } = await requireCanManageCustomers("update");
+
+  const existing = await prisma.customer.findUnique({
+    where: { id: customerId },
+    include: { equipment: { select: { photoKey: true } } },
+  });
+  if (!existing || existing.organizationId !== organizationId) return { error: "That customer doesn't exist." };
+
+  await prisma.customer.delete({ where: { id: customerId } }); // cascades to Equipment rows at the DB level
+
+  // Cascade only removes DB rows — clean up any equipment photos left in Garage/S3, best-effort.
+  await Promise.all(existing.equipment.filter((e) => e.photoKey).map((e) => deleteImage(e.photoKey!)));
+
+  revalidatePath("/customers");
+  return { success: true };
 }

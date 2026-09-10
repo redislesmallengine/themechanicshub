@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { CustomersIcon, SearchIcon } from "@/components/icons";
+import { DeleteCustomerButton } from "@/components/delete-customer-button";
 
 export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q } = await searchParams;
@@ -72,12 +73,13 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                 <th className="dt-th text-left">Email</th>
                 <th className="dt-th text-left">Equipment</th>
                 <th className="dt-th text-left">Added</th>
+                <th className="dt-th text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {customers.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
+                  <td colSpan={6} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
                     {q ? (
                       <>
                         No customers match &ldquo;{q}&rdquo;.
@@ -95,7 +97,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                 </tr>
               )}
               {customers.map((c) => (
-                <tr key={c.id} className="dt-row">
+                <tr key={c.id} className="dt-row group">
                   <td className="dt-td">
                     <Link href={`/customers/${c.id}`} className="flex items-center gap-2 font-bold text-sm hover:underline" style={{ color: "var(--text-primary)" }}>
                       <CustomersIcon className="w-3.5 h-3.5 text-emerald-500" />
@@ -113,6 +115,14 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                   </td>
                   <td className="dt-td num text-sm" style={{ color: "var(--text-muted)" }}>
                     {c.createdAt.toLocaleDateString()}
+                  </td>
+                  <td className="dt-td text-right">
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex justify-end items-center gap-3">
+                      <Link href={`/customers/${c.id}/edit`} className="text-[11px] font-bold text-brand-600">
+                        Edit
+                      </Link>
+                      <DeleteCustomerButton customerId={c.id} name={c.name} equipmentCount={c._count.equipment} />
+                    </div>
                   </td>
                 </tr>
               ))}
