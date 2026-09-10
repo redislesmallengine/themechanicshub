@@ -48,7 +48,16 @@ export default async function EquipmentDetailPage({ params }: { params: Promise<
           <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
             {[equipment.make, equipment.model].filter(Boolean).join(" ") || equipment.equipmentType?.name || "Equipment"}
           </h1>
-          <DeleteEquipmentButton equipmentId={equipment.id} label={[equipment.make, equipment.model].filter(Boolean).join(" ") || "this equipment"} />
+          <div className="flex items-center gap-3">
+            <Link
+              href={`/equipment/${equipment.id}/edit`}
+              className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-slate-50"
+              style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}
+            >
+              Edit
+            </Link>
+            <DeleteEquipmentButton equipmentId={equipment.id} label={[equipment.make, equipment.model].filter(Boolean).join(" ") || "this equipment"} />
+          </div>
         </div>
       </div>
 

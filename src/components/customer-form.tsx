@@ -11,7 +11,25 @@ const inputStyle = {
   color: "var(--text-primary)",
 };
 
-export function CustomerForm() {
+type ActionResult = { success?: boolean; error?: string } | undefined;
+
+export function CustomerForm({
+  mode = "create",
+  initialName = "",
+  initialPhone = "",
+  initialEmail = "",
+  initialNotes = "",
+  cancelHref = "/customers",
+  onSubmit = createCustomer,
+}: {
+  mode?: "create" | "edit";
+  initialName?: string;
+  initialPhone?: string;
+  initialEmail?: string;
+  initialNotes?: string;
+  cancelHref?: string;
+  onSubmit?: (formData: FormData) => Promise<ActionResult>;
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -19,8 +37,8 @@ export function CustomerForm() {
   function handleSubmit(formData: FormData) {
     setError(null);
     startTransition(async () => {
-      const result = await createCustomer(formData);
-      // createCustomer redirects on success, so reaching here at all means it didn't
+      const result = await onSubmit(formData);
+      // both createCustomer and updateCustomer redirect on success, so reaching here means it didn't
       if (result?.error) setError(result.error);
     });
   }
@@ -33,7 +51,7 @@ export function CustomerForm() {
             <CustomersIcon className="w-4 h-4" />
           </span>
           <h3 className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
-            New Customer
+            {mode === "create" ? "New Customer" : "Edit Customer"}
           </h3>
         </div>
       </div>
@@ -43,25 +61,42 @@ export function CustomerForm() {
           <label htmlFor="name" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
             Full Name <span style={{ color: "var(--color-error-solid)" }}>*</span>
           </label>
-          <input id="name" name="name" type="text" required placeholder="e.g. Sarah Chiasson" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+          <input
+            id="name"
+            name="name"
+            type="text"
+            required
+            defaultValue={initialName}
+            placeholder="e.g. Sarah Chiasson"
+            className="w-full px-3 py-2 rounded-lg text-xs font-medium"
+            style={inputStyle}
+          />
         </div>
         <div>
           <label htmlFor="phone" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
             Phone
           </label>
-          <input id="phone" name="phone" type="tel" placeholder="(902) 555-0100" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+          <input id="phone" name="phone" type="tel" defaultValue={initialPhone} placeholder="(902) 555-0100" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
         </div>
         <div>
           <label htmlFor="email" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
             Email
           </label>
-          <input id="email" name="email" type="email" placeholder="name@example.com" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+          <input id="email" name="email" type="email" defaultValue={initialEmail} placeholder="name@example.com" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
         </div>
         <div className="md:col-span-2">
           <label htmlFor="notes" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
             Notes
           </label>
-          <textarea id="notes" name="notes" rows={2} placeholder="Anything worth flagging for next time" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+          <textarea
+            id="notes"
+            name="notes"
+            rows={2}
+            defaultValue={initialNotes}
+            placeholder="Anything worth flagging for next time"
+            className="w-full px-3 py-2 rounded-lg text-xs font-medium"
+            style={inputStyle}
+          />
         </div>
       </div>
 
@@ -78,14 +113,14 @@ export function CustomerForm() {
       <div className="pt-3 flex items-center justify-end gap-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
         <button
           type="button"
-          onClick={() => router.push("/customers")}
+          onClick={() => router.push(cancelHref)}
           className="px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-slate-50"
           style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}
         >
           Cancel
         </button>
         <button type="submit" disabled={pending} className="px-5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold shadow-sm disabled:opacity-60">
-          {pending ? "Creating…" : "Create Customer"}
+          {pending ? "Saving…" : mode === "create" ? "Create Customer" : "Save Changes"}
         </button>
       </div>
     </form>

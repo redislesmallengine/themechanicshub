@@ -1,119 +1,16 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { saveShopProfile, uploadShopLogo, removeShopLogo } from "@/app/(app)/settings/shop/actions";
 import { CANADIAN_PROVINCES } from "@/lib/provinces";
 import { StoreIcon } from "@/components/icons";
+import { ImageUploader } from "@/components/image-uploader";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
   border: "1px solid var(--border-strong)",
   color: "var(--text-primary)",
 };
-
-function LogoUploader({ organizationId, hasLogo }: { organizationId: string; hasLogo: boolean }) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [logoVisible, setLogoVisible] = useState(hasLogo);
-  // Cache-busting query param — only needs to change when the stored logo
-  // actually changes, not on every render, so it's tracked as state (set
-  // once via the lazy initializer, bumped after a successful upload)
-  // rather than read impurely during render.
-  const [cacheBust, setCacheBust] = useState(() => Date.now());
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [uploading, startUploading] = useTransition();
-  const [removing, startRemoving] = useTransition();
-
-  // The visible "Upload" button never has anything to do with a browser's
-  // native file dialog by default — only the file <input> itself opens
-  // one. Clicking it programmatically here is what actually opens the
-  // dialog; picking a file then uploads it immediately (one click, one
-  // file picker, one result) rather than requiring a separate "confirm"
-  // step after the dialog closes.
-  function handleChooseFile() {
-    fileRef.current?.click();
-  }
-
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setPreview(URL.createObjectURL(file));
-    setMessage(null);
-    const formData = new FormData();
-    formData.set("logo", file);
-    startUploading(async () => {
-      const result = await uploadShopLogo(formData);
-      if (result?.error) {
-        setMessage({ type: "error", text: result.error });
-        return;
-      }
-      setMessage({ type: "success", text: "Logo updated." });
-      setLogoVisible(true);
-      setCacheBust(Date.now());
-      setPreview(null);
-      if (fileRef.current) fileRef.current.value = "";
-    });
-  }
-
-  function handleRemove() {
-    if (!confirm("Remove the shop logo?")) return;
-    setMessage(null);
-    startRemoving(async () => {
-      await removeShopLogo();
-      setLogoVisible(false);
-      setPreview(null);
-    });
-  }
-
-  const displaySrc = preview ?? (logoVisible ? `/api/shop-logo/${organizationId}?t=${cacheBust}` : null);
-
-  return (
-    <div className="flex items-center gap-4 flex-wrap">
-      <div
-        className="w-16 h-16 rounded-lg flex items-center justify-center shrink-0 overflow-hidden"
-        style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)" }}
-      >
-        {displaySrc ? (
-          // eslint-disable-next-line @next/next/no-img-element -- served from our own streaming route (src/app/api/shop-logo), not next/image-optimizable
-          <img src={displaySrc} alt="Shop logo" className="w-full h-full object-contain" />
-        ) : (
-          <span className="text-[10px] font-semibold" style={{ color: "var(--text-muted)" }}>
-            No logo
-          </span>
-        )}
-      </div>
-      <div className="flex-1 min-w-[220px]">
-        <input ref={fileRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={handleChooseFile}
-            disabled={uploading}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60"
-          >
-            {uploading ? "Uploading…" : hasLogo || logoVisible ? "Change Logo" : "Upload Logo"}
-          </button>
-          {logoVisible && (
-            <button
-              type="button"
-              onClick={handleRemove}
-              disabled={removing}
-              className="text-xs font-semibold disabled:opacity-50"
-              style={{ color: "var(--color-error-solid)" }}
-            >
-              {removing ? "…" : "Remove"}
-            </button>
-          )}
-        </div>
-        {message && (
-          <p className="text-[11px] mt-1 font-semibold" style={{ color: message.type === "error" ? "var(--color-error-solid)" : "var(--color-success-solid)" }}>
-            {message.text}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
 
 export function ShopProfileForm({
   organizationId,
@@ -173,7 +70,18 @@ export function ShopProfileForm({
         <div className="font-bold text-xs mb-2" style={{ color: "var(--text-secondary)" }}>
           Logo
         </div>
-        <LogoUploader organizationId={organizationId} hasLogo={hasLogo} />
+        <ImageUploader
+          imageSrc={hasLogo ? `/api/shop-logo/${organizationId}` : null}
+          uploadLabel="Upload Logo"
+          changeLabel="Change Logo"
+          placeholder="No logo"
+          onUpload={(file) => {
+            const formData = new FormData();
+            formData.set("logo", file);
+            return uploadShopLogo(formData);
+          }}
+          onRemove={removeShopLogo}
+        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
