@@ -1,19 +1,30 @@
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
-import { ROLE_LABELS, type RoleKey } from "@/lib/permissions";
+import { listRoles, roleMapFrom } from "@/lib/rbac";
 import { InviteIcon } from "@/components/icons";
 import { RemoveMemberButton } from "@/components/remove-member-button";
 
 // Matches the reference design's exact role-pill pattern (flat colored
 // bg/text/border, no dot — distinct from the dt-badge/status-dot style used
-// for work-order statuses elsewhere).
-const ROLE_PILL: Record<RoleKey, string> = {
-  owner: "bg-indigo-50 text-indigo-700 border-indigo-200",
-  manager: "bg-blue-50 text-blue-700 border-blue-200",
-  technician: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  bookkeeper: "bg-amber-50 text-amber-700 border-amber-200",
-  frontdesk: "bg-slate-50 text-slate-700 border-slate-200",
-};
+// for work-order statuses elsewhere). Roles are dynamic now (Site Admin →
+// Roles), so the color comes from a fixed rotation keyed by role, not a
+// hardcoded per-role map.
+const ROLE_PILL_COLORS = [
+  "bg-indigo-50 text-indigo-700 border-indigo-200",
+  "bg-blue-50 text-blue-700 border-blue-200",
+  "bg-emerald-50 text-emerald-700 border-emerald-200",
+  "bg-amber-50 text-amber-700 border-amber-200",
+  "bg-slate-50 text-slate-700 border-slate-200",
+  "bg-rose-50 text-rose-700 border-rose-200",
+  "bg-sky-50 text-sky-700 border-sky-200",
+];
+
+function rolePillColor(roleKey: string) {
+  if (roleKey === "owner") return ROLE_PILL_COLORS[0];
+  let hash = 0;
+  for (const ch of roleKey) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return ROLE_PILL_COLORS[1 + (hash % (ROLE_PILL_COLORS.length - 1))];
+}
 
 const AVATAR_COLORS = ["bg-brand-600", "bg-slate-700", "bg-emerald-600", "bg-amber-600"];
 
@@ -36,6 +47,7 @@ export default async function StaffPage() {
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   const { members } = await auth.api.listMembers({ headers: reqHeaders });
+  const roleMap = roleMapFrom(await listRoles());
 
   return (
     <div className="p-6">
@@ -48,13 +60,23 @@ export default async function StaffPage() {
             Who has access to Red Isle Small Engine, and what they can do.
           </p>
         </div>
-        <a
-          href="/staff/invite"
-          className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition"
-        >
-          <InviteIcon className="w-3.5 h-3.5" />
-          + Invite Staff
-        </a>
+        <div className="flex items-center gap-2">
+          <a
+            href="/staff/add"
+            className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-slate-50"
+            style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}
+          >
+            <InviteIcon className="w-3.5 h-3.5" />
+            + Add User
+          </a>
+          <a
+            href="/staff/invite"
+            className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition"
+          >
+            <InviteIcon className="w-3.5 h-3.5" />
+            + Invite Staff
+          </a>
+        </div>
       </div>
 
       <div className="dt-container">
@@ -98,8 +120,8 @@ export default async function StaffPage() {
                       </div>
                     </td>
                     <td className="dt-td">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${ROLE_PILL[m.role as RoleKey] ?? "bg-slate-50 text-slate-700 border-slate-200"}`}>
-                        {ROLE_LABELS[m.role as RoleKey] ?? m.role}
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${rolePillColor(m.role)}`}>
+                        {roleMap[m.role]?.label ?? m.role}
                       </span>
                     </td>
                     <td className="dt-td">

@@ -13,6 +13,7 @@ import {
   InvoiceIcon,
   StaffIcon,
   SettingsIcon,
+  ShieldIcon,
 } from "@/components/icons";
 
 // Icon color per item matches the reference design's pattern: every nav
@@ -127,11 +128,13 @@ export function AppShell({
   user,
   roleLabel,
   canManageSettings,
+  isSiteAdmin,
   children,
 }: {
   user: { name: string; email: string };
   roleLabel?: string;
   canManageSettings?: boolean;
+  isSiteAdmin?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -181,7 +184,7 @@ export function AppShell({
               <div className="px-2 text-[11px] font-semibold uppercase tracking-wider mb-1 font-mono" style={{ color: "#64748B" }}>
                 Shop
               </div>
-              <nav className="space-y-0.5 flex-1">
+              <nav className="space-y-0.5 mb-4">
                 <Link
                   href="/settings/email"
                   className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition"
@@ -189,6 +192,24 @@ export function AppShell({
                 >
                   <SettingsIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/settings") ? "text-white" : "text-rose-400"}`} />
                   Settings
+                </Link>
+              </nav>
+            </>
+          )}
+
+          {isSiteAdmin && (
+            <>
+              <div className="px-2 text-[11px] font-semibold uppercase tracking-wider mb-1 font-mono" style={{ color: "#64748B" }}>
+                Platform
+              </div>
+              <nav className="space-y-0.5 flex-1">
+                <Link
+                  href="/admin/roles"
+                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition"
+                  style={pathname.startsWith("/admin") ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
+                >
+                  <ShieldIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/admin") ? "text-white" : "text-violet-400"}`} />
+                  Roles &amp; Rights
                 </Link>
               </nav>
             </>

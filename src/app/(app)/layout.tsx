@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { AppShell } from "@/components/app-shell";
-import { ROLE_LABELS, type RoleKey } from "@/lib/permissions";
+import { OWNER_ROLE } from "@/lib/rbac";
 
 // Real enforcement lives here, in the Server Component — not in proxy.ts.
 // Per Next.js's own guidance (node_modules/next/dist/docs .../proxy.md):
@@ -38,11 +38,24 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     membership = await prisma.member.findFirst({ where: { userId: session.user.id } });
   }
 
-  const roleLabel = membership ? (ROLE_LABELS[membership.role as RoleKey] ?? membership.role) : undefined;
-  const canManageSettings = membership?.role === "owner" || membership?.role === "manager";
+  let roleLabel: string | undefined;
+  if (membership) {
+    roleLabel =
+      membership.role === "owner"
+        ? OWNER_ROLE.label
+        : ((await prisma.platformRole.findUnique({ where: { key: membership.role } }))?.label ?? membership.role);
+  }
+
+  // Permission-driven, not a hardcoded role-name check — a site admin can
+  // change what Manager (or any role) is allowed to do at any time, and
+  // this should follow that immediately rather than only recognizing the
+  // two role names that happened to have it when this was written.
+  const canManageSettings = membership
+    ? (await auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { shopSettings: ["update"] } } })).success
+    : false;
 
   return (
-    <AppShell user={session.user} roleLabel={roleLabel} canManageSettings={canManageSettings}>
+    <AppShell user={session.user} roleLabel={roleLabel} canManageSettings={canManageSettings} isSiteAdmin={session.user.isSiteAdmin ?? false}>
       {children}
     </AppShell>
   );

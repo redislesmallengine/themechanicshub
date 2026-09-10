@@ -29,6 +29,15 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  // Platform-level flag, unrelated to any shop's Member.role — the "site
+  // administrator" concept from src/lib/rbac.ts. Sits above every
+  // organization; manages the shared Role library (PlatformRole below)
+  // instead of any one shop's own data. Not settable from the app itself —
+  // per the standing "credentials & accounts are always asked for, never
+  // assumed" rule, the first site admin is promoted by hand via direct DB
+  // access (Prisma Studio / TablePlus), never auto-granted by a migration.
+  isSiteAdmin Boolean @default(false)
+
   sessions          Session[]
   accounts          Account[]
   memberships       Member[]
@@ -101,11 +110,12 @@ model Organization {
   metadata  String? // JSON-encoded; Better Auth reads/writes this as a string
   createdAt DateTime @default(now())
 
-  members       Member[]
-  invitations   Invitation[]
-  teams         Team[]
-  emailSettings EmailSettings?
-  emailLogs     EmailLog[]
+  members           Member[]
+  invitations       Invitation[]
+  teams             Team[]
+  emailSettings     EmailSettings?
+  emailLogs         EmailLog[]
+  organizationRoles OrganizationRole[]
 }
 
 // =============================================================================
@@ -156,7 +166,7 @@ model Member {
   id             String   @id @default(cuid())
   organizationId String
   userId         String
-  role           String // one of: owner | manager | technician | bookkeeper | frontdesk (src/lib/permissions.ts)
+  role           String // "owner" (protected, hardcoded in src/lib/permissions.ts) or the `key` of a PlatformRole row
   createdAt      DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -164,6 +174,55 @@ model Member {
 
   @@unique([organizationId, userId])
   @@index([userId])
+}
+
+// Better Auth organization plugin's own "Dynamic Access Control" table —
+// exact field shape required by node_modules/better-auth/dist/plugins/
+// organization/organization.mjs (organizationRoleSchema) with
+// dynamicAccessControl enabled (src/lib/auth.ts). Better Auth reads this at
+// request time and merges each row's `permission` JSON into its in-memory
+// access-control engine, so auth.api.hasPermission() picks up custom roles
+// automatically — no change needed at any existing call site.
+//
+// We never write here through Better Auth's own /organization/create-role
+// etc. endpoints (those require the caller to already be a member of the
+// target org, which a platform site admin isn't). Instead src/lib/rbac.ts
+// writes directly to this table, mirroring every PlatformRole into every
+// Organization's row set — see PlatformRole below for why.
+model OrganizationRole {
+  id             String   @id @default(cuid())
+  organizationId String
+  role           String // matches PlatformRole.key
+  permission     String // JSON-encoded { [resource]: string[] } — Better Auth stores/reads this as a string, not jsonb
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, role])
+  @@index([organizationId])
+}
+
+// The site administrator's shared role library (per the pilot-stage
+// decision to keep one set of roles used by every shop rather than
+// per-shop custom roles — see build plan Phase 10 for where per-shop
+// customization would extend this later). This is the source of truth an
+// admin edits in Site Admin → Roles; every write mirrors into
+// OrganizationRole for every existing Organization so Better Auth's own
+// runtime permission engine (which only reads OrganizationRole) sees the
+// change immediately. "owner" is not a row here — it's the one role that
+// stays hardcoded (src/lib/permissions.ts) since Better Auth's
+// `creatorRole` setting requires a statically-defined role to exist for
+// whoever creates a new shop to become its Owner.
+model PlatformRole {
+  id          String   @id @default(cuid())
+  key         String   @unique // slug used as Member.role / OrganizationRole.role
+  label       String
+  description String?
+  isSystem    Boolean  @default(false) // reserved for future protected roles; "owner" itself isn't a row here at all
+  permissions Json // { [resource]: string[] } — same shape as src/lib/permissions.ts's `statement`
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Invitation {

@@ -32,3 +32,16 @@ export function decrypt(payload: string): string {
   const plaintext = Buffer.concat([decipher.update(Buffer.from(ciphertextHex, "hex")), decipher.final()]);
   return plaintext.toString("utf8");
 }
+
+// Unrelated to the AES-GCM helpers above beyond both living in "crypto" —
+// used by Staff → Add User (src/app/(app)/staff/actions.ts) to create a
+// login for a staff member on the spot instead of emailing an invite.
+// Shown once on screen to the admin; never stored in plaintext (Better
+// Auth hashes it into Account.password immediately) and never emailed.
+const PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
+export function generateTemporaryPassword(length = 14): string {
+  const bytes = randomBytes(length);
+  let out = "";
+  for (let i = 0; i < length; i++) out += PASSWORD_CHARS[bytes[i] % PASSWORD_CHARS.length];
+  return out;
+}

@@ -3,12 +3,23 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { organization } from "better-auth/plugins/organization";
 import { prisma } from "@/lib/prisma";
 import { sendMail } from "@/lib/email";
-import { ac, ROLES, ROLE_LABELS, type RoleKey } from "@/lib/permissions";
+import { ac, STATIC_ROLES } from "@/lib/permissions";
+import { OWNER_ROLE, seedDefaultRolesForOrg } from "@/lib/rbac";
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.BETTER_AUTH_URL,
+
+  user: {
+    additionalFields: {
+      // Platform-level "site administrator" flag — see src/lib/rbac.ts.
+      // input: false so it can never be set by a client-supplied sign-up/
+      // update payload; only ever flipped by direct DB access (see
+      // prisma/schema.prisma's comment on User.isSiteAdmin).
+      isSiteAdmin: { type: "boolean", required: false, defaultValue: false, input: false },
+    },
+  },
 
   emailAndPassword: {
     enabled: true,
@@ -31,13 +42,31 @@ export const auth = betterAuth({
   plugins: [
     organization({
       ac,
-      roles: ROLES,
+      roles: STATIC_ROLES, // just "owner" — every other role is dynamic, see src/lib/rbac.ts
       creatorRole: "owner", // whoever signs up first for a shop becomes its Owner
       // Staff are invited, not self-registered — see AGENTS.md / build plan Phase 1.
       allowUserToCreateOrganization: true,
+      // Roles beyond Owner are DB-driven (site admin's shared PlatformRole
+      // library) instead of hardcoded — this is Better Auth's own built-in
+      // mechanism for that; it reads the OrganizationRole table at request
+      // time. src/lib/rbac.ts is what actually writes to it, since the site
+      // admin managing this library isn't necessarily a member of any shop
+      // (the requirement Better Auth's own create/update/delete-role
+      // endpoints enforce) — this app never calls those endpoints directly.
+      dynamicAccessControl: { enabled: true },
+      organizationHooks: {
+        // Every new shop starts with the current shared role library
+        // (Manager/Technician/Bookkeeper/Front Desk, or whatever the site
+        // admin has changed that to) already assignable — not just Red
+        // Isle's pre-seeded set from the migration.
+        afterCreateOrganization: async ({ organization }) => {
+          await seedDefaultRolesForOrg(organization.id);
+        },
+      },
       sendInvitationEmail: async (data) => {
         const url = `${process.env.BETTER_AUTH_URL}/accept-invite?id=${data.id}`;
-        const roleLabel = ROLE_LABELS[data.role as RoleKey] ?? data.role;
+        const roleLabel =
+          data.role === "owner" ? OWNER_ROLE.label : ((await prisma.platformRole.findUnique({ where: { key: data.role } }))?.label ?? data.role);
         await sendMail({
           to: data.email,
           subject: `You're invited to join ${data.organization.name} on Mechanic Shop Hub`,
