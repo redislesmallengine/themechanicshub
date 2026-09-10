@@ -24,14 +24,20 @@ function LogoUploader({ organizationId, hasLogo }: { organizationId: string; has
   const [uploading, startUploading] = useTransition();
   const [removing, startRemoving] = useTransition();
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    setPreview(file ? URL.createObjectURL(file) : null);
+  // The visible "Upload" button never has anything to do with a browser's
+  // native file dialog by default — only the file <input> itself opens
+  // one. Clicking it programmatically here is what actually opens the
+  // dialog; picking a file then uploads it immediately (one click, one
+  // file picker, one result) rather than requiring a separate "confirm"
+  // step after the dialog closes.
+  function handleChooseFile() {
+    fileRef.current?.click();
   }
 
-  function handleUpload() {
-    const file = fileRef.current?.files?.[0];
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
     if (!file) return;
+    setPreview(URL.createObjectURL(file));
     setMessage(null);
     const formData = new FormData();
     formData.set("logo", file);
@@ -77,15 +83,15 @@ function LogoUploader({ organizationId, hasLogo }: { organizationId: string; has
         )}
       </div>
       <div className="flex-1 min-w-[220px]">
-        <input ref={fileRef} type="file" accept="image/*" onChange={handleFileChange} className="text-xs" />
-        <div className="flex items-center gap-3 mt-2">
+        <input ref={fileRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+        <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={handleUpload}
+            onClick={handleChooseFile}
             disabled={uploading}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60"
           >
-            {uploading ? "Uploading…" : "Upload"}
+            {uploading ? "Uploading…" : hasLogo || logoVisible ? "Change Logo" : "Upload Logo"}
           </button>
           {logoVisible && (
             <button
@@ -179,18 +185,28 @@ export function ShopProfileForm({
         </div>
         <div>
           <label htmlFor="phone" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-            Phone
+            Phone <span style={{ color: "var(--color-error-solid)" }}>*</span>
           </label>
-          <input id="phone" name="phone" type="tel" defaultValue={initialPhone} placeholder="(902) 555-0100" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+          <input
+            id="phone"
+            name="phone"
+            type="tel"
+            required
+            defaultValue={initialPhone}
+            placeholder="(902) 555-0100"
+            className="w-full px-3 py-2 rounded-lg text-xs font-medium"
+            style={inputStyle}
+          />
         </div>
         <div className="md:col-span-2">
           <label htmlFor="address" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-            Address
+            Address <span style={{ color: "var(--color-error-solid)" }}>*</span>
           </label>
           <input
             id="address"
             name="address"
             type="text"
+            required
             defaultValue={initialAddress}
             placeholder="123 Main St, Montague, PE"
             className="w-full px-3 py-2 rounded-lg text-xs font-medium"
@@ -206,7 +222,7 @@ export function ShopProfileForm({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
           <div>
             <label htmlFor="laborRate" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-              Labor Rate ($/hr)
+              Labor Rate ($/hr) <span style={{ color: "var(--color-error-solid)" }}>*</span>
             </label>
             <input
               id="laborRate"
@@ -214,6 +230,7 @@ export function ShopProfileForm({
               type="number"
               step="0.01"
               min="0"
+              required
               defaultValue={initialLaborRate}
               placeholder="95.00"
               className="w-full px-3 py-2 rounded-lg text-xs font-mono"
@@ -222,7 +239,7 @@ export function ShopProfileForm({
           </div>
           <div>
             <label htmlFor="diagnosticFee" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-              Diagnostic Fee ($)
+              Diagnostic Fee ($) <span style={{ color: "var(--color-error-solid)" }}>*</span>
             </label>
             <input
               id="diagnosticFee"
@@ -230,6 +247,7 @@ export function ShopProfileForm({
               type="number"
               step="0.01"
               min="0"
+              required
               defaultValue={initialDiagnosticFee}
               placeholder="45.00"
               className="w-full px-3 py-2 rounded-lg text-xs font-mono"
@@ -238,7 +256,7 @@ export function ShopProfileForm({
           </div>
         </div>
         <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-          Pulled onto every invoice automatically once invoicing (Phase 6) lands — leave blank to set them per-invoice for now.
+          Pulled onto every invoice automatically once invoicing (Phase 6) lands.
         </p>
       </div>
 
@@ -249,10 +267,12 @@ export function ShopProfileForm({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
           <div>
             <label htmlFor="province" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-              Province
+              Province <span style={{ color: "var(--color-error-solid)" }}>*</span>
             </label>
-            <select id="province" name="province" defaultValue={initialProvince} className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
-              <option value="">Select…</option>
+            <select id="province" name="province" required defaultValue={initialProvince} className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
+              <option value="" disabled>
+                Select…
+              </option>
               {CANADIAN_PROVINCES.map((p) => (
                 <option key={p} value={p}>
                   {p}
@@ -262,13 +282,22 @@ export function ShopProfileForm({
           </div>
           <div>
             <label htmlFor="taxLabel" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-              Tax Label
+              Tax Label <span style={{ color: "var(--color-error-solid)" }}>*</span>
             </label>
-            <input id="taxLabel" name="taxLabel" type="text" defaultValue={initialTaxLabel} placeholder="HST" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+            <input
+              id="taxLabel"
+              name="taxLabel"
+              type="text"
+              required
+              defaultValue={initialTaxLabel}
+              placeholder="HST"
+              className="w-full px-3 py-2 rounded-lg text-xs font-medium"
+              style={inputStyle}
+            />
           </div>
           <div>
             <label htmlFor="taxRate" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-              Tax Rate (%)
+              Tax Rate (%) <span style={{ color: "var(--color-error-solid)" }}>*</span>
             </label>
             <input
               id="taxRate"
@@ -276,6 +305,7 @@ export function ShopProfileForm({
               type="number"
               step="0.01"
               min="0"
+              required
               defaultValue={initialTaxRate}
               placeholder="15.00"
               className="w-full px-3 py-2 rounded-lg text-xs font-mono"

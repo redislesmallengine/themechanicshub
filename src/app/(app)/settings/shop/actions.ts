@@ -22,10 +22,16 @@ async function requireCanManageShopSettings() {
   return { organizationId: session.session.activeOrganizationId, reqHeaders };
 }
 
-/** Parses an optional decimal form field: "" -> null, otherwise a validated non-negative number as a string (what Prisma's Decimal columns want). */
-function parseDecimal(raw: FormDataEntryValue | null, label: string): { value: string | null } | { error: string } {
+/**
+ * Parses a decimal form field into what Prisma's Decimal columns want (a
+ * string). `required: true` rejects blank — matches the `required`
+ * attribute on the corresponding input in shop-profile-form.tsx; both
+ * exist because the HTML attribute alone doesn't stop a direct action
+ * call, and this is the actual enforcement.
+ */
+function parseDecimal(raw: FormDataEntryValue | null, label: string, required: boolean): { value: string | null } | { error: string } {
   const text = String(raw ?? "").trim();
-  if (!text) return { value: null };
+  if (!text) return required ? { error: `${label} is required.` } : { value: null };
   const num = Number(text);
   if (!Number.isFinite(num) || num < 0) return { error: `${label} needs to be a positive number.` };
   return { value: num.toFixed(2) };
@@ -38,15 +44,19 @@ export async function saveShopProfile(formData: FormData) {
   if (!name) return { error: "Shop name is required." };
 
   const address = String(formData.get("address") ?? "").trim();
+  if (!address) return { error: "Address is required." };
   const phone = String(formData.get("phone") ?? "").trim();
+  if (!phone) return { error: "Phone is required." };
   const taxLabel = String(formData.get("taxLabel") ?? "").trim();
+  if (!taxLabel) return { error: "Tax label is required." };
   const province = String(formData.get("province") ?? "").trim();
+  if (!province) return { error: "Province is required." };
 
-  const laborRate = parseDecimal(formData.get("laborRate"), "Labor rate");
+  const laborRate = parseDecimal(formData.get("laborRate"), "Labor rate", true);
   if ("error" in laborRate) return { error: laborRate.error };
-  const diagnosticFee = parseDecimal(formData.get("diagnosticFee"), "Diagnostic fee");
+  const diagnosticFee = parseDecimal(formData.get("diagnosticFee"), "Diagnostic fee", true);
   if ("error" in diagnosticFee) return { error: diagnosticFee.error };
-  const taxRate = parseDecimal(formData.get("taxRate"), "Tax rate");
+  const taxRate = parseDecimal(formData.get("taxRate"), "Tax rate", true);
   if ("error" in taxRate) return { error: taxRate.error };
 
   // Organization.name is Better Auth's own field (organization plugin) —
