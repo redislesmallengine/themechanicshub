@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { sendMail } from "@/lib/email";
 import { ac, STATIC_ROLES } from "@/lib/permissions";
 import { OWNER_ROLE, seedDefaultRolesForOrg } from "@/lib/rbac";
+import { seedDefaultEquipmentTypes } from "@/lib/equipment-types";
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
@@ -61,6 +62,7 @@ export const auth = betterAuth({
         // Isle's pre-seeded set from the migration.
         afterCreateOrganization: async ({ organization }) => {
           await seedDefaultRolesForOrg(organization.id);
+          await seedDefaultEquipmentTypes(organization.id);
         },
       },
       sendInvitationEmail: async (data) => {

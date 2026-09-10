@@ -15,6 +15,7 @@ import {
   SettingsIcon,
   ShieldIcon,
   StoreIcon,
+  SearchIcon,
 } from "@/components/icons";
 
 // Icon color per item matches the reference design's pattern: every nav
@@ -57,12 +58,18 @@ function Header({ user, roleLabel }: { user: { name: string; email: string }; ro
     router.refresh();
   }
 
+  function handleSearch(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const q = new FormData(e.currentTarget).get("q");
+    if (typeof q === "string" && q.trim()) router.push(`/search?q=${encodeURIComponent(q.trim())}`);
+  }
+
   return (
     <header
-      className="h-16 px-4 md:px-6 flex items-center justify-between shrink-0 z-30"
+      className="h-16 px-4 md:px-6 flex items-center justify-between gap-4 shrink-0 z-30"
       style={{ background: "var(--bg-surface)", borderBottom: "1px solid var(--border-subtle)" }}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 shrink-0">
         <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-brand-600">
           <WrenchIcon className="w-4.5 h-4.5 text-white" />
         </span>
@@ -71,7 +78,20 @@ function Header({ user, roleLabel }: { user: { name: string; email: string }; ro
         </span>
       </div>
 
-      <div className="flex items-center gap-3">
+      <form onSubmit={handleSearch} className="flex-1 max-w-sm hidden md:block">
+        <div className="relative">
+          <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
+          <input
+            name="q"
+            type="text"
+            placeholder="Search customers, equipment…"
+            className="w-full pl-9 pr-3 py-2 rounded-lg text-xs font-medium"
+            style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)", color: "var(--text-primary)" }}
+          />
+        </div>
+      </form>
+
+      <div className="flex items-center gap-3 shrink-0">
         <button
           className="relative p-2 rounded-lg hover:bg-slate-100 transition"
           style={{ color: "var(--text-secondary)" }}
@@ -201,6 +221,14 @@ export function AppShell({
                 >
                   <SettingsIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/settings/email") ? "text-white" : "text-rose-400"}`} />
                   Email
+                </Link>
+                <Link
+                  href="/settings/equipment-types"
+                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition"
+                  style={pathname.startsWith("/settings/equipment-types") ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
+                >
+                  <InventoryIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/settings/equipment-types") ? "text-white" : "text-indigo-400"}`} />
+                  Equipment Types
                 </Link>
               </nav>
             </>

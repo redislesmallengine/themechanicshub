@@ -117,6 +117,9 @@ model Organization {
   emailLogs         EmailLog[]
   organizationRoles OrganizationRole[]
   shopProfile       ShopProfile?
+  equipmentTypes    EquipmentType[]
+  customers         Customer[]
+  equipment         Equipment[]
 }
 
 // =============================================================================
@@ -186,6 +189,77 @@ model ShopProfile {
   createdAt      DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+// =============================================================================
+// Phase 3 — Customer & Equipment CRM
+// =============================================================================
+
+// Per-shop, not shared like PlatformRole — unlike roles (where consistent
+// access control across the platform matters), a shop's equipment taxonomy
+// is business data specific to its specialty (a marine shop and a lawn-
+// equipment shop want completely different lists). Managed from Settings
+// -> Equipment Types by anyone with shopSettings:update; seeded with a
+// sensible default set both for existing orgs (this migration) and new
+// ones (organizationHooks.afterCreateOrganization in src/lib/auth.ts).
+model EquipmentType {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  equipment    Equipment[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model Customer {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  phone          String?
+  email          String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  equipment    Equipment[]
+
+  @@index([organizationId])
+  @@index([organizationId, phone])
+  @@index([organizationId, email])
+}
+
+// Registration/identification data only — no diagnosis, repair status, or
+// pricing here. That's Phase 4's WorkOrder, linked to a piece of equipment
+// once it exists; "service history" on an equipment's detail page is just
+// that equipment's past work orders, not a field stored here.
+model Equipment {
+  id              String   @id @default(cuid())
+  organizationId  String
+  customerId      String
+  equipmentTypeId String?
+  make            String?
+  model           String?
+  serialNumber    String?
+  engineType      String? // "2-stroke" | "4-stroke" | "electric" | "battery" — free text, not an enum, in case a shop needs something else
+  displacement    String? // free text — units vary by equipment ("42cc", "11 HP")
+  year            Int?
+  photoKey        String? // Garage/S3 object key, same pattern as ShopProfile.logoKey — never a public URL, see /api/equipment-photo
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer      Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  equipmentType EquipmentType? @relation(fields: [equipmentTypeId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([customerId])
+  @@index([organizationId, serialNumber])
 }
 
 model Member {

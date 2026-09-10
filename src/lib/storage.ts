@@ -26,10 +26,11 @@ function getBucket(): string {
   return bucket;
 }
 
-/** Uploads a shop logo, returning the object key to store on ShopProfile.logoKey (never a public URL — see /api/shop-logo). */
-export async function uploadLogo(organizationId: string, file: File): Promise<string> {
-  const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
-  const key = `logos/${organizationId}/${Date.now()}.${ext}`;
+function extOf(file: File): string {
+  return (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+}
+
+async function putImage(key: string, file: File): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   await getClient().send(
     new PutObjectCommand({
@@ -42,8 +43,18 @@ export async function uploadLogo(organizationId: string, file: File): Promise<st
   return key;
 }
 
-/** Streams a stored logo back out — used by /api/shop-logo/[organizationId], never exposed as a direct S3 URL. */
-export async function getLogo(key: string): Promise<{ body: ReadableStream; contentType: string } | null> {
+/** Uploads a shop logo, returning the object key to store on ShopProfile.logoKey (never a public URL — see /api/shop-logo). */
+export async function uploadLogo(organizationId: string, file: File): Promise<string> {
+  return putImage(`logos/${organizationId}/${Date.now()}.${extOf(file)}`, file);
+}
+
+/** Uploads an equipment photo, returning the object key to store on Equipment.photoKey (never a public URL — see /api/equipment-photo). */
+export async function uploadEquipmentPhoto(organizationId: string, equipmentId: string, file: File): Promise<string> {
+  return putImage(`equipment/${organizationId}/${equipmentId}/${Date.now()}.${extOf(file)}`, file);
+}
+
+/** Streams a stored image back out — used by /api/shop-logo and /api/equipment-photo, never exposed as a direct S3 URL. */
+export async function getImage(key: string): Promise<{ body: ReadableStream; contentType: string } | null> {
   try {
     const result = await getClient().send(new GetObjectCommand({ Bucket: getBucket(), Key: key }));
     if (!result.Body) return null;
@@ -52,12 +63,12 @@ export async function getLogo(key: string): Promise<{ body: ReadableStream; cont
       contentType: result.ContentType || "application/octet-stream",
     };
   } catch {
-    return null; // missing object, bad key, etc. — treat as "no logo" rather than a hard error
+    return null; // missing object, bad key, etc. — treat as "not found" rather than a hard error
   }
 }
 
-/** Best-effort cleanup when a logo is replaced or removed — never blocks the save if it fails. */
-export async function deleteLogo(key: string): Promise<void> {
+/** Best-effort cleanup when an image is replaced or removed — never blocks the save if it fails. */
+export async function deleteImage(key: string): Promise<void> {
   try {
     await getClient().send(new DeleteObjectCommand({ Bucket: getBucket(), Key: key }));
   } catch {

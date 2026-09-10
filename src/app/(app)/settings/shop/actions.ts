@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { uploadLogo, deleteLogo } from "@/lib/storage";
+import { uploadLogo, deleteImage } from "@/lib/storage";
 
 const MAX_LOGO_BYTES = 4 * 1024 * 1024; // 4MB — well under the 5mb server-action body limit (next.config.ts) once multipart overhead is accounted for
 
@@ -120,7 +120,7 @@ export async function uploadShopLogo(formData: FormData) {
     update: { logoKey: key },
   });
 
-  if (existing?.logoKey) await deleteLogo(existing.logoKey); // best-effort, after the new one is safely saved
+  if (existing?.logoKey) await deleteImage(existing.logoKey); // best-effort, after the new one is safely saved
 
   revalidatePath("/settings/shop");
   return { success: true };
@@ -133,7 +133,7 @@ export async function removeShopLogo() {
   if (!existing?.logoKey) return { success: true };
 
   await prisma.shopProfile.update({ where: { organizationId }, data: { logoKey: null } });
-  await deleteLogo(existing.logoKey);
+  await deleteImage(existing.logoKey);
 
   revalidatePath("/settings/shop");
   return { success: true };
