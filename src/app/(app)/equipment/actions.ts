@@ -162,6 +162,9 @@ export async function removeEquipmentPhoto(equipmentId: string) {
   return { success: true };
 }
 
+// Doesn't redirect — called from both the equipment list (stays put,
+// just refreshes) and the equipment detail page (navigates back to the
+// customer itself) via delete-equipment-button.tsx's optional redirectTo.
 export async function deleteEquipment(equipmentId: string) {
   const { organizationId } = await requireCanManageCustomers("update");
 
@@ -172,5 +175,6 @@ export async function deleteEquipment(equipmentId: string) {
   if (equipment.photoKey) await deleteImage(equipment.photoKey);
 
   revalidatePath(`/customers/${equipment.customerId}`);
-  redirect(`/customers/${equipment.customerId}`);
+  revalidatePath("/equipment");
+  return { success: true, customerId: equipment.customerId };
 }

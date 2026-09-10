@@ -56,7 +56,11 @@ export default async function EquipmentDetailPage({ params }: { params: Promise<
             >
               Edit
             </Link>
-            <DeleteEquipmentButton equipmentId={equipment.id} label={[equipment.make, equipment.model].filter(Boolean).join(" ") || "this equipment"} />
+            <DeleteEquipmentButton
+              equipmentId={equipment.id}
+              label={[equipment.make, equipment.model].filter(Boolean).join(" ") || "this equipment"}
+              redirectTo={`/customers/${equipment.customer.id}`}
+            />
           </div>
         </div>
       </div>

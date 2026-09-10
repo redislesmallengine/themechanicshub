@@ -94,6 +94,17 @@ export function SettingsIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function EquipmentIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="3" y="8" width="14" height="10" rx="1" />
+      <circle cx="8" cy="13" r="2" />
+      <path d="M17 11h2l2 2v5h-4" />
+      <path d="M7 8V5a2 2 0 0 1 2-2h2" />
+    </svg>
+  );
+}
+
 export function StoreIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg {...base} {...props}>

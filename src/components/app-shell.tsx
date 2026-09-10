@@ -16,6 +16,7 @@ import {
   ShieldIcon,
   StoreIcon,
   SearchIcon,
+  EquipmentIcon,
 } from "@/components/icons";
 
 // Icon color per item matches the reference design's pattern: every nav
@@ -26,6 +27,7 @@ const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: DashboardIcon, color: "text-blue-400" },
   { href: "/work-orders", label: "Work Orders", icon: WorkOrderIcon, color: "text-amber-400" },
   { href: "/customers", label: "Customers", icon: CustomersIcon, color: "text-emerald-400" },
+  { href: "/equipment", label: "Equipment", icon: EquipmentIcon, color: "text-violet-400" },
   { href: "/inventory", label: "Inventory", icon: InventoryIcon, color: "text-indigo-400" },
   { href: "/invoices", label: "Invoices", icon: InvoiceIcon, color: "text-sky-400" },
 ];
