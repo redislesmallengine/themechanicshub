@@ -2,7 +2,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { InventoryIcon, SearchIcon } from "@/components/icons";
+import { EquipmentIcon, SearchIcon } from "@/components/icons";
 import { DeleteEquipmentButton } from "@/components/delete-equipment-button";
 
 export default async function EquipmentListPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
@@ -101,7 +101,7 @@ export default async function EquipmentListPage({ searchParams }: { searchParams
                           // eslint-disable-next-line @next/next/no-img-element -- streamed via /api/equipment-photo
                           <img src={`/api/equipment-photo/${eq.id}`} alt="" className="w-full h-full object-cover" />
                         ) : (
-                          <InventoryIcon className="w-3.5 h-3.5 text-indigo-400" />
+                          <EquipmentIcon className="w-3.5 h-3.5 text-indigo-400" />
                         )}
                       </div>
                       <span className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>

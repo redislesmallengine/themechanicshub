@@ -6,6 +6,7 @@ import { sendMail } from "@/lib/email";
 import { ac, STATIC_ROLES } from "@/lib/permissions";
 import { OWNER_ROLE, seedDefaultRolesForOrg } from "@/lib/rbac";
 import { seedDefaultEquipmentTypes } from "@/lib/equipment-types";
+import { seedDefaultPartCategories } from "@/lib/part-categories";
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
@@ -63,6 +64,7 @@ export const auth = betterAuth({
         afterCreateOrganization: async ({ organization }) => {
           await seedDefaultRolesForOrg(organization.id);
           await seedDefaultEquipmentTypes(organization.id);
+          await seedDefaultPartCategories(organization.id);
         },
       },
       sendInvitationEmail: async (data) => {

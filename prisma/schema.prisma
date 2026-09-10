@@ -43,6 +43,7 @@ model User {
   memberships       Member[]
   invitationsSent   Invitation[]  @relation("InvitationInviter")
   teamMemberships   TeamMember[]
+  partStockAdjustments PartStockAdjustment[]
 }
 
 model Session {
@@ -120,6 +121,8 @@ model Organization {
   equipmentTypes    EquipmentType[]
   customers         Customer[]
   equipment         Equipment[]
+  partCategories    PartCategory[]
+  parts             Part[]
 }
 
 // =============================================================================
@@ -260,6 +263,72 @@ model Equipment {
   @@index([organizationId])
   @@index([customerId])
   @@index([organizationId, serialNumber])
+}
+
+// =============================================================================
+// Phase 5 — Inventory & Parts Management
+// =============================================================================
+
+// Per-shop, same reasoning as EquipmentType — a small-engine shop's parts
+// taxonomy is its own business data, not a platform-shared thing. Managed
+// from Settings -> Part Categories.
+model PartCategory {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parts        Part[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+// quantityOnHand only ever changes through a PartStockAdjustment row (see
+// below) — never edited directly on this model — so "what's on the shelf"
+// always has a reason attached, not just a number that changed silently.
+// Work Order parts-reservation (Phase 4) and invoice-payment auto-decrement
+// (Phase 6/7) will both create adjustments here once they exist, rather
+// than needing their own separate stock-tracking logic.
+model Part {
+  id             String   @id @default(cuid())
+  organizationId String
+  categoryId     String?
+  name           String
+  sku            String?
+  barcode        String?
+  binLocation    String?
+  costPrice      Decimal? @db.Decimal(10, 2)
+  sellPrice      Decimal? @db.Decimal(10, 2)
+  quantityOnHand Int      @default(0)
+  reorderPoint   Int      @default(0)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     PartCategory?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  adjustments  PartStockAdjustment[]
+
+  @@unique([organizationId, sku])
+  @@index([organizationId])
+  @@index([organizationId, barcode])
+}
+
+model PartStockAdjustment {
+  id              String   @id @default(cuid())
+  partId          String
+  delta           Int // positive = added, negative = removed
+  reason          String // "Restock" | "Correction" | "Damaged/Lost" | "Return to Supplier" | "Other"
+  note            String?
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  part      Part  @relation(fields: [partId], references: [id], onDelete: Cascade)
+  createdBy User? @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([partId])
 }
 
 model Member {

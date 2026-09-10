@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { InventoryIcon } from "@/components/icons";
+import { EquipmentIcon } from "@/components/icons";
 import { DeleteEquipmentButton } from "@/components/delete-equipment-button";
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
@@ -75,7 +75,7 @@ export default async function EquipmentDetailPage({ params }: { params: Promise<
               // eslint-disable-next-line @next/next/no-img-element -- streamed via /api/equipment-photo
               <img src={`/api/equipment-photo/${equipment.id}`} alt="" className="w-full h-full object-cover" />
             ) : (
-              <InventoryIcon className="w-8 h-8 text-indigo-400" />
+              <EquipmentIcon className="w-8 h-8 text-indigo-400" />
             )}
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 flex-1">

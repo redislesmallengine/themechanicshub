@@ -1,0 +1,186 @@
+"use server";
+
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { sendMail } from "@/lib/email";
+
+async function requireCanManageInventory(action: "create" | "update" = "create") {
+  const reqHeaders = await headers();
+  const session = await auth.api.getSession({ headers: reqHeaders });
+  if (!session?.session.activeOrganizationId) throw new Error("Not signed in to a shop.");
+
+  const allowed = await auth.api.hasPermission({
+    headers: reqHeaders,
+    body: { permissions: { inventory: [action] } },
+  });
+  if (!allowed.success) throw new Error(`You don't have permission to ${action === "create" ? "add" : "edit"} inventory.`);
+
+  return { organizationId: session.session.activeOrganizationId, userId: session.user.id };
+}
+
+function parseDecimal(raw: FormDataEntryValue | null, label: string): { value: string | null } | { error: string } {
+  const text = String(raw ?? "").trim();
+  if (!text) return { value: null };
+  const num = Number(text);
+  if (!Number.isFinite(num) || num < 0) return { error: `${label} needs to be a positive number.` };
+  return { value: num.toFixed(2) };
+}
+
+function parsePartFields(formData: FormData) {
+  const name = String(formData.get("name") ?? "").trim();
+  const sku = String(formData.get("sku") ?? "").trim();
+  const barcode = String(formData.get("barcode") ?? "").trim();
+  const binLocation = String(formData.get("binLocation") ?? "").trim();
+  const categoryId = String(formData.get("categoryId") ?? "").trim() || null;
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  if (!name) return { error: "Part name is required." };
+
+  const costPrice = parseDecimal(formData.get("costPrice"), "Cost price");
+  if ("error" in costPrice) return { error: costPrice.error };
+  const sellPrice = parseDecimal(formData.get("sellPrice"), "Sell price");
+  if ("error" in sellPrice) return { error: sellPrice.error };
+
+  const reorderPointRaw = String(formData.get("reorderPoint") ?? "0").trim();
+  const reorderPoint = Number(reorderPointRaw) || 0;
+  if (!Number.isInteger(reorderPoint) || reorderPoint < 0) return { error: "Reorder point needs to be a whole number, 0 or more." };
+
+  return {
+    name,
+    sku: sku || null,
+    barcode: barcode || null,
+    binLocation: binLocation || null,
+    categoryId,
+    notes: notes || null,
+    costPrice: costPrice.value,
+    sellPrice: sellPrice.value,
+    reorderPoint,
+  };
+}
+
+export async function createPart(formData: FormData) {
+  const { organizationId } = await requireCanManageInventory("create");
+
+  const fields = parsePartFields(formData);
+  if ("error" in fields) return { error: fields.error };
+
+  if (fields.categoryId) {
+    const category = await prisma.partCategory.findUnique({ where: { id: fields.categoryId } });
+    if (!category || category.organizationId !== organizationId) return { error: "That category doesn't exist." };
+  }
+
+  if (fields.sku) {
+    const clash = await prisma.part.findUnique({ where: { organizationId_sku: { organizationId, sku: fields.sku } } });
+    if (clash) return { error: `SKU "${fields.sku}" is already in use.` };
+  }
+
+  const startingQtyRaw = String(formData.get("startingQuantity") ?? "0").trim();
+  const startingQuantity = Number(startingQtyRaw) || 0;
+  if (!Number.isInteger(startingQuantity) || startingQuantity < 0) return { error: "Starting quantity needs to be a whole number, 0 or more." };
+
+  const part = await prisma.part.create({ data: { organizationId, ...fields, quantityOnHand: startingQuantity } });
+
+  if (startingQuantity > 0) {
+    await prisma.partStockAdjustment.create({
+      data: { partId: part.id, delta: startingQuantity, reason: "Restock", note: "Initial stock on file creation" },
+    });
+  }
+
+  revalidatePath("/inventory");
+  redirect(`/inventory/${part.id}`);
+}
+
+export async function updatePart(partId: string, formData: FormData) {
+  const { organizationId } = await requireCanManageInventory("update");
+
+  const existing = await prisma.part.findUnique({ where: { id: partId } });
+  if (!existing || existing.organizationId !== organizationId) return { error: "That part doesn't exist." };
+
+  const fields = parsePartFields(formData);
+  if ("error" in fields) return { error: fields.error };
+
+  if (fields.categoryId) {
+    const category = await prisma.partCategory.findUnique({ where: { id: fields.categoryId } });
+    if (!category || category.organizationId !== organizationId) return { error: "That category doesn't exist." };
+  }
+
+  if (fields.sku) {
+    const clash = await prisma.part.findUnique({ where: { organizationId_sku: { organizationId, sku: fields.sku } } });
+    if (clash && clash.id !== partId) return { error: `SKU "${fields.sku}" is already in use.` };
+  }
+
+  await prisma.part.update({ where: { id: partId }, data: fields });
+
+  revalidatePath("/inventory");
+  revalidatePath(`/inventory/${partId}`);
+  redirect(`/inventory/${partId}`);
+}
+
+export async function deletePart(partId: string) {
+  const { organizationId } = await requireCanManageInventory("update");
+
+  const part = await prisma.part.findUnique({ where: { id: partId } });
+  if (!part || part.organizationId !== organizationId) return { error: "That part doesn't exist." };
+
+  await prisma.part.delete({ where: { id: partId } });
+
+  revalidatePath("/inventory");
+  return { success: true };
+}
+
+const ADJUSTMENT_REASONS = ["Restock", "Correction", "Damaged/Lost", "Return to Supplier", "Other"];
+
+/**
+ * The only way quantityOnHand ever changes — every adjustment is logged
+ * (see PartStockAdjustment in prisma/schema.prisma). Crossing at/under the
+ * reorder point sends the shop's Owner a heads-up email through the
+ * existing cascading sender.
+ */
+export async function adjustStock(partId: string, formData: FormData) {
+  const { organizationId, userId } = await requireCanManageInventory("update");
+
+  const part = await prisma.part.findUnique({ where: { id: partId } });
+  if (!part || part.organizationId !== organizationId) return { error: "That part doesn't exist." };
+
+  const deltaRaw = String(formData.get("delta") ?? "").trim();
+  const delta = Number(deltaRaw);
+  if (!Number.isInteger(delta) || delta === 0) return { error: "Enter a non-zero whole number — positive to add stock, negative to remove it." };
+
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!ADJUSTMENT_REASONS.includes(reason)) return { error: "Choose a reason for the adjustment." };
+
+  const note = String(formData.get("note") ?? "").trim();
+
+  const newQuantity = part.quantityOnHand + delta;
+  if (newQuantity < 0) return { error: `That would take stock below zero (currently ${part.quantityOnHand}).` };
+
+  const wasAboveReorderPoint = part.quantityOnHand > part.reorderPoint;
+
+  await prisma.$transaction([
+    prisma.part.update({ where: { id: partId }, data: { quantityOnHand: newQuantity } }),
+    prisma.partStockAdjustment.create({
+      data: { partId, delta, reason, note: note || null, createdByUserId: userId },
+    }),
+  ]);
+
+  // Crossed into low-stock territory as a result of this adjustment — let the Owner know.
+  if (wasAboveReorderPoint && newQuantity <= part.reorderPoint) {
+    const ownerMembership = await prisma.member.findFirst({ where: { organizationId, role: "owner" }, include: { user: true } });
+    if (ownerMembership) {
+      await sendMail({
+        to: ownerMembership.user.email,
+        subject: `Low stock: ${part.name}`,
+        html: `<p><b>${part.name}</b>${part.sku ? ` (SKU ${part.sku})` : ""} is down to <b>${newQuantity}</b> — at or below its reorder point of ${part.reorderPoint}.</p>
+               <p>Restock when you get a chance.</p>`,
+        organizationId,
+      }).catch(() => null); // stock update already succeeded — a failed notification email shouldn't surface as an error to the person adjusting stock
+    }
+  }
+
+  revalidatePath(`/inventory/${partId}`);
+  revalidatePath("/inventory");
+  return { success: true };
+}

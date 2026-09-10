@@ -2,7 +2,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { CustomersIcon, InventoryIcon, SearchIcon } from "@/components/icons";
+import { CustomersIcon, EquipmentIcon, InventoryIcon, SearchIcon } from "@/components/icons";
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q } = await searchParams;
@@ -11,7 +11,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
 
-  const [customers, equipment] = organizationId && query
+  const [customers, equipment, parts] = organizationId && query
     ? await Promise.all([
         prisma.customer.findMany({
           where: {
@@ -38,8 +38,20 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           orderBy: { createdAt: "desc" },
           include: { customer: true, equipmentType: true },
         }),
+        prisma.part.findMany({
+          where: {
+            organizationId,
+            OR: [
+              { name: { contains: query, mode: "insensitive" } },
+              { sku: { contains: query, mode: "insensitive" } },
+              { barcode: { contains: query, mode: "insensitive" } },
+            ],
+          },
+          take: 25,
+          orderBy: { name: "asc" },
+        }),
       ])
-    : [[], []];
+    : [[], [], []];
 
   return (
     <div className="p-6 space-y-6">
@@ -62,7 +74,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
             name="q"
             defaultValue={query}
             autoFocus
-            placeholder="Customers, phone/email, serial numbers…"
+            placeholder="Customers, equipment, parts…"
             className="w-full pl-9 pr-3 py-2 rounded-lg text-xs font-medium"
             style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)", color: "var(--text-primary)" }}
           />
@@ -71,7 +83,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
       {!query ? (
         <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-          Search across customers and equipment — by name, phone, email, or serial number.
+          Search across customers, equipment, and parts — by name, phone, email, serial number, or SKU.
         </p>
       ) : (
         <>
@@ -124,7 +136,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                     className="flex items-center gap-3 rounded-lg p-3 hover:shadow-sm transition"
                     style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}
                   >
-                    <InventoryIcon className="w-4 h-4 text-indigo-400 shrink-0" />
+                    <EquipmentIcon className="w-4 h-4 text-violet-400 shrink-0" />
                     <div>
                       <div className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
                         {[eq.make, eq.model].filter(Boolean).join(" ") || eq.equipmentType?.name || "Equipment"}
@@ -132,6 +144,39 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                       </div>
                       <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
                         Owned by {eq.customer.name}
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <h2 className="text-sm font-bold mb-2" style={{ color: "var(--text-primary)" }}>
+              Parts ({parts.length})
+            </h2>
+            {parts.length === 0 ? (
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                No matching parts.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {parts.map((p) => (
+                  <Link
+                    key={p.id}
+                    href={`/inventory/${p.id}`}
+                    className="flex items-center gap-3 rounded-lg p-3 hover:shadow-sm transition"
+                    style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}
+                  >
+                    <InventoryIcon className="w-4 h-4 text-indigo-400 shrink-0" />
+                    <div>
+                      <div className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
+                        {p.name}
+                        {p.sku ? ` — SKU ${p.sku}` : ""}
+                      </div>
+                      <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                        {p.quantityOnHand} on hand
                       </div>
                     </div>
                   </Link>

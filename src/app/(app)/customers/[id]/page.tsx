@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { CustomersIcon, InventoryIcon } from "@/components/icons";
+import { CustomersIcon, EquipmentIcon } from "@/components/icons";
 
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -94,7 +94,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                     // eslint-disable-next-line @next/next/no-img-element -- streamed via /api/equipment-photo
                     <img src={`/api/equipment-photo/${eq.id}`} alt="" className="w-full h-full object-cover" />
                   ) : (
-                    <InventoryIcon className="w-5 h-5 text-indigo-400" />
+                    <EquipmentIcon className="w-5 h-5 text-indigo-400" />
                   )}
                 </div>
                 <div className="min-w-0">

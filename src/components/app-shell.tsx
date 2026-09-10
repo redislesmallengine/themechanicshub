@@ -229,8 +229,16 @@ export function AppShell({
                   className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition"
                   style={pathname.startsWith("/settings/equipment-types") ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
                 >
-                  <InventoryIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/settings/equipment-types") ? "text-white" : "text-indigo-400"}`} />
+                  <EquipmentIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/settings/equipment-types") ? "text-white" : "text-violet-400"}`} />
                   Equipment Types
+                </Link>
+                <Link
+                  href="/settings/part-categories"
+                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition"
+                  style={pathname.startsWith("/settings/part-categories") ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
+                >
+                  <InventoryIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/settings/part-categories") ? "text-white" : "text-indigo-400"}`} />
+                  Part Categories
                 </Link>
               </nav>
             </>
