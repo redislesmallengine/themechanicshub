@@ -22,6 +22,7 @@ export function ShopProfileForm({
   initialTaxRate,
   initialTaxLabel,
   initialProvince,
+  initialAgingAlertDays,
   hasLogo,
 }: {
   organizationId: string;
@@ -33,6 +34,7 @@ export function ShopProfileForm({
   initialTaxRate: string;
   initialTaxLabel: string;
   initialProvince: string;
+  initialAgingAlertDays: string;
   hasLogo: boolean;
 }) {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -223,6 +225,33 @@ export function ShopProfileForm({
         </div>
         <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
           Double-check your current provincial/federal rate before saving — this isn&apos;t tax advice, just where invoicing will pull it from.
+        </p>
+      </div>
+
+      <div>
+        <div className="font-bold text-xs mb-2" style={{ color: "var(--text-secondary)" }}>
+          Work Orders
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          <div>
+            <label htmlFor="agingAlertDays" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+              Aging Alert (days)
+            </label>
+            <input
+              id="agingAlertDays"
+              name="agingAlertDays"
+              type="number"
+              step="1"
+              min="1"
+              required
+              defaultValue={initialAgingAlertDays}
+              className="w-full px-3 py-2 rounded-lg text-xs font-mono"
+              style={inputStyle}
+            />
+          </div>
+        </div>
+        <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+          Flags equipment still sitting in &ldquo;Ready for Pickup&rdquo; past this many days, on the Work Orders board and dashboard.
         </p>
       </div>
 

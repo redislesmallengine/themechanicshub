@@ -44,6 +44,7 @@ model User {
   invitationsSent   Invitation[]  @relation("InvitationInviter")
   teamMemberships   TeamMember[]
   partStockAdjustments PartStockAdjustment[]
+  assignedWorkOrders   WorkOrder[]
 }
 
 model Session {
@@ -123,6 +124,7 @@ model Organization {
   equipment         Equipment[]
   partCategories    PartCategory[]
   parts             Part[]
+  workOrders        WorkOrder[]
 }
 
 // =============================================================================
@@ -188,6 +190,7 @@ model ShopProfile {
   taxRate        Decimal? @db.Decimal(5, 2) // percentage, e.g. 15.00
   taxLabel       String? // e.g. "HST", "GST+PST"
   province       String?
+  agingAlertDays Int      @default(14) // Phase 4 — flag a work order sitting in "Ready for Pickup" past this many days
   updatedAt      DateTime @updatedAt
   createdAt      DateTime @default(now())
 
@@ -230,6 +233,7 @@ model Customer {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   equipment    Equipment[]
+  workOrders   WorkOrder[]
 
   @@index([organizationId])
   @@index([organizationId, phone])
@@ -259,6 +263,7 @@ model Equipment {
   organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   customer      Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
   equipmentType EquipmentType? @relation(fields: [equipmentTypeId], references: [id], onDelete: SetNull)
+  workOrders    WorkOrder[]
 
   @@index([organizationId])
   @@index([customerId])
@@ -307,9 +312,10 @@ model Part {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  category     PartCategory?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  adjustments  PartStockAdjustment[]
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category       PartCategory?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  adjustments    PartStockAdjustment[]
+  workOrderParts WorkOrderPart[]
 
   @@unique([organizationId, sku])
   @@index([organizationId])
@@ -320,7 +326,7 @@ model PartStockAdjustment {
   id              String   @id @default(cuid())
   partId          String
   delta           Int // positive = added, negative = removed
-  reason          String // "Restock" | "Correction" | "Damaged/Lost" | "Return to Supplier" | "Other"
+  reason          String // "Restock" | "Correction" | "Damaged/Lost" | "Return to Supplier" | "Used on Work Order" | "Other"
   note            String?
   createdByUserId String?
   createdAt       DateTime @default(now())
@@ -329,6 +335,74 @@ model PartStockAdjustment {
   createdBy User? @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
 
   @@index([partId])
+}
+
+// =============================================================================
+// Phase 4 — Work Orders & Bench Workflow
+// =============================================================================
+
+// Status is a plain string, not a DB enum — matches the pattern already used
+// for Member.role — checked against WORK_ORDER_STATUSES in
+// src/lib/work-orders.ts. Flow: droppedOff -> diagnosing -> awaitingApproval
+// -> inRepair -> readyForPickup -> closed, with a declined branch off
+// awaitingApproval. Every forward move is a deliberate action on the detail
+// page, not a free dropdown.
+model WorkOrder {
+  id                 String    @id @default(cuid())
+  organizationId     String
+  customerId         String
+  equipmentId        String
+  status             String    @default("droppedOff")
+  complaint          String
+  diagnosisNotes     String?
+  laborHours         Decimal?  @db.Decimal(6, 2)
+  assignedToUserId   String?
+  estimateAmount     Decimal?  @db.Decimal(10, 2)
+  estimateNotes      String?
+  approvalToken      String?   @unique // powers the public /estimate/[token] page
+  approvalMethod     String? // "link" | "phone"
+  decidedByName      String? // typed on the approval page, or staff-entered for a phone decision
+  decidedAt          DateTime?
+  awaitingApprovalAt DateTime? // set when status first becomes awaitingApproval — what the "waiting 2+ days" dashboard flag measures from
+  readyForPickupAt   DateTime? // set when status first becomes readyForPickup — what the aging alert measures from
+  closedAt           DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  equipment    Equipment       @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  assignedTo   User?           @relation(fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  parts        WorkOrderPart[]
+
+  @@index([organizationId, status])
+  @@index([customerId])
+  @@index([equipmentId])
+}
+
+// Adding a line here immediately creates a real PartStockAdjustment (reason
+// "Used on Work Order") against the linked Part — src/lib/inventory.ts's
+// applyStockAdjustment() is the single place stock ever actually changes,
+// shared with Settings -> Inventory's own manual "Adjust Stock" action, so
+// there's exactly one code path that can move quantityOnHand. name/
+// unitSellPrice/unitCostPrice are snapshotted at the moment a part is added
+// — survives the part later being renamed, repriced, or deleted, and gives
+// Phase 6 invoicing accurate historical numbers to build a line item from
+// without having to guess.
+model WorkOrderPart {
+  id             String   @id @default(cuid())
+  workOrderId    String
+  partId         String?
+  name           String
+  quantity       Int
+  unitCostPrice  Decimal? @db.Decimal(10, 2)
+  unitSellPrice  Decimal? @db.Decimal(10, 2)
+  createdAt      DateTime @default(now())
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  part      Part?     @relation(fields: [partId], references: [id], onDelete: SetNull)
+
+  @@index([workOrderId])
 }
 
 model Member {

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { CustomersIcon, EquipmentIcon, InventoryIcon, SearchIcon } from "@/components/icons";
+import { CustomersIcon, EquipmentIcon, InventoryIcon, SearchIcon, WorkOrderIcon } from "@/components/icons";
+import { STATUS_LABELS, type WorkOrderStatus } from "@/lib/work-orders";
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q } = await searchParams;
@@ -11,7 +12,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
 
-  const [customers, equipment, parts] = organizationId && query
+  const [customers, equipment, parts, workOrders] = organizationId && query
     ? await Promise.all([
         prisma.customer.findMany({
           where: {
@@ -50,8 +51,21 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           take: 25,
           orderBy: { name: "asc" },
         }),
+        prisma.workOrder.findMany({
+          where: {
+            organizationId,
+            OR: [
+              { complaint: { contains: query, mode: "insensitive" } },
+              { customer: { name: { contains: query, mode: "insensitive" } } },
+              { equipment: { serialNumber: { contains: query, mode: "insensitive" } } },
+            ],
+          },
+          take: 25,
+          orderBy: { updatedAt: "desc" },
+          include: { customer: true, equipment: { include: { equipmentType: true } } },
+        }),
       ])
-    : [[], [], []];
+    : [[], [], [], []];
 
   return (
     <div className="p-6 space-y-6">
@@ -83,10 +97,45 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
       {!query ? (
         <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-          Search across customers, equipment, and parts — by name, phone, email, serial number, or SKU.
+          Search across customers, equipment, parts, and work orders — by name, phone, email, serial number, SKU, or complaint.
         </p>
       ) : (
         <>
+          <div>
+            <h2 className="text-sm font-bold mb-2" style={{ color: "var(--text-primary)" }}>
+              Work Orders ({workOrders.length})
+            </h2>
+            {workOrders.length === 0 ? (
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                No matching work orders.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {workOrders.map((wo) => {
+                  const equipmentLabel = [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" ") || wo.equipment.equipmentType?.name || "Equipment";
+                  return (
+                    <Link
+                      key={wo.id}
+                      href={`/work-orders/${wo.id}`}
+                      className="flex items-center gap-3 rounded-lg p-3 hover:shadow-sm transition"
+                      style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}
+                    >
+                      <WorkOrderIcon className="w-4 h-4 text-amber-400 shrink-0" />
+                      <div>
+                        <div className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
+                          {wo.customer.name} — {equipmentLabel}
+                        </div>
+                        <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                          {STATUS_LABELS[wo.status as WorkOrderStatus]} · {wo.complaint}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           <div>
             <h2 className="text-sm font-bold mb-2" style={{ color: "var(--text-primary)" }}>
               Customers ({customers.length})

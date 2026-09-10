@@ -59,6 +59,10 @@ export async function saveShopProfile(formData: FormData) {
   const taxRate = parseDecimal(formData.get("taxRate"), "Tax rate", true);
   if ("error" in taxRate) return { error: taxRate.error };
 
+  const agingAlertDaysRaw = String(formData.get("agingAlertDays") ?? "14").trim();
+  const agingAlertDays = Number(agingAlertDaysRaw);
+  if (!Number.isInteger(agingAlertDays) || agingAlertDays < 1) return { error: "Aging alert threshold needs to be a whole number of days, 1 or more." };
+
   // Organization.name is Better Auth's own field (organization plugin) —
   // update it there rather than duplicating a name column on ShopProfile.
   // Better Auth checks its own "organization:update" permission on top of
@@ -86,6 +90,7 @@ export async function saveShopProfile(formData: FormData) {
       taxRate: taxRate.value,
       taxLabel: taxLabel || null,
       province: province || null,
+      agingAlertDays,
     },
     update: {
       address: address || null,
@@ -95,6 +100,7 @@ export async function saveShopProfile(formData: FormData) {
       taxRate: taxRate.value,
       taxLabel: taxLabel || null,
       province: province || null,
+      agingAlertDays,
     },
   });
 

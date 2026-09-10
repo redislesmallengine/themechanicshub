@@ -43,6 +43,7 @@ export default async function ShopProfilePage() {
           initialTaxRate={profile?.taxRate?.toString() ?? ""}
           initialTaxLabel={profile?.taxLabel ?? ""}
           initialProvince={profile?.province ?? ""}
+          initialAgingAlertDays={(profile?.agingAlertDays ?? 14).toString()}
           hasLogo={!!profile?.logoKey}
         />
       </div>

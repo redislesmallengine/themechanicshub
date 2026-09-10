@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { sendMail } from "@/lib/email";
+import { applyStockAdjustment, ADJUSTMENT_REASONS, type AdjustmentReason } from "@/lib/inventory";
 
 async function requireCanManageInventory(action: "create" | "update" = "create") {
   const reqHeaders = await headers();
@@ -131,54 +131,24 @@ export async function deletePart(partId: string) {
   return { success: true };
 }
 
-const ADJUSTMENT_REASONS = ["Restock", "Correction", "Damaged/Lost", "Return to Supplier", "Other"];
-
 /**
- * The only way quantityOnHand ever changes — every adjustment is logged
- * (see PartStockAdjustment in prisma/schema.prisma). Crossing at/under the
- * reorder point sends the shop's Owner a heads-up email through the
- * existing cascading sender.
+ * The manual "Adjust Stock" form on a part's detail page. See
+ * src/lib/inventory.ts's applyStockAdjustment for the actual logic — it's
+ * shared with Work Orders adding/removing parts (Phase 4).
  */
 export async function adjustStock(partId: string, formData: FormData) {
   const { organizationId, userId } = await requireCanManageInventory("update");
 
-  const part = await prisma.part.findUnique({ where: { id: partId } });
-  if (!part || part.organizationId !== organizationId) return { error: "That part doesn't exist." };
-
   const deltaRaw = String(formData.get("delta") ?? "").trim();
   const delta = Number(deltaRaw);
-  if (!Number.isInteger(delta) || delta === 0) return { error: "Enter a non-zero whole number — positive to add stock, negative to remove it." };
 
   const reason = String(formData.get("reason") ?? "").trim();
-  if (!ADJUSTMENT_REASONS.includes(reason)) return { error: "Choose a reason for the adjustment." };
+  if (!ADJUSTMENT_REASONS.includes(reason as AdjustmentReason)) return { error: "Choose a reason for the adjustment." };
 
   const note = String(formData.get("note") ?? "").trim();
 
-  const newQuantity = part.quantityOnHand + delta;
-  if (newQuantity < 0) return { error: `That would take stock below zero (currently ${part.quantityOnHand}).` };
-
-  const wasAboveReorderPoint = part.quantityOnHand > part.reorderPoint;
-
-  await prisma.$transaction([
-    prisma.part.update({ where: { id: partId }, data: { quantityOnHand: newQuantity } }),
-    prisma.partStockAdjustment.create({
-      data: { partId, delta, reason, note: note || null, createdByUserId: userId },
-    }),
-  ]);
-
-  // Crossed into low-stock territory as a result of this adjustment — let the Owner know.
-  if (wasAboveReorderPoint && newQuantity <= part.reorderPoint) {
-    const ownerMembership = await prisma.member.findFirst({ where: { organizationId, role: "owner" }, include: { user: true } });
-    if (ownerMembership) {
-      await sendMail({
-        to: ownerMembership.user.email,
-        subject: `Low stock: ${part.name}`,
-        html: `<p><b>${part.name}</b>${part.sku ? ` (SKU ${part.sku})` : ""} is down to <b>${newQuantity}</b> — at or below its reorder point of ${part.reorderPoint}.</p>
-               <p>Restock when you get a chance.</p>`,
-        organizationId,
-      }).catch(() => null); // stock update already succeeded — a failed notification email shouldn't surface as an error to the person adjusting stock
-    }
-  }
+  const result = await applyStockAdjustment({ organizationId, partId, delta, reason: reason as AdjustmentReason, note, createdByUserId: userId });
+  if ("error" in result) return { error: result.error };
 
   revalidatePath(`/inventory/${partId}`);
   revalidatePath("/inventory");
