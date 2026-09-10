@@ -185,7 +185,7 @@ model ShopProfile {
   logoKey        String? // object key in the Garage/S3 bucket (src/lib/storage.ts) — not a public URL, served via /api/shop-logo/[organizationId]
   address        String?
   phone          String?
-  laborRate      Decimal? @db.Decimal(10, 2) // per hour
+  labourRate     Decimal? @db.Decimal(10, 2) // per hour
   diagnosticFee  Decimal? @db.Decimal(10, 2) // flat fee
   taxRate        Decimal? @db.Decimal(5, 2) // percentage, e.g. 15.00
   taxLabel       String? // e.g. "HST", "GST+PST"
@@ -355,7 +355,7 @@ model WorkOrder {
   status             String    @default("droppedOff")
   complaint          String
   diagnosisNotes     String?
-  laborHours         Decimal?  @db.Decimal(6, 2)
+  labourHours        Decimal?  @db.Decimal(6, 2)
   assignedToUserId   String?
   estimateAmount     Decimal?  @db.Decimal(10, 2)
   estimateNotes      String?

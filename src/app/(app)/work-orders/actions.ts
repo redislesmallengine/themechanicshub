@@ -70,14 +70,14 @@ export async function updateDiagnosis(workOrderId: string, formData: FormData) {
   if (!workOrder) return { error: "That work order doesn't exist." };
 
   const diagnosisNotes = String(formData.get("diagnosisNotes") ?? "").trim();
-  const laborHoursRaw = String(formData.get("laborHours") ?? "").trim();
+  const labourHoursRaw = String(formData.get("labourHours") ?? "").trim();
   const assignedToUserId = String(formData.get("assignedToUserId") ?? "").trim() || null;
 
-  let laborHours: string | null = null;
-  if (laborHoursRaw) {
-    const num = Number(laborHoursRaw);
-    if (!Number.isFinite(num) || num < 0) return { error: "Labor hours needs to be a positive number." };
-    laborHours = num.toFixed(2);
+  let labourHours: string | null = null;
+  if (labourHoursRaw) {
+    const num = Number(labourHoursRaw);
+    if (!Number.isFinite(num) || num < 0) return { error: "Labour hours needs to be a positive number." };
+    labourHours = num.toFixed(2);
   }
 
   if (assignedToUserId) {
@@ -85,7 +85,7 @@ export async function updateDiagnosis(workOrderId: string, formData: FormData) {
     if (!member) return { error: "That staff member isn't part of this shop." };
   }
 
-  await prisma.workOrder.update({ where: { id: workOrderId }, data: { diagnosisNotes: diagnosisNotes || null, laborHours, assignedToUserId } });
+  await prisma.workOrder.update({ where: { id: workOrderId }, data: { diagnosisNotes: diagnosisNotes || null, labourHours, assignedToUserId } });
   revalidatePath(`/work-orders/${workOrderId}`);
   return { success: true };
 }

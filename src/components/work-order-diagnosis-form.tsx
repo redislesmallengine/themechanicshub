@@ -14,13 +14,13 @@ export function WorkOrderDiagnosisForm({
   workOrderId,
   members,
   initialDiagnosisNotes,
-  initialLaborHours,
+  initialLabourHours,
   initialAssignedToUserId,
 }: {
   workOrderId: string;
   members: { userId: string; name: string }[];
   initialDiagnosisNotes: string;
-  initialLaborHours: string;
+  initialLabourHours: string;
   initialAssignedToUserId: string;
 }) {
   const router = useRouter();
@@ -58,10 +58,10 @@ export function WorkOrderDiagnosisForm({
           </select>
         </div>
         <div>
-          <label htmlFor="laborHours" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-            Labor Hours
+          <label htmlFor="labourHours" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+            Labour Hours
           </label>
-          <input id="laborHours" name="laborHours" type="number" step="0.25" min="0" defaultValue={initialLaborHours} className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
+          <input id="labourHours" name="labourHours" type="number" step="0.25" min="0" defaultValue={initialLabourHours} className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
         </div>
         <div className="md:col-span-2">
           <label htmlFor="diagnosisNotes" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>

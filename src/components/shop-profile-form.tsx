@@ -17,7 +17,7 @@ export function ShopProfileForm({
   initialName,
   initialAddress,
   initialPhone,
-  initialLaborRate,
+  initialLabourRate,
   initialDiagnosticFee,
   initialTaxRate,
   initialTaxLabel,
@@ -29,7 +29,7 @@ export function ShopProfileForm({
   initialName: string;
   initialAddress: string;
   initialPhone: string;
-  initialLaborRate: string;
+  initialLabourRate: string;
   initialDiagnosticFee: string;
   initialTaxRate: string;
   initialTaxLabel: string;
@@ -131,17 +131,17 @@ export function ShopProfileForm({
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
           <div>
-            <label htmlFor="laborRate" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-              Labor Rate ($/hr) <span style={{ color: "var(--color-error-solid)" }}>*</span>
+            <label htmlFor="labourRate" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+              Labour Rate ($/hr) <span style={{ color: "var(--color-error-solid)" }}>*</span>
             </label>
             <input
-              id="laborRate"
-              name="laborRate"
+              id="labourRate"
+              name="labourRate"
               type="number"
               step="0.01"
               min="0"
               required
-              defaultValue={initialLaborRate}
+              defaultValue={initialLabourRate}
               placeholder="95.00"
               className="w-full px-3 py-2 rounded-lg text-xs font-mono"
               style={inputStyle}

@@ -52,8 +52,8 @@ export async function saveShopProfile(formData: FormData) {
   const province = String(formData.get("province") ?? "").trim();
   if (!province) return { error: "Province is required." };
 
-  const laborRate = parseDecimal(formData.get("laborRate"), "Labor rate", true);
-  if ("error" in laborRate) return { error: laborRate.error };
+  const labourRate = parseDecimal(formData.get("labourRate"), "Labour rate", true);
+  if ("error" in labourRate) return { error: labourRate.error };
   const diagnosticFee = parseDecimal(formData.get("diagnosticFee"), "Diagnostic fee", true);
   if ("error" in diagnosticFee) return { error: diagnosticFee.error };
   const taxRate = parseDecimal(formData.get("taxRate"), "Tax rate", true);
@@ -85,7 +85,7 @@ export async function saveShopProfile(formData: FormData) {
       organizationId,
       address: address || null,
       phone: phone || null,
-      laborRate: laborRate.value,
+      labourRate: labourRate.value,
       diagnosticFee: diagnosticFee.value,
       taxRate: taxRate.value,
       taxLabel: taxLabel || null,
@@ -95,7 +95,7 @@ export async function saveShopProfile(formData: FormData) {
     update: {
       address: address || null,
       phone: phone || null,
-      laborRate: laborRate.value,
+      labourRate: labourRate.value,
       diagnosticFee: diagnosticFee.value,
       taxRate: taxRate.value,
       taxLabel: taxLabel || null,

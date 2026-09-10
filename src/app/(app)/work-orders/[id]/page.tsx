@@ -101,7 +101,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           workOrderId={workOrder.id}
           members={members.filter((m) => m.user).map((m) => ({ userId: m.userId, name: m.user!.name }))}
           initialDiagnosisNotes={workOrder.diagnosisNotes ?? ""}
-          initialLaborHours={workOrder.laborHours?.toString() ?? ""}
+          initialLabourHours={workOrder.labourHours?.toString() ?? ""}
           initialAssignedToUserId={workOrder.assignedToUserId ?? ""}
         />
       </div>
