@@ -125,6 +125,7 @@ model Organization {
   partCategories    PartCategory[]
   parts             Part[]
   workOrders        WorkOrder[]
+  invoices          Invoice[]
 }
 
 // =============================================================================
@@ -191,6 +192,7 @@ model ShopProfile {
   taxLabel       String? // e.g. "HST", "GST+PST"
   province       String?
   agingAlertDays Int      @default(14) // Phase 4 — flag a work order sitting in "Ready for Pickup" past this many days
+  nextInvoiceNumber Int   @default(1001) // Phase 6 — incremented atomically (src/lib/invoices.ts) each time an invoice is generated; the number used is this value *before* the increment
   updatedAt      DateTime @updatedAt
   createdAt      DateTime @default(now())
 
@@ -235,6 +237,7 @@ model Customer {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   equipment    Equipment[]
   workOrders   WorkOrder[]
+  invoices     Invoice[]
 
   @@index([organizationId])
   @@index([organizationId, phone])
@@ -375,6 +378,7 @@ model WorkOrder {
   equipment    Equipment       @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
   assignedTo   User?           @relation(fields: [assignedToUserId], references: [id], onDelete: SetNull)
   parts        WorkOrderPart[]
+  invoice      Invoice?
 
   @@index([organizationId, status])
   @@index([customerId])
@@ -404,6 +408,66 @@ model WorkOrderPart {
   part      Part?     @relation(fields: [partId], references: [id], onDelete: SetNull)
 
   @@index([workOrderId])
+}
+
+// =============================================================================
+// Phase 6 — Itemized Invoicing & Tax Calculation
+// =============================================================================
+
+// One invoice per work order (v1 has no standalone/ad-hoc invoicing).
+// subtotal/taxAmount/total are stored, not computed on read, so a past
+// invoice's numbers stay fixed even if the shop's tax rate changes later —
+// recalculated only when a line item actually changes (src/lib/invoices.ts).
+model Invoice {
+  id                String    @id @default(cuid())
+  organizationId    String
+  workOrderId       String    @unique
+  customerId        String
+  invoiceNumber     String // e.g. "INV-1001" — from ShopProfile.nextInvoiceNumber
+  status            String    @default("draft") // draft | sent | viewed | paid | void
+  issueDate         DateTime  @default(now())
+  dueDate           DateTime  @default(now())
+  subtotal          Decimal   @db.Decimal(10, 2) @default(0)
+  taxAmount         Decimal   @db.Decimal(10, 2) @default(0)
+  total             Decimal   @db.Decimal(10, 2) @default(0)
+  notes             String?
+  viewToken         String    @unique // powers the public /invoice/[token] page, same pattern as WorkOrder.approvalToken
+  sentAt            DateTime?
+  viewedAt          DateTime? // set the first time the customer opens their invoice link
+  paidAt            DateTime?
+  paymentMethod     String? // "Cash" | "E-transfer" | "Card" | "Cheque" | "Other"
+  paymentReference  String?
+  voidedAt          DateTime?
+  voidReason        String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workOrder    WorkOrder         @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  customer     Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  lineItems    InvoiceLineItem[]
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([organizationId, status])
+  @@index([customerId])
+}
+
+model InvoiceLineItem {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  type        String // "labor" | "part" | "fee" | "custom"
+  description String
+  quantity    Decimal  @db.Decimal(10, 2) @default(1)
+  unitPrice   Decimal  @db.Decimal(10, 2)
+  unitCost    Decimal? @db.Decimal(10, 2) // "part" lines only — what the shop paid, shown only to invoice:viewMargins
+  taxable     Boolean  @default(true)
+  lineTotal   Decimal  @db.Decimal(10, 2)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
 }
 
 model Member {

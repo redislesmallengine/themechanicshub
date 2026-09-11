@@ -61,35 +61,53 @@ function platformDefault(): Candidate | null {
   };
 }
 
-async function sendViaResend(creds: ResendCredentials, from: string, to: string, subject: string, html: string) {
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+}
+
+async function sendViaResend(creds: ResendCredentials, from: string, to: string, subject: string, html: string, attachments?: EmailAttachment[]) {
   const resend = new Resend(creds.apiKey);
-  const { error } = await resend.emails.send({ from, to, subject, html });
+  const { error } = await resend.emails.send({
+    from,
+    to,
+    subject,
+    html,
+    attachments: attachments?.map((a) => ({ filename: a.filename, content: a.content })),
+  });
   if (error) throw new Error(`Resend: ${error.message}`);
 }
 
-async function sendViaSendGrid(creds: SendGridCredentials, from: string, to: string, subject: string, html: string) {
+async function sendViaSendGrid(creds: SendGridCredentials, from: string, to: string, subject: string, html: string, attachments?: EmailAttachment[]) {
   sgMail.setApiKey(creds.apiKey);
-  await sgMail.send({ from, to, subject, html });
+  await sgMail.send({
+    from,
+    to,
+    subject,
+    html,
+    // SendGrid wants base64-encoded content as a string, not a raw Buffer.
+    attachments: attachments?.map((a) => ({ filename: a.filename, content: a.content.toString("base64"), disposition: "attachment" })),
+  });
 }
 
-async function sendViaSmtp(creds: SmtpCredentials, from: string, to: string, subject: string, html: string) {
+async function sendViaSmtp(creds: SmtpCredentials, from: string, to: string, subject: string, html: string, attachments?: EmailAttachment[]) {
   const transport = nodemailer.createTransport({
     host: creds.host,
     port: creds.port,
     secure: creds.port === 465,
     auth: { user: creds.user, pass: creds.password },
   });
-  await transport.sendMail({ from, to, subject, html });
+  await transport.sendMail({ from, to, subject, html, attachments });
 }
 
-async function sendVia(candidate: Candidate, from: string, to: string, subject: string, html: string) {
+async function sendVia(candidate: Candidate, from: string, to: string, subject: string, html: string, attachments?: EmailAttachment[]) {
   switch (candidate.provider) {
     case "resend":
-      return sendViaResend(candidate.credentials as ResendCredentials, from, to, subject, html);
+      return sendViaResend(candidate.credentials as ResendCredentials, from, to, subject, html, attachments);
     case "sendgrid":
-      return sendViaSendGrid(candidate.credentials as SendGridCredentials, from, to, subject, html);
+      return sendViaSendGrid(candidate.credentials as SendGridCredentials, from, to, subject, html, attachments);
     case "smtp":
-      return sendViaSmtp(candidate.credentials as SmtpCredentials, from, to, subject, html);
+      return sendViaSmtp(candidate.credentials as SmtpCredentials, from, to, subject, html, attachments);
   }
 }
 
@@ -123,13 +141,13 @@ export async function getUsageSummary(organizationId: string) {
  * quota tracking — there's no organization to attribute usage logs to, and
  * the platform default is a single fixed provider anyway.
  */
-export async function sendMail(params: { to: string; subject: string; html: string; organizationId?: string | null }) {
+export async function sendMail(params: { to: string; subject: string; html: string; organizationId?: string | null; attachments?: EmailAttachment[] }) {
   const fallback = platformDefault();
 
   if (!params.organizationId) {
     if (!fallback) throw new Error("No email provider configured (SMTP_HOST is unset).");
     const from = `Mechanic Shop Hub <${process.env.SMTP_FROM ?? process.env.SMTP_USER ?? ""}>`;
-    await sendVia(fallback, from, params.to, params.subject, params.html);
+    await sendVia(fallback, from, params.to, params.subject, params.html, params.attachments);
     return;
   }
 
@@ -155,7 +173,7 @@ export async function sendMail(params: { to: string; subject: string; html: stri
     if (!(await isUnderQuota(organizationId, candidate.provider))) continue; // next in the cascade
 
     try {
-      await sendVia(candidate, from, params.to, params.subject, params.html);
+      await sendVia(candidate, from, params.to, params.subject, params.html, params.attachments);
       await prisma.emailLog.create({ data: { organizationId, provider: candidate.provider, success: true } });
       return;
     } catch (err) {

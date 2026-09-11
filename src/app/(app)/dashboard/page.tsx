@@ -19,7 +19,7 @@ export default async function DashboardPage() {
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
 
-  const [organization, shopProfile, workOrders] = organizationId
+  const [organization, shopProfile, workOrders, unpaidInvoices] = organizationId
     ? await Promise.all([
         prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
         prisma.shopProfile.findUnique({ where: { organizationId } }),
@@ -28,8 +28,9 @@ export default async function DashboardPage() {
           orderBy: { updatedAt: "desc" },
           include: { customer: true, equipment: { include: { equipmentType: true } } },
         }),
+        prisma.invoice.findMany({ where: { organizationId, status: { in: ["sent", "viewed"] } }, select: { total: true } }),
       ])
-    : [null, null, []];
+    : [null, null, [], []];
 
   const agingDays = shopProfile?.agingAlertDays ?? 14;
   const now = getNow();
@@ -54,7 +55,11 @@ export default async function DashboardPage() {
       sub: readyOverAging > 0 ? `${readyOverAging} over ${agingDays} days` : "all within range",
       warn: readyOverAging > 0,
     },
-    { label: "Unpaid Invoices", value: "—", sub: "Coming in Phase 6" },
+    {
+      label: "Unpaid Invoices",
+      value: `$${unpaidInvoices.reduce((sum, inv) => sum + Number(inv.total), 0).toFixed(2)}`,
+      sub: `${unpaidInvoices.length} invoice${unpaidInvoices.length === 1 ? "" : "s"}`,
+    },
   ];
 
   return (

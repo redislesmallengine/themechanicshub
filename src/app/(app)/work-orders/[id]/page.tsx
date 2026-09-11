@@ -4,9 +4,11 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { STATUS_LABELS, STATUS_BADGE, type WorkOrderStatus } from "@/lib/work-orders";
+import { STATUS_LABELS as INVOICE_STATUS_LABELS, STATUS_BADGE as INVOICE_STATUS_BADGE, isOverdue, type InvoiceStatus } from "@/lib/invoices";
 import { WorkOrderStatusPanel } from "@/components/work-order-status-panel";
 import { WorkOrderDiagnosisForm } from "@/components/work-order-diagnosis-form";
 import { WorkOrderPartsPanel } from "@/components/work-order-parts-panel";
+import { GenerateInvoiceButton } from "@/components/generate-invoice-button";
 
 export default async function WorkOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -22,13 +24,15 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
       equipment: { include: { equipmentType: true } },
       assignedTo: true,
       parts: { orderBy: { createdAt: "asc" } },
+      invoice: true,
     },
   });
   if (!workOrder || workOrder.organizationId !== organizationId) notFound();
 
-  const [{ members }, availableParts] = await Promise.all([
+  const [{ members }, availableParts, shopProfile] = await Promise.all([
     auth.api.listMembers({ headers: reqHeaders }),
     prisma.part.findMany({ where: { organizationId, quantityOnHand: { gt: 0 } }, orderBy: { name: "asc" } }),
+    prisma.shopProfile.findUnique({ where: { organizationId } }),
   ]);
 
   const status = workOrder.status as WorkOrderStatus;
@@ -115,6 +119,40 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           parts={workOrder.parts.map((p) => ({ id: p.id, name: p.name, quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
           availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, quantityOnHand: p.quantityOnHand }))}
         />
+      </div>
+
+      <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+        <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
+          Invoice
+        </h2>
+        {workOrder.invoice ? (
+          (() => {
+            const invStatus = workOrder.invoice.status as InvoiceStatus;
+            const overdue = isOverdue(workOrder.invoice.status, workOrder.invoice.dueDate);
+            return (
+              <Link href={`/invoices/${workOrder.invoice.id}`} className="flex items-center justify-between hover:underline">
+                <div>
+                  <span className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
+                    {workOrder.invoice.invoiceNumber}
+                  </span>
+                  <span className="ml-2 text-sm" style={{ color: "var(--text-muted)" }}>
+                    ${workOrder.invoice.total.toString()}
+                  </span>
+                </div>
+                <span className={`dt-badge dt-badge--${overdue ? "error" : INVOICE_STATUS_BADGE[invStatus]}`}>
+                  <span className="dt-badge-dot" />
+                  {overdue ? "Overdue" : INVOICE_STATUS_LABELS[invStatus]}
+                </span>
+              </Link>
+            );
+          })()
+        ) : status === "readyForPickup" || status === "closed" ? (
+          <GenerateInvoiceButton workOrderId={workOrder.id} hasDiagnosticFee={!!shopProfile?.diagnosticFee} />
+        ) : (
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            Available once this work order reaches Ready for Pickup.
+          </p>
+        )}
       </div>
     </div>
   );
