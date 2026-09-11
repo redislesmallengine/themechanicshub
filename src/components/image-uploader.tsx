@@ -20,6 +20,7 @@ export function ImageUploader({
   changeLabel = "Change Photo",
   placeholder = "No photo",
   size = "w-16 h-16",
+  hint,
 }: {
   imageSrc: string | null;
   onUpload: (file: File) => Promise<ActionResult>;
@@ -28,6 +29,8 @@ export function ImageUploader({
   changeLabel?: string;
   placeholder?: string;
   size?: string;
+  /** Recommended size/format text shown under the controls — e.g. dimensions and file size limits, so people don't have to guess before picking a file. */
+  hint?: string;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [currentSrc, setCurrentSrc] = useState(imageSrc);
@@ -107,6 +110,11 @@ export function ImageUploader({
             </button>
           )}
         </div>
+        {hint && !message && (
+          <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
+            {hint}
+          </p>
+        )}
         {message && (
           <p className="text-[11px] mt-1 font-semibold" style={{ color: message.type === "error" ? "var(--color-error-solid)" : "var(--color-success-solid)" }}>
             {message.text}

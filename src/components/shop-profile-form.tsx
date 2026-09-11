@@ -77,6 +77,7 @@ export function ShopProfileForm({
           uploadLabel="Upload Logo"
           changeLabel="Change Logo"
           placeholder="No logo"
+          hint="Best results: a square or landscape PNG or JPG, at least 200×200px. Up to 4MB."
           onUpload={(file) => {
             const formData = new FormData();
             formData.set("logo", file);

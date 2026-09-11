@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode, type ComponentType, type SVGProps } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -19,16 +19,64 @@ import {
   EquipmentIcon,
 } from "@/components/icons";
 
+const SIDEBAR_COLLAPSED_KEY = "mechanicshophub:sidebar-collapsed";
+
+// A per-viewer preference read from localStorage, synced via
+// useSyncExternalStore rather than "read it in an effect and setState" —
+// that pattern causes an extra render pass (flagged by the
+// react-hooks/set-state-in-effect rule) and, done wrong, a hydration
+// mismatch (server has no localStorage). getServerSnapshot always returns
+// false so server and first client paint agree; the real value (if
+// different) applies on the next paint once the store's module-level cache
+// is warmed from localStorage.
+let cachedCollapsed: boolean | null = null;
+const collapsedListeners = new Set<() => void>();
+
+function readStoredCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false; // private browsing, blocked site data, etc. — just stays expanded
+  }
+}
+
+function subscribeCollapsed(listener: () => void) {
+  collapsedListeners.add(listener);
+  return () => collapsedListeners.delete(listener);
+}
+
+function getCollapsedSnapshot(): boolean {
+  if (cachedCollapsed === null) cachedCollapsed = readStoredCollapsed();
+  return cachedCollapsed;
+}
+
+function getCollapsedServerSnapshot(): boolean {
+  return false;
+}
+
+function setCollapsed(next: boolean) {
+  cachedCollapsed = next;
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+  } catch {
+    // best-effort only — nothing to fall back to for persistence
+  }
+  collapsedListeners.forEach((listener) => listener());
+}
+
 // Icon color per item matches the reference design's pattern: every nav
 // item carries its own distinct hue at rest (not just on hover/active), so
 // the sidebar reads as a set of specific destinations rather than one flat
 // grey list. Overridden to white when the item is the active route.
+// Customers/Equipment/Inventory lead (the day-to-day lookup tools) with
+// Work Orders after them, matching how a shop actually starts a visit —
+// find the customer and their equipment before opening a ticket.
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: DashboardIcon, color: "text-blue-400" },
-  { href: "/work-orders", label: "Work Orders", icon: WorkOrderIcon, color: "text-amber-400" },
   { href: "/customers", label: "Customers", icon: CustomersIcon, color: "text-emerald-400" },
   { href: "/equipment", label: "Equipment", icon: EquipmentIcon, color: "text-violet-400" },
   { href: "/inventory", label: "Inventory", icon: InventoryIcon, color: "text-indigo-400" },
+  { href: "/work-orders", label: "Work Orders", icon: WorkOrderIcon, color: "text-amber-400" },
   { href: "/invoices", label: "Invoices", icon: InvoiceIcon, color: "text-sky-400" },
 ];
 
@@ -39,6 +87,16 @@ function initials(name: string) {
     .slice(0, 2)
     .join("")
     .toUpperCase();
+}
+
+function CollapseIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16" />
+      <path d="m14 10-2 2 2 2" />
+    </svg>
+  );
 }
 
 function Header({ user, roleLabel }: { user: { name: string; email: string }; roleLabel?: string }) {
@@ -147,6 +205,43 @@ function Header({ user, roleLabel }: { user: { name: string; email: string }; ro
   );
 }
 
+function NavLink({
+  href,
+  label,
+  icon: Icon,
+  color,
+  active,
+  collapsed,
+}: {
+  href: string;
+  label: string;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  color: string;
+  active: boolean;
+  collapsed: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      title={collapsed ? label : undefined}
+      className={`flex items-center gap-2.5 py-2 rounded-lg text-xs transition ${collapsed ? "justify-center px-2" : "px-2.5"}`}
+      style={active ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
+    >
+      <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? "text-white" : color}`} />
+      {!collapsed && label}
+    </Link>
+  );
+}
+
+function SectionLabel({ children, collapsed }: { children: ReactNode; collapsed: boolean }) {
+  if (collapsed) return null;
+  return (
+    <div className="px-2 text-[11px] font-semibold uppercase tracking-wider mb-1 font-mono" style={{ color: "#64748B" }}>
+      {children}
+    </div>
+  );
+}
+
 export function AppShell({
   user,
   roleLabel,
@@ -161,106 +256,87 @@ export function AppShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  const collapsed = useSyncExternalStore(subscribeCollapsed, getCollapsedSnapshot, getCollapsedServerSnapshot);
+
+  function toggleCollapsed() {
+    setCollapsed(!collapsed);
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
       <Header user={user} roleLabel={roleLabel} />
 
       <div className="flex flex-1 overflow-hidden">
-        <aside className="w-64 p-3 flex flex-col shrink-0" style={{ background: "#0F172A", borderRight: "1px solid #1E293B" }}>
-          <div className="px-2 text-[11px] font-semibold uppercase tracking-wider mb-1 font-mono" style={{ color: "#64748B" }}>
-            Operations
-          </div>
+        <aside
+          className={`${collapsed ? "w-16" : "w-64"} p-3 flex flex-col shrink-0 transition-[width] duration-200`}
+          style={{ background: "#0F172A", borderRight: "1px solid #1E293B" }}
+        >
+          <SectionLabel collapsed={collapsed}>Operations</SectionLabel>
           <nav className="space-y-0.5 mb-4">
-            {NAV.map(({ href, label, icon: Icon, color }) => {
-              const active = pathname === href || pathname.startsWith(href + "/");
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition"
-                  style={active ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
-                >
-                  <Icon className={`w-3.5 h-3.5 ${active ? "text-white" : color}`} />
-                  {label}
-                </Link>
-              );
-            })}
+            {NAV.map(({ href, label, icon, color }) => (
+              <NavLink
+                key={href}
+                href={href}
+                label={label}
+                icon={icon}
+                color={color}
+                collapsed={collapsed}
+                active={pathname === href || pathname.startsWith(href + "/")}
+              />
+            ))}
           </nav>
 
-          <div className="px-2 text-[11px] font-semibold uppercase tracking-wider mb-1 font-mono" style={{ color: "#64748B" }}>
-            Security &amp; Staff
-          </div>
+          <SectionLabel collapsed={collapsed}>Security &amp; Staff</SectionLabel>
           <nav className="space-y-0.5 mb-4">
-            <Link
-              href="/staff"
-              className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition"
-              style={pathname.startsWith("/staff") ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
-            >
-              <StaffIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/staff") ? "text-white" : "text-brand-400"}`} />
-              Staff &amp; Roles
-            </Link>
+            <NavLink href="/staff" label="Staff &amp; Roles" icon={StaffIcon} color="text-brand-400" collapsed={collapsed} active={pathname.startsWith("/staff")} />
           </nav>
 
           {canManageSettings && (
             <>
-              <div className="px-2 text-[11px] font-semibold uppercase tracking-wider mb-1 font-mono" style={{ color: "#64748B" }}>
-                Shop
-              </div>
+              <SectionLabel collapsed={collapsed}>Shop</SectionLabel>
               <nav className="space-y-0.5 mb-4">
-                <Link
-                  href="/settings/shop"
-                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition"
-                  style={pathname.startsWith("/settings/shop") ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
-                >
-                  <StoreIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/settings/shop") ? "text-white" : "text-teal-400"}`} />
-                  Shop Profile
-                </Link>
-                <Link
-                  href="/settings/email"
-                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition"
-                  style={pathname.startsWith("/settings/email") ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
-                >
-                  <SettingsIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/settings/email") ? "text-white" : "text-rose-400"}`} />
-                  Email
-                </Link>
-                <Link
+                <NavLink href="/settings/shop" label="Shop Profile" icon={StoreIcon} color="text-teal-400" collapsed={collapsed} active={pathname.startsWith("/settings/shop")} />
+                <NavLink href="/settings/email" label="Email" icon={SettingsIcon} color="text-rose-400" collapsed={collapsed} active={pathname.startsWith("/settings/email")} />
+                <NavLink
                   href="/settings/equipment-types"
-                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition"
-                  style={pathname.startsWith("/settings/equipment-types") ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
-                >
-                  <EquipmentIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/settings/equipment-types") ? "text-white" : "text-violet-400"}`} />
-                  Equipment Types
-                </Link>
-                <Link
+                  label="Equipment Types"
+                  icon={EquipmentIcon}
+                  color="text-violet-400"
+                  collapsed={collapsed}
+                  active={pathname.startsWith("/settings/equipment-types")}
+                />
+                <NavLink
                   href="/settings/part-categories"
-                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition"
-                  style={pathname.startsWith("/settings/part-categories") ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
-                >
-                  <InventoryIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/settings/part-categories") ? "text-white" : "text-indigo-400"}`} />
-                  Part Categories
-                </Link>
+                  label="Part Categories"
+                  icon={InventoryIcon}
+                  color="text-indigo-400"
+                  collapsed={collapsed}
+                  active={pathname.startsWith("/settings/part-categories")}
+                />
               </nav>
             </>
           )}
 
           {isSiteAdmin && (
             <>
-              <div className="px-2 text-[11px] font-semibold uppercase tracking-wider mb-1 font-mono" style={{ color: "#64748B" }}>
-                Platform
-              </div>
-              <nav className="space-y-0.5 flex-1">
-                <Link
-                  href="/admin/roles"
-                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition"
-                  style={pathname.startsWith("/admin") ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
-                >
-                  <ShieldIcon className={`w-3.5 h-3.5 ${pathname.startsWith("/admin") ? "text-white" : "text-violet-400"}`} />
-                  Roles &amp; Rights
-                </Link>
+              <SectionLabel collapsed={collapsed}>Platform</SectionLabel>
+              <nav className="space-y-0.5">
+                <NavLink href="/admin/roles" label="Roles &amp; Rights" icon={ShieldIcon} color="text-violet-400" collapsed={collapsed} active={pathname.startsWith("/admin")} />
               </nav>
             </>
           )}
+
+          <div className="mt-auto pt-3" style={{ borderTop: "1px solid #1E293B" }}>
+            <button
+              onClick={toggleCollapsed}
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className={`flex items-center gap-2.5 py-2 rounded-lg text-xs w-full transition hover:bg-white/5 ${collapsed ? "justify-center px-2" : "px-2.5"}`}
+              style={{ color: "#CBD5E1" }}
+            >
+              <CollapseIcon className={`w-3.5 h-3.5 shrink-0 transition-transform ${collapsed ? "rotate-180" : ""}`} />
+              {!collapsed && "Collapse"}
+            </button>
+          </div>
         </aside>
 
         <div className="flex-1 flex flex-col min-w-0">
