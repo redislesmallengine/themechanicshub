@@ -99,7 +99,17 @@ function CollapseIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-function Header({ user, roleLabel }: { user: { name: string; email: string }; roleLabel?: string }) {
+function MenuIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M4 6h16" />
+      <path d="M4 12h16" />
+      <path d="M4 18h16" />
+    </svg>
+  );
+}
+
+function Header({ user, roleLabel, onMenuClick }: { user: { name: string; email: string }; roleLabel?: string; onMenuClick: () => void }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -130,6 +140,14 @@ function Header({ user, roleLabel }: { user: { name: string; email: string }; ro
       style={{ background: "var(--bg-surface)", borderBottom: "1px solid var(--border-subtle)" }}
     >
       <div className="flex items-center gap-3 shrink-0">
+        <button
+          onClick={onMenuClick}
+          className="p-2 -ml-2 rounded-lg hover:bg-slate-100 transition md:hidden"
+          style={{ color: "var(--text-secondary)" }}
+          title="Open menu"
+        >
+          <MenuIcon className="w-5 h-5" />
+        </button>
         <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-brand-600">
           <WrenchIcon className="w-4.5 h-4.5 text-white" />
         </span>
@@ -212,6 +230,7 @@ function NavLink({
   color,
   active,
   collapsed,
+  onNavigate,
 }: {
   href: string;
   label: string;
@@ -219,24 +238,29 @@ function NavLink({
   color: string;
   active: boolean;
   collapsed: boolean;
+  onNavigate?: () => void;
 }) {
+  // `collapsed` (the desktop icon-rail preference) only takes visual effect
+  // at md+ — the mobile drawer always shows full icon+label regardless of
+  // it, so every class that responds to `collapsed` carries an `md:`
+  // prefix rather than applying unconditionally.
   return (
     <Link
       href={href}
+      onClick={onNavigate}
       title={collapsed ? label : undefined}
-      className={`flex items-center gap-2.5 py-2 rounded-lg text-xs transition ${collapsed ? "justify-center px-2" : "px-2.5"}`}
+      className={`flex items-center gap-2.5 py-2 rounded-lg text-xs transition px-2.5 ${collapsed ? "md:justify-center md:px-2" : ""}`}
       style={active ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
     >
       <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? "text-white" : color}`} />
-      {!collapsed && label}
+      {collapsed ? <span className="md:hidden">{label}</span> : label}
     </Link>
   );
 }
 
 function SectionLabel({ children, collapsed }: { children: ReactNode; collapsed: boolean }) {
-  if (collapsed) return null;
   return (
-    <div className="px-2 text-[11px] font-semibold uppercase tracking-wider mb-1 font-mono" style={{ color: "#64748B" }}>
+    <div className={`px-2 text-[11px] font-semibold uppercase tracking-wider mb-1 font-mono ${collapsed ? "md:hidden" : ""}`} style={{ color: "#64748B" }}>
       {children}
     </div>
   );
@@ -257,18 +281,30 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const collapsed = useSyncExternalStore(subscribeCollapsed, getCollapsedSnapshot, getCollapsedServerSnapshot);
+  // Separate from `collapsed` (the desktop icon-rail preference, persisted)
+  // — this is the mobile off-canvas drawer's open/closed state, always
+  // starts closed, never persisted. Below the md breakpoint the sidebar is
+  // fixed-position and hidden by default (see the `aside` className below);
+  // this is what slides it into view.
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   function toggleCollapsed() {
     setCollapsed(!collapsed);
   }
 
+  function closeMobileMenu() {
+    setMobileOpen(false);
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
-      <Header user={user} roleLabel={roleLabel} />
+      <Header user={user} roleLabel={roleLabel} onMenuClick={() => setMobileOpen(true)} />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
+        {mobileOpen && <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={closeMobileMenu} />}
+
         <aside
-          className={`${collapsed ? "w-16" : "w-64"} p-3 flex flex-col shrink-0 transition-[width] duration-200`}
+          className={`fixed md:static inset-y-0 left-0 md:inset-auto z-40 p-3 flex flex-col shrink-0 overflow-y-auto transform md:transform-none transition-transform md:transition-[width] duration-200 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 w-64 ${collapsed ? "md:w-16" : "md:w-64"}`}
           style={{ background: "#0F172A", borderRight: "1px solid #1E293B" }}
         >
           <SectionLabel collapsed={collapsed}>Operations</SectionLabel>
@@ -281,6 +317,7 @@ export function AppShell({
                 icon={icon}
                 color={color}
                 collapsed={collapsed}
+                onNavigate={closeMobileMenu}
                 active={pathname === href || pathname.startsWith(href + "/")}
               />
             ))}
@@ -288,21 +325,22 @@ export function AppShell({
 
           <SectionLabel collapsed={collapsed}>Security &amp; Staff</SectionLabel>
           <nav className="space-y-0.5 mb-4">
-            <NavLink href="/staff" label="Staff &amp; Roles" icon={StaffIcon} color="text-brand-400" collapsed={collapsed} active={pathname.startsWith("/staff")} />
+            <NavLink href="/staff" label="Staff &amp; Roles" icon={StaffIcon} color="text-brand-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname.startsWith("/staff")} />
           </nav>
 
           {canManageSettings && (
             <>
               <SectionLabel collapsed={collapsed}>Shop</SectionLabel>
               <nav className="space-y-0.5 mb-4">
-                <NavLink href="/settings/shop" label="Shop Profile" icon={StoreIcon} color="text-teal-400" collapsed={collapsed} active={pathname.startsWith("/settings/shop")} />
-                <NavLink href="/settings/email" label="Email" icon={SettingsIcon} color="text-rose-400" collapsed={collapsed} active={pathname.startsWith("/settings/email")} />
+                <NavLink href="/settings/shop" label="Shop Profile" icon={StoreIcon} color="text-teal-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname.startsWith("/settings/shop")} />
+                <NavLink href="/settings/email" label="Email" icon={SettingsIcon} color="text-rose-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname.startsWith("/settings/email")} />
                 <NavLink
                   href="/settings/equipment-types"
                   label="Equipment Types"
                   icon={EquipmentIcon}
                   color="text-violet-400"
                   collapsed={collapsed}
+                  onNavigate={closeMobileMenu}
                   active={pathname.startsWith("/settings/equipment-types")}
                 />
                 <NavLink
@@ -311,6 +349,7 @@ export function AppShell({
                   icon={InventoryIcon}
                   color="text-indigo-400"
                   collapsed={collapsed}
+                  onNavigate={closeMobileMenu}
                   active={pathname.startsWith("/settings/part-categories")}
                 />
               </nav>
@@ -321,12 +360,12 @@ export function AppShell({
             <>
               <SectionLabel collapsed={collapsed}>Platform</SectionLabel>
               <nav className="space-y-0.5">
-                <NavLink href="/admin/roles" label="Roles &amp; Rights" icon={ShieldIcon} color="text-violet-400" collapsed={collapsed} active={pathname.startsWith("/admin")} />
+                <NavLink href="/admin/roles" label="Roles &amp; Rights" icon={ShieldIcon} color="text-violet-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname.startsWith("/admin")} />
               </nav>
             </>
           )}
 
-          <div className="mt-auto pt-3" style={{ borderTop: "1px solid #1E293B" }}>
+          <div className="mt-auto pt-3 hidden md:block" style={{ borderTop: "1px solid #1E293B" }}>
             <button
               onClick={toggleCollapsed}
               title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
