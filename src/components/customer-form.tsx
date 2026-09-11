@@ -18,6 +18,7 @@ export function CustomerForm({
   initialName = "",
   initialPhone = "",
   initialEmail = "",
+  initialAddress = "",
   initialNotes = "",
   cancelHref = "/customers",
   onSubmit = createCustomer,
@@ -26,6 +27,7 @@ export function CustomerForm({
   initialName?: string;
   initialPhone?: string;
   initialEmail?: string;
+  initialAddress?: string;
   initialNotes?: string;
   cancelHref?: string;
   onSubmit?: (formData: FormData) => Promise<ActionResult>;
@@ -83,6 +85,20 @@ export function CustomerForm({
             Email
           </label>
           <input id="email" name="email" type="email" defaultValue={initialEmail} placeholder="name@example.com" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+        </div>
+        <div className="md:col-span-2">
+          <label htmlFor="address" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+            Address
+          </label>
+          <input
+            id="address"
+            name="address"
+            type="text"
+            defaultValue={initialAddress}
+            placeholder="123 Main St, Montague, PE"
+            className="w-full px-3 py-2 rounded-lg text-xs font-medium"
+            style={inputStyle}
+          />
         </div>
         <div className="md:col-span-2">
           <label htmlFor="notes" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>

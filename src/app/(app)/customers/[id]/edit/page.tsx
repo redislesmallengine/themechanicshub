@@ -34,6 +34,7 @@ export default async function EditCustomerPage({ params }: { params: Promise<{ i
           initialName={customer.name}
           initialPhone={customer.phone ?? ""}
           initialEmail={customer.email ?? ""}
+          initialAddress={customer.address ?? ""}
           initialNotes={customer.notes ?? ""}
           cancelHref={`/customers/${customer.id}`}
           onSubmit={boundUpdate}

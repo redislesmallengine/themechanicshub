@@ -36,7 +36,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                 {customer.name}
               </h1>
               <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                {[customer.phone, customer.email].filter(Boolean).join(" · ") || "No contact info on file"}
+                {[customer.phone, customer.email, customer.address].filter(Boolean).join(" · ") || "No contact info on file"}
               </p>
             </div>
           </div>

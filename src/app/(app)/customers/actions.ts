@@ -27,13 +27,14 @@ export async function createCustomer(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const phone = String(formData.get("phone") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
+  const address = String(formData.get("address") ?? "").trim();
   const notes = String(formData.get("notes") ?? "").trim();
 
   if (!name) return { error: "Customer name is required." };
   if (!phone && !email) return { error: "At least a phone number or email is required — that's what front desk will search by." };
 
   const customer = await prisma.customer.create({
-    data: { organizationId, name, phone: phone || null, email: email || null, notes: notes || null },
+    data: { organizationId, name, phone: phone || null, email: email || null, address: address || null, notes: notes || null },
   });
 
   revalidatePath("/customers");
@@ -49,6 +50,7 @@ export async function updateCustomer(customerId: string, formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const phone = String(formData.get("phone") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
+  const address = String(formData.get("address") ?? "").trim();
   const notes = String(formData.get("notes") ?? "").trim();
 
   if (!name) return { error: "Customer name is required." };
@@ -56,7 +58,7 @@ export async function updateCustomer(customerId: string, formData: FormData) {
 
   await prisma.customer.update({
     where: { id: customerId },
-    data: { name, phone: phone || null, email: email || null, notes: notes || null },
+    data: { name, phone: phone || null, email: email || null, address: address || null, notes: notes || null },
   });
 
   revalidatePath("/customers");
