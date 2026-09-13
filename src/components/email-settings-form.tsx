@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { saveEmailSettings, sendTestEmail, clearEmailProvider } from "@/app/(app)/settings/email/actions";
 import type { EmailProvider } from "@/lib/email";
+import { HelpTooltip } from "@/components/help-tooltip";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -152,24 +153,36 @@ export function EmailSettingsForm({
       </div>
 
       <div
-        className="p-3 rounded-lg text-xs"
+        className="p-3 rounded-lg text-xs space-y-1.5"
         style={{ background: "var(--color-info-subtle)", border: "1px solid var(--color-info-border)", color: "var(--color-info-text)" }}
       >
-        Connect as many as you like — sending goes <b>Resend → SendGrid → SMTP</b> in that order, moving to the next one
-        automatically once the current one is out of free quota (or fails). Leave any section&apos;s fields blank to keep what&apos;s
-        already saved there.
+        <p className="font-bold">This whole page is optional.</p>
+        <p>
+          Invoices, estimates, and staff invites already send fine without touching anything below. Only fill this in if
+          you&apos;d rather those emails come from your own shop&apos;s name and address instead of the Mechanic Shop Hub
+          default.
+        </p>
+        <p>
+          <span className="font-bold">If you do want that:</span> pick just <b>one</b> option below — Resend is the easiest
+          for most shops (free, no domain setup required for a quick start) — paste in the key it gives you, then click
+          <b> Save Settings</b> at the bottom. You can connect more than one; if you do, sending tries
+          <b> Resend → SendGrid → SMTP</b> in that order, automatically moving to the next one if the current one runs out
+          of free sends. Leave any section&apos;s fields blank to keep whatever is already saved there untouched.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
         <div>
-          <label htmlFor="fromName" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+          <label htmlFor="fromName" className="flex items-center font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
             From Name
+            <HelpTooltip text="The name customers see as the sender, e.g. your shop's name. Required either way — used even if you don't connect any provider below." />
           </label>
           <input id="fromName" name="fromName" type="text" required defaultValue={initialFromName} placeholder="Red Isle Small Engine" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
         </div>
         <div>
-          <label htmlFor="fromEmail" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+          <label htmlFor="fromEmail" className="flex items-center font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
             From Email
+            <HelpTooltip text="The email address customers see as the sender and can reply to. Doesn't need to match any provider you connect below — it's just the display address." />
           </label>
           <input id="fromEmail" name="fromEmail" type="email" required defaultValue={initialFromEmail} placeholder="noreply@redislesmallengine.com" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
         </div>
@@ -178,13 +191,18 @@ export function EmailSettingsForm({
       <div className="space-y-3">
         <ProviderCard
           title="1. Resend"
-          badge="Tried first. Free tier: 3,000/month."
+          badge="A free email-sending service. Recommended first choice — quickest to set up. Free tier: 3,000 emails/month."
           connected={connected.resend}
           usage={usage.resend}
           onDisconnect={() => handleDisconnect("resend")}
           disconnecting={disconnecting === "resend"}
         >
+          <label htmlFor="resendApiKey" className="flex items-center font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+            API Key
+            <HelpTooltip text="Go to resend.com → sign up free (no credit card needed) → Dashboard → API Keys → Create API Key → copy the key (it starts with 're_') and paste it here." />
+          </label>
           <input
+            id="resendApiKey"
             name="resendApiKey"
             type="password"
             placeholder={connected.resend ? "•••••••••••••••• (leave blank to keep current)" : "re_..."}
@@ -195,13 +213,18 @@ export function EmailSettingsForm({
 
         <ProviderCard
           title="2. SendGrid"
-          badge="Tried once Resend is exhausted. Free tier: 100/day."
+          badge="Another free email-sending service, used as backup once Resend runs out. Free tier: 100 emails/day."
           connected={connected.sendgrid}
           usage={usage.sendgrid}
           onDisconnect={() => handleDisconnect("sendgrid")}
           disconnecting={disconnecting === "sendgrid"}
         >
+          <label htmlFor="sendgridApiKey" className="flex items-center font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+            API Key
+            <HelpTooltip text="Go to sendgrid.com → sign up free → Settings → API Keys → Create API Key (choose 'Full Access') → copy the key (it starts with 'SG.') and paste it here." />
+          </label>
           <input
+            id="sendgridApiKey"
             name="sendgridApiKey"
             type="password"
             placeholder={connected.sendgrid ? "•••••••••••••••• (leave blank to keep current)" : "SG...."}
@@ -211,24 +234,49 @@ export function EmailSettingsForm({
         </ProviderCard>
 
         <ProviderCard
-          title="3. SMTP (Hostinger, or any mailbox)"
-          badge="Last resort. Falls back further to the platform default if this isn't set either."
+          title="3. SMTP (your own mailbox)"
+          badge="Use this only if you already have a business email account (Hostinger, GoDaddy, Gmail, etc.) and want to send from that. Last resort — falls back to the Mechanic Shop Hub default if left blank."
           connected={connected.smtp}
           usage={usage.smtp}
           onDisconnect={() => handleDisconnect("smtp")}
           disconnecting={disconnecting === "smtp"}
         >
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <input name="smtpHost" type="text" placeholder="smtp.hostinger.com" className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
-            <input name="smtpPort" type="number" defaultValue={465} className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
-            <input name="smtpUser" type="text" placeholder="noreply@yourshop.com" className="w-full px-3 py-2 rounded-lg text-xs" style={inputStyle} />
-            <input
-              name="smtpPassword"
-              type="password"
-              placeholder={connected.smtp ? "•••••••• (keep current)" : "password"}
-              className="w-full px-3 py-2 rounded-lg text-xs"
-              style={inputStyle}
-            />
+            <div>
+              <label htmlFor="smtpHost" className="flex items-center font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+                Server (Host)
+                <HelpTooltip text="The outgoing mail server address for your mailbox, e.g. smtp.hostinger.com. Ask your email provider, or check your webmail's Settings → SMTP/IMAP page." />
+              </label>
+              <input id="smtpHost" name="smtpHost" type="text" placeholder="smtp.hostinger.com" className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
+            </div>
+            <div>
+              <label htmlFor="smtpPort" className="flex items-center font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+                Port
+                <HelpTooltip text="Usually 465 (SSL) or 587 (TLS). If unsure, leave the default — your email provider's SMTP page will list the correct one." />
+              </label>
+              <input id="smtpPort" name="smtpPort" type="number" defaultValue={465} className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
+            </div>
+            <div>
+              <label htmlFor="smtpUser" className="flex items-center font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+                Username
+                <HelpTooltip text="Usually your full mailbox email address, e.g. noreply@yourshop.com." />
+              </label>
+              <input id="smtpUser" name="smtpUser" type="text" placeholder="noreply@yourshop.com" className="w-full px-3 py-2 rounded-lg text-xs" style={inputStyle} />
+            </div>
+            <div>
+              <label htmlFor="smtpPassword" className="flex items-center font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+                Password
+                <HelpTooltip text="The password for that mailbox (not your Mechanic Shop Hub password). Some providers require a separate 'app password' generated in their security settings." />
+              </label>
+              <input
+                id="smtpPassword"
+                name="smtpPassword"
+                type="password"
+                placeholder={connected.smtp ? "•••••••• (keep current)" : "password"}
+                className="w-full px-3 py-2 rounded-lg text-xs"
+                style={inputStyle}
+              />
+            </div>
           </div>
         </ProviderCard>
       </div>
