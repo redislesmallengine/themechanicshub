@@ -156,7 +156,24 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
             </div>
           )}
 
-          <div className="mt-6 pt-4 flex justify-end" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+          <div className="mt-6 pt-4 flex items-center justify-between flex-wrap gap-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+            <div className="flex items-center gap-3">
+              {shopProfile?.facebookUrl && (
+                <a href={shopProfile.facebookUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-brand-600">
+                  Find us on Facebook
+                </a>
+              )}
+              {shopProfile?.googleReviewUrl && (
+                <a
+                  href={shopProfile.googleReviewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700"
+                >
+                  Leave us a Google Review
+                </a>
+              )}
+            </div>
             <a
               href={`/api/invoice/${token}/pdf`}
               className="px-4 py-2 rounded-lg text-xs font-semibold"
@@ -165,6 +182,12 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
               Download PDF
             </a>
           </div>
+
+          {shopProfile?.hstNumber && (
+            <p className="mt-4 text-center text-[10px]" style={{ color: "var(--text-muted)" }}>
+              HST/GST #{shopProfile.hstNumber}
+            </p>
+          )}
         </div>
       </div>
     </div>

@@ -23,6 +23,9 @@ export function ShopProfileForm({
   initialTaxLabel,
   initialProvince,
   initialAgingAlertDays,
+  initialFacebookUrl,
+  initialGoogleReviewUrl,
+  initialHstNumber,
   hasLogo,
 }: {
   organizationId: string;
@@ -35,6 +38,9 @@ export function ShopProfileForm({
   initialTaxLabel: string;
   initialProvince: string;
   initialAgingAlertDays: string;
+  initialFacebookUrl: string;
+  initialGoogleReviewUrl: string;
+  initialHstNumber: string;
   hasLogo: boolean;
 }) {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -123,6 +129,57 @@ export function ShopProfileForm({
             className="w-full px-3 py-2 rounded-lg text-xs font-medium"
             style={inputStyle}
           />
+        </div>
+        <div>
+          <label htmlFor="facebookUrl" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+            Facebook Page
+          </label>
+          <input
+            id="facebookUrl"
+            name="facebookUrl"
+            type="text"
+            defaultValue={initialFacebookUrl}
+            placeholder="facebook.com/yourshop"
+            className="w-full px-3 py-2 rounded-lg text-xs font-medium"
+            style={inputStyle}
+          />
+          <span className="text-[10px] mt-0.5 block" style={{ color: "var(--text-muted)" }}>
+            Optional — shown as a link on invoices if set.
+          </span>
+        </div>
+        <div>
+          <label htmlFor="googleReviewUrl" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+            Google Review Link
+          </label>
+          <input
+            id="googleReviewUrl"
+            name="googleReviewUrl"
+            type="text"
+            defaultValue={initialGoogleReviewUrl}
+            placeholder="g.page/r/your-id/review"
+            className="w-full px-3 py-2 rounded-lg text-xs font-medium"
+            style={inputStyle}
+          />
+          <span className="text-[10px] mt-0.5 block" style={{ color: "var(--text-muted)" }}>
+            Optional — from your Google Business Profile&apos;s &ldquo;Ask for reviews&rdquo; link. Shown as a button on invoices.
+          </span>
+        </div>
+        <div>
+          <label htmlFor="hstNumber" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+            Government Tax # (HST/GST)
+          </label>
+          <input
+            id="hstNumber"
+            name="hstNumber"
+            type="text"
+            defaultValue={initialHstNumber}
+            placeholder="123456789 RT0001"
+            className="w-full px-3 py-2 rounded-lg text-xs font-mono"
+            style={inputStyle}
+          />
+          <span className="text-[10px] mt-0.5 block" style={{ color: "var(--text-muted)" }}>
+            Optional — printed at the bottom of every invoice if set.
+          </span>
         </div>
       </div>
 

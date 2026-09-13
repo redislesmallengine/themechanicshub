@@ -1,4 +1,4 @@
-import { Document, Page, View, Text, Image, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
+import { Document, Page, View, Text, Image, Link, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import { getImage } from "@/lib/storage";
 
 // Pure-JS PDF generation (no headless Chrome — that would be a heavy
@@ -35,6 +35,11 @@ const styles = StyleSheet.create({
   statusBanner: { marginTop: 24, padding: 10, borderRadius: 4 },
   statusBannerText: { fontSize: 10, fontWeight: 700 },
   notes: { marginTop: 20, fontSize: 9, color: "#475569" },
+  footer: { marginTop: 28, paddingTop: 12, borderTop: "1px solid #E2E8F0" },
+  footerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  footerLink: { fontSize: 9, color: "#0F52BA", textDecoration: "none" },
+  reviewButton: { backgroundColor: "#0F52BA", color: "#fff", fontSize: 9, fontWeight: 700, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 4, textDecoration: "none" },
+  taxNumber: { fontSize: 8, color: "#94A3B8", marginTop: 10, textAlign: "center" },
 });
 
 export interface InvoicePdfData {
@@ -43,7 +48,15 @@ export interface InvoicePdfData {
   issueDate: Date;
   dueDate: Date;
   notes: string | null;
-  shop: { name: string; address: string | null; phone: string | null; logoDataUri: string | null };
+  shop: {
+    name: string;
+    address: string | null;
+    phone: string | null;
+    logoDataUri: string | null;
+    facebookUrl: string | null;
+    googleReviewUrl: string | null;
+    hstNumber: string | null;
+  };
   customer: { name: string; phone: string | null; email: string | null; address: string | null };
   taxLabel: string;
   taxRate: string;
@@ -153,6 +166,28 @@ function InvoiceDocument({ data }: { data: InvoicePdfData }) {
             <Text>{data.notes}</Text>
           </View>
         )}
+
+        {(data.shop.facebookUrl || data.shop.googleReviewUrl || data.shop.hstNumber) && (
+          <View style={styles.footer}>
+            {(data.shop.facebookUrl || data.shop.googleReviewUrl) && (
+              <View style={styles.footerRow}>
+                {data.shop.facebookUrl ? (
+                  <Link src={data.shop.facebookUrl} style={styles.footerLink}>
+                    Find us on Facebook
+                  </Link>
+                ) : (
+                  <Text />
+                )}
+                {data.shop.googleReviewUrl && (
+                  <Link src={data.shop.googleReviewUrl} style={styles.reviewButton}>
+                    Leave us a Google Review
+                  </Link>
+                )}
+              </View>
+            )}
+            {data.shop.hstNumber && <Text style={styles.taxNumber}>HST/GST #{data.shop.hstNumber}</Text>}
+          </View>
+        )}
       </Page>
     </Document>
   );
@@ -176,7 +211,7 @@ async function logoDataUri(logoKey: string | null | undefined): Promise<string |
 
 export async function renderInvoicePdf(data: Omit<InvoicePdfData, "shop"> & { shop: Omit<InvoicePdfData["shop"], "logoDataUri"> & { logoKey: string | null } }): Promise<Buffer> {
   const logo = await logoDataUri(data.shop.logoKey);
-  const fullData: InvoicePdfData = { ...data, shop: { name: data.shop.name, address: data.shop.address, phone: data.shop.phone, logoDataUri: logo } };
+  const fullData: InvoicePdfData = { ...data, shop: { ...data.shop, logoDataUri: logo } };
   return renderToBuffer(<InvoiceDocument data={fullData} />);
 }
 
@@ -197,7 +232,19 @@ export interface InvoiceWithRelationsForPdf {
   voidedAt: Date | null;
   voidReason: string | null;
   customer: { name: string; phone: string | null; email: string | null; address: string | null };
-  organization: { name: string; shopProfile: { address: string | null; phone: string | null; logoKey: string | null; taxLabel: string | null; taxRate: unknown } | null };
+  organization: {
+    name: string;
+    shopProfile: {
+      address: string | null;
+      phone: string | null;
+      logoKey: string | null;
+      taxLabel: string | null;
+      taxRate: unknown;
+      facebookUrl: string | null;
+      googleReviewUrl: string | null;
+      hstNumber: string | null;
+    } | null;
+  };
   lineItems: { description: string; quantity: unknown; unitPrice: unknown; lineTotal: unknown }[];
 }
 
@@ -209,7 +256,15 @@ export async function renderInvoicePdfFromRecord(invoice: InvoiceWithRelationsFo
     issueDate: invoice.issueDate,
     dueDate: invoice.dueDate,
     notes: invoice.notes,
-    shop: { name: invoice.organization.name, address: shopProfile?.address ?? null, phone: shopProfile?.phone ?? null, logoKey: shopProfile?.logoKey ?? null },
+    shop: {
+      name: invoice.organization.name,
+      address: shopProfile?.address ?? null,
+      phone: shopProfile?.phone ?? null,
+      logoKey: shopProfile?.logoKey ?? null,
+      facebookUrl: shopProfile?.facebookUrl ?? null,
+      googleReviewUrl: shopProfile?.googleReviewUrl ?? null,
+      hstNumber: shopProfile?.hstNumber ?? null,
+    },
     customer: invoice.customer,
     taxLabel: shopProfile?.taxLabel ?? "Tax",
     taxRate: shopProfile?.taxRate?.toString() ?? "0",

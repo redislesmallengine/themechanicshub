@@ -37,6 +37,13 @@ function parseDecimal(raw: FormDataEntryValue | null, label: string, required: b
   return { value: num.toFixed(2) };
 }
 
+/** Optional URL field — blank stays blank; a bare domain like "facebook.com/myshop" gets "https://" prepended rather than saved as a broken link. */
+function normalizeUrl(raw: FormDataEntryValue | null): string | null {
+  const text = String(raw ?? "").trim();
+  if (!text) return null;
+  return /^https?:\/\//i.test(text) ? text : `https://${text}`;
+}
+
 export async function saveShopProfile(formData: FormData) {
   const { organizationId, reqHeaders } = await requireCanManageShopSettings();
 
@@ -62,6 +69,10 @@ export async function saveShopProfile(formData: FormData) {
   const agingAlertDaysRaw = String(formData.get("agingAlertDays") ?? "14").trim();
   const agingAlertDays = Number(agingAlertDaysRaw);
   if (!Number.isInteger(agingAlertDays) || agingAlertDays < 1) return { error: "Aging alert threshold needs to be a whole number of days, 1 or more." };
+
+  const facebookUrl = normalizeUrl(formData.get("facebookUrl"));
+  const googleReviewUrl = normalizeUrl(formData.get("googleReviewUrl"));
+  const hstNumber = String(formData.get("hstNumber") ?? "").trim();
 
   // Organization.name is Better Auth's own field (organization plugin) —
   // update it there rather than duplicating a name column on ShopProfile.
@@ -91,6 +102,9 @@ export async function saveShopProfile(formData: FormData) {
       taxLabel: taxLabel || null,
       province: province || null,
       agingAlertDays,
+      facebookUrl,
+      googleReviewUrl,
+      hstNumber: hstNumber || null,
     },
     update: {
       address: address || null,
@@ -101,6 +115,9 @@ export async function saveShopProfile(formData: FormData) {
       taxLabel: taxLabel || null,
       province: province || null,
       agingAlertDays,
+      facebookUrl,
+      googleReviewUrl,
+      hstNumber: hstNumber || null,
     },
   });
 

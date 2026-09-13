@@ -193,6 +193,9 @@ model ShopProfile {
   province       String?
   agingAlertDays Int      @default(14) // Phase 4 — flag a work order sitting in "Ready for Pickup" past this many days
   nextInvoiceNumber Int   @default(1001) // Phase 6 — incremented atomically (src/lib/invoices.ts) each time an invoice is generated; the number used is this value *before* the increment
+  facebookUrl      String? // shown on the invoice (PDF + public view page) if set
+  googleReviewUrl  String? // shop's "leave a review" link (Google Business Profile) — shown as a button on the invoice if set
+  hstNumber        String? // government tax registration number (HST/GST) — printed in the invoice footer if set
   updatedAt      DateTime @updatedAt
   createdAt      DateTime @default(now())
 
