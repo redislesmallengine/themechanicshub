@@ -16,14 +16,29 @@ export default function SignInPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const { error } = await authClient.signIn.email({ email, password });
-    setLoading(false);
-    if (error) {
-      setError(error.message ?? "Couldn't sign you in — check your email and password.");
-      return;
+    try {
+      // A stale tab left open across a deploy (or any other stuck network
+      // request) shouldn't be able to leave the button reading "Signing
+      // in…" forever with no way out — race it against a timeout so the
+      // user always gets a clear, actionable message either way.
+      const timeout = new Promise<{ error: { message: string } }>((resolve) =>
+        setTimeout(
+          () => resolve({ error: { message: "This is taking longer than it should. Please refresh the page (Ctrl+Shift+R) and try again." } }),
+          15000
+        )
+      );
+      const { error } = await Promise.race([authClient.signIn.email({ email, password }), timeout]);
+      if (error) {
+        setError(error.message ?? "Couldn't sign you in — check your email and password.");
+        return;
+      }
+      router.push("/dashboard");
+      router.refresh();
+    } catch {
+      setError("Something went wrong. Please refresh the page and try again.");
+    } finally {
+      setLoading(false);
     }
-    router.push("/dashboard");
-    router.refresh();
   }
 
   return (
