@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   startDiagnosis,
   sendEstimate,
+  skipEstimateApproval,
   recordPhoneDecision,
   markReadyForPickup,
   closeWorkOrder,
@@ -101,6 +102,59 @@ function SendEstimateForm({ workOrderId, hasCustomerEmail }: { workOrderId: stri
   );
 }
 
+/** The fast path for the ~90% case — customer said "just fix it," no formal $ quote needed. Skips straight to In Repair. */
+function SkipEstimateForm({ workOrderId }: { workOrderId: string }) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const bound = skipEstimateApproval.bind(null, workOrderId);
+
+  function handleSubmit(formData: FormData) {
+    setError(null);
+    startTransition(async () => {
+      const result = await bound(formData);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  return (
+    <form action={handleSubmit} className="rounded-lg p-3" style={{ background: "var(--color-success-subtle)", border: "1px solid var(--color-success-border)" }}>
+      <p className="text-xs font-bold mb-2" style={{ color: "var(--text-primary)" }}>
+        Customer already said &ldquo;just fix it&rdquo;?
+      </p>
+      <div className="flex items-end gap-3 flex-wrap">
+        <div className="max-w-[200px]">
+          <label htmlFor="notToExceedAmount" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+            Not-to-exceed ($) — optional
+          </label>
+          <input
+            id="notToExceedAmount"
+            name="notToExceedAmount"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="Leave blank if open-ended"
+            className="w-full px-3 py-2 rounded-lg text-xs font-mono"
+            style={inputStyle}
+          />
+        </div>
+        <button type="submit" disabled={pending} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
+          {pending ? "Starting…" : "Start Repair Now"}
+        </button>
+      </div>
+      {error && (
+        <p className="text-xs font-semibold mt-2" style={{ color: "var(--color-error-solid)" }}>
+          {error}
+        </p>
+      )}
+    </form>
+  );
+}
+
 function PhoneDecisionForm({ workOrderId }: { workOrderId: string }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -169,17 +223,34 @@ export function WorkOrderStatusPanel({
     case "droppedOff":
       return (
         <div className="space-y-4">
-          <SimpleAction label="Start Diagnosis" action={() => startDiagnosis(workOrderId)} />
+          <SkipEstimateForm workOrderId={workOrderId} />
           <div className="pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-            <p className="text-xs font-bold mb-2" style={{ color: "var(--text-secondary)" }}>
-              Already know what it needs? Send the estimate straight away:
-            </p>
-            <SendEstimateForm workOrderId={workOrderId} hasCustomerEmail={hasCustomerEmail} />
+            <SimpleAction label="Start Diagnosis" action={() => startDiagnosis(workOrderId)} />
           </div>
+          <details className="pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+            <summary className="text-xs font-bold cursor-pointer" style={{ color: "var(--text-secondary)" }}>
+              Need a formal written estimate instead?
+            </summary>
+            <div className="mt-3">
+              <SendEstimateForm workOrderId={workOrderId} hasCustomerEmail={hasCustomerEmail} />
+            </div>
+          </details>
         </div>
       );
     case "diagnosing":
-      return <SendEstimateForm workOrderId={workOrderId} hasCustomerEmail={hasCustomerEmail} />;
+      return (
+        <div className="space-y-4">
+          <SkipEstimateForm workOrderId={workOrderId} />
+          <details className="pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+            <summary className="text-xs font-bold cursor-pointer" style={{ color: "var(--text-secondary)" }}>
+              Need a formal written estimate instead?
+            </summary>
+            <div className="mt-3">
+              <SendEstimateForm workOrderId={workOrderId} hasCustomerEmail={hasCustomerEmail} />
+            </div>
+          </details>
+        </div>
+      );
     case "awaitingApproval":
       return (
         <div className="space-y-3">

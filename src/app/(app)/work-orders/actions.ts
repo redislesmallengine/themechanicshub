@@ -39,13 +39,45 @@ export async function createWorkOrder(formData: FormData) {
   if (!customerId || !equipmentId) return { error: "Pick a customer and a piece of their equipment." };
   if (!complaint) return { error: "What's the complaint? A line or two is fine." };
 
+  const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+  if (!customer || customer.organizationId !== organizationId) return { error: "That customer doesn't exist." };
+
   const equipment = await prisma.equipment.findUnique({ where: { id: equipmentId } });
   if (!equipment || equipment.organizationId !== organizationId || equipment.customerId !== customerId) {
     return { error: "That equipment doesn't belong to this customer." };
   }
 
+  // "Customer said just fix it" fast path — the common case (checkbox
+  // defaults checked on the intake form). Creates the work order already
+  // authorized for repair, skipping the formal estimate/approval cycle
+  // entirely, while still keeping a real record of who authorized it and
+  // when — see skipEstimateApproval below for the same thing done later,
+  // mid-diagnosis, from the status panel instead of at intake.
+  const skipEstimate = formData.get("skipEstimate") === "on";
+  let notToExceedAmount: string | null = null;
+  if (skipEstimate) {
+    const raw = String(formData.get("notToExceedAmount") ?? "").trim();
+    if (raw) {
+      const num = Number(raw);
+      if (!Number.isFinite(num) || num < 0) return { error: "Not-to-exceed amount needs to be a positive number." };
+      notToExceedAmount = num.toFixed(2);
+    }
+  }
+
   const workOrder = await prisma.workOrder.create({
-    data: { organizationId, customerId, equipmentId, complaint },
+    data: skipEstimate
+      ? {
+          organizationId,
+          customerId,
+          equipmentId,
+          complaint,
+          status: "inRepair",
+          approvalMethod: "in-person",
+          decidedByName: customer.name,
+          decidedAt: new Date(),
+          notToExceedAmount,
+        }
+      : { organizationId, customerId, equipmentId, complaint },
   });
 
   revalidatePath("/work-orders");
@@ -128,6 +160,47 @@ export async function sendEstimate(workOrderId: string, formData: FormData) {
            <p><a href="${url}">Review and approve or decline</a></p>
            <p>If you'd rather talk it through, just give the shop a call.</p>`,
     organizationId,
+  });
+
+  revalidatePath(`/work-orders/${workOrderId}`);
+  revalidatePath("/work-orders");
+  return { success: true };
+}
+
+/**
+ * The fast path taken after intake, once the tech is already diagnosing:
+ * customer said "just fix it" (in person or on a call) with no formal
+ * dollar quote, so skip straight to In Repair instead of manufacturing an
+ * estimate just to record approval of it. Mirrors what createWorkOrder does
+ * when the same checkbox is ticked at intake instead. See
+ * recordPhoneDecision below for the *other* fast path — approving/declining
+ * an estimate that *was* already sent.
+ */
+export async function skipEstimateApproval(workOrderId: string, formData: FormData) {
+  const { organizationId } = await requireCanManageWorkOrders("update");
+  const workOrder = await loadOwnWorkOrder(workOrderId, organizationId);
+  if (!workOrder) return { error: "That work order doesn't exist." };
+  if (workOrder.status !== "droppedOff" && workOrder.status !== "diagnosing") return { error: "This work order is already past that point." };
+
+  const raw = String(formData.get("notToExceedAmount") ?? "").trim();
+  let notToExceedAmount: string | null = null;
+  if (raw) {
+    const num = Number(raw);
+    if (!Number.isFinite(num) || num < 0) return { error: "Not-to-exceed amount needs to be a positive number." };
+    notToExceedAmount = num.toFixed(2);
+  }
+
+  const customer = await prisma.customer.findUnique({ where: { id: workOrder.customerId } });
+
+  await prisma.workOrder.update({
+    where: { id: workOrderId },
+    data: {
+      status: "inRepair",
+      approvalMethod: "in-person",
+      decidedByName: customer?.name ?? "Customer",
+      decidedAt: new Date(),
+      notToExceedAmount,
+    },
   });
 
   revalidatePath(`/work-orders/${workOrderId}`);

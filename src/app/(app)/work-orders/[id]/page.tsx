@@ -92,7 +92,14 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         {workOrder.decidedByName && (
           <div className="mt-3 pt-3 text-xs" style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-muted)" }}>
             {status === "declined" ? "Declined" : "Approved"} by <b style={{ color: "var(--text-secondary)" }}>{workOrder.decidedByName}</b> via{" "}
-            {workOrder.approvalMethod === "phone" ? "phone" : "the online link"} on {workOrder.decidedAt?.toLocaleString()}
+            {workOrder.approvalMethod === "phone" ? "phone" : workOrder.approvalMethod === "in-person" ? "drop-off — no formal estimate" : "the online link"}{" "}
+            on {workOrder.decidedAt?.toLocaleString()}
+            {workOrder.notToExceedAmount && (
+              <>
+                {" "}
+                — not to exceed <b style={{ color: "var(--text-secondary)" }}>${workOrder.notToExceedAmount.toString()}</b>
+              </>
+            )}
           </div>
         )}
       </div>

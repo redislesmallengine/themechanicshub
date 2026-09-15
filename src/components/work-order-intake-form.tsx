@@ -25,6 +25,10 @@ export function WorkOrderIntakeForm({ customers }: { customers: CustomerWithEqui
   const [customerId, setCustomerId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // Checked by default — most drop-offs are "just fix it," not a formal
+  // quote request. Staff untick it for the minority of jobs where the
+  // customer wants a written estimate before anything starts.
+  const [skipEstimate, setSkipEstimate] = useState(true);
 
   const selectedCustomer = useMemo(() => customers.find((c) => c.id === customerId), [customers, customerId]);
 
@@ -111,6 +115,47 @@ export function WorkOrderIntakeForm({ customers }: { customers: CustomerWithEqui
         </div>
       </div>
 
+      <div className="rounded-lg p-3" style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-subtle)" }}>
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            name="skipEstimate"
+            checked={skipEstimate}
+            onChange={(e) => setSkipEstimate(e.target.checked)}
+            className="mt-0.5 rounded"
+            style={{ accentColor: "#0F52BA" }}
+          />
+          <span className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>
+            Customer authorized the repair at drop-off (skip formal estimate)
+          </span>
+        </label>
+        <p className="text-[10px] mt-1 ml-6" style={{ color: "var(--text-muted)" }}>
+          {skipEstimate
+            ? "This work order starts straight in In Repair — no estimate email, no waiting on approval. Untick this if the customer wants a written quote first."
+            : "This work order starts in Dropped Off — you'll send a formal estimate for the customer to approve before repair begins."}
+        </p>
+        {skipEstimate && (
+          <div className="mt-3 ml-6 max-w-xs">
+            <label htmlFor="notToExceedAmount" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+              Not-to-exceed amount ($) — optional
+            </label>
+            <input
+              id="notToExceedAmount"
+              name="notToExceedAmount"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="Leave blank if open-ended"
+              className="w-full px-3 py-2 rounded-lg text-xs font-mono"
+              style={inputStyle}
+            />
+            <span className="text-[10px] mt-0.5 block" style={{ color: "var(--text-muted)" }}>
+              Only fill this in if the customer set a verbal price cap, e.g. &ldquo;call me if it&apos;s over $300.&rdquo;
+            </span>
+          </div>
+        )}
+      </div>
+
       {error && (
         <p className="text-xs font-semibold" style={{ color: "var(--color-error-solid)" }}>
           {error}
@@ -127,7 +172,7 @@ export function WorkOrderIntakeForm({ customers }: { customers: CustomerWithEqui
           Cancel
         </button>
         <button type="submit" disabled={pending} className="px-5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold shadow-sm disabled:opacity-60">
-          {pending ? "Creating…" : "Create Work Order"}
+          {pending ? "Creating…" : skipEstimate ? "Create Work Order — Start Repair" : "Create Work Order"}
         </button>
       </div>
     </form>
