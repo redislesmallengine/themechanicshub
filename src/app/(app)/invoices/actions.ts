@@ -10,7 +10,7 @@ import { claimInvoiceNumber, generateViewToken, computeTotals, classifyInvoiceTy
 import { applyStockAdjustment } from "@/lib/inventory";
 import { renderInvoicePdfFromRecord } from "@/lib/invoice-pdf";
 
-async function requireCanManageInvoices(action: "create" | "update" | "void" = "update") {
+async function requireCanManageInvoices(action: "create" | "update" | "void" | "delete" = "update") {
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   if (!session?.session.activeOrganizationId) throw new Error("Not signed in to a shop.");
@@ -329,6 +329,51 @@ export async function updateInvoiceDetails(invoiceId: string, formData: FormData
   return { success: true };
 }
 
+/**
+ * Changes who/what a STANDALONE invoice is for — the one thing
+ * createStandaloneInvoice locked in at creation. Only applies when there's
+ * no Work Order behind the invoice; a Work Order-sourced invoice's
+ * customer/equipment come from the work order itself, so this refuses
+ * rather than let the two silently drift apart. Same validation rules as
+ * createStandaloneInvoice (customer optional, equipment optional and
+ * mutually exclusive with a plain-text description).
+ */
+export async function updateInvoiceParty(invoiceId: string, formData: FormData) {
+  const { organizationId } = await requireCanManageInvoices("update");
+  const invoice = await loadOwnInvoice(invoiceId, organizationId);
+  if (!invoice) return { error: "That invoice doesn't exist." };
+  if (!isEditable(invoice.status)) return { error: "This invoice can't be edited anymore." };
+  if (invoice.workOrderId) return { error: "This invoice's customer and equipment come from its work order — edit the work order instead." };
+
+  const customerId = String(formData.get("customerId") ?? "").trim() || null;
+  const equipmentId = String(formData.get("equipmentId") ?? "").trim() || null;
+  const adHocEquipmentLabel = String(formData.get("adHocEquipmentLabel") ?? "").trim() || null;
+
+  if (equipmentId && adHocEquipmentLabel) {
+    return { error: "Pick registered equipment or describe the machine — not both." };
+  }
+
+  if (customerId) {
+    const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+    if (!customer || customer.organizationId !== organizationId) return { error: "That customer doesn't exist." };
+  }
+
+  if (equipmentId) {
+    if (!customerId) return { error: "Pick a customer first to attach their equipment." };
+    const equipment = await prisma.equipment.findUnique({ where: { id: equipmentId } });
+    if (!equipment || equipment.organizationId !== organizationId || equipment.customerId !== customerId) {
+      return { error: "That equipment doesn't belong to this customer." };
+    }
+  }
+
+  await prisma.invoice.update({ where: { id: invoiceId }, data: { customerId, equipmentId, adHocEquipmentLabel } });
+  await recalcTotals(invoiceId, organizationId); // equipment presence can flip Parts Only <-> Repair Service/Combined
+
+  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/invoices");
+  return { success: true };
+}
+
 export async function sendInvoice(invoiceId: string) {
   const { organizationId } = await requireCanManageInvoices("update");
   const invoice = await prisma.invoice.findUnique({
@@ -403,5 +448,41 @@ export async function voidInvoice(invoiceId: string, formData: FormData) {
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
   if (invoice.workOrderId) revalidatePath(`/work-orders/${invoice.workOrderId}`);
+  return { success: true };
+}
+
+/**
+ * Permanently removes an invoice — only while it's still Draft (never sent,
+ * so no customer could have ever seen it and its number was never
+ * meaningfully "issued"). Anything already sent/viewed/paid uses Void
+ * instead, which keeps the record and its invoice number intact. Restores
+ * stock for every inventory-linked line first (mirrors removeLineItem),
+ * since InvoiceLineItem cascade-deletes with the invoice and would
+ * otherwise silently skip that.
+ */
+export async function deleteInvoice(invoiceId: string) {
+  const { organizationId, userId } = await requireCanManageInvoices("delete");
+  const invoice = await loadOwnInvoice(invoiceId, organizationId);
+  if (!invoice) return { error: "That invoice doesn't exist." };
+  if (invoice.status !== "draft") return { error: "Only a draft invoice can be deleted — void this one instead." };
+
+  for (const line of invoice.lineItems) {
+    if (!line.partId) continue;
+    const restore = await applyStockAdjustment({
+      organizationId,
+      partId: line.partId,
+      delta: Number(line.quantity),
+      reason: "Correction",
+      note: `Invoice ${invoiceId} deleted`,
+      createdByUserId: userId,
+    });
+    if ("error" in restore) return { error: restore.error };
+  }
+
+  const workOrderId = invoice.workOrderId;
+  await prisma.invoice.delete({ where: { id: invoiceId } }); // cascades InvoiceLineItem rows
+
+  revalidatePath("/invoices");
+  if (workOrderId) revalidatePath(`/work-orders/${workOrderId}`);
   return { success: true };
 }

@@ -7,6 +7,8 @@ import { STATUS_LABELS, STATUS_BADGE, INVOICE_TYPE_LABELS, INVOICE_TYPE_BADGE, i
 import { InvoiceLineItemsPanel } from "@/components/invoice-line-items-panel";
 import { InvoiceStatusPanel } from "@/components/invoice-status-panel";
 import { InvoiceDetailsForm } from "@/components/invoice-details-form";
+import { InvoicePartyForm } from "@/components/invoice-party-form";
+import { DeleteInvoiceButton } from "@/components/delete-invoice-button";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -26,9 +28,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   });
   if (!invoice || invoice.organizationId !== organizationId) notFound();
 
-  const [canUpdate, canVoid, canViewMargins, availableParts] = await Promise.all([
+  const [canUpdate, canVoid, canDelete, canViewMargins, availableParts] = await Promise.all([
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["update"] } } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["void"] } } }),
+    auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["delete"] } } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["viewMargins"] } } }),
     prisma.part.findMany({ where: { organizationId, quantityOnHand: { gt: 0 } }, orderBy: { name: "asc" } }),
   ]);
@@ -40,6 +43,16 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const equipmentLabel = invoice.equipment
     ? [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" ") || invoice.equipment.equipmentType?.name || "Equipment"
     : invoice.adHocEquipmentLabel;
+  const hasInventoryLines = invoice.lineItems.some((l) => !!l.partId);
+  const canEditParty = editable && !invoice.workOrderId;
+
+  const partyCustomers = canEditParty
+    ? await prisma.customer.findMany({
+        where: { organizationId },
+        orderBy: { name: "asc" },
+        include: { equipment: { include: { equipmentType: true } } },
+      })
+    : [];
 
   return (
     <div className="p-6 space-y-6">
@@ -83,13 +96,18 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               )}
             </p>
           </div>
-          <a
-            href={`/api/invoices/${invoice.id}/pdf`}
-            className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-slate-50"
-            style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}
-          >
-            Download PDF
-          </a>
+          <div className="flex items-center gap-3">
+            <a
+              href={`/api/invoices/${invoice.id}/pdf`}
+              className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-slate-50"
+              style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}
+            >
+              Download PDF
+            </a>
+            {status === "draft" && canDelete.success && (
+              <DeleteInvoiceButton invoiceId={invoice.id} invoiceNumber={invoice.invoiceNumber} hasInventoryLines={hasInventoryLines} redirectTo="/invoices" />
+            )}
+          </div>
         </div>
       </div>
 
@@ -211,6 +229,30 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           </div>
         </div>
       </div>
+
+      {canEditParty && (
+        <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+          <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
+            Customer &amp; Equipment
+          </h2>
+          <InvoicePartyForm
+            invoiceId={invoice.id}
+            customers={partyCustomers.map((c) => ({
+              id: c.id,
+              name: c.name,
+              phone: c.phone,
+              email: c.email,
+              equipment: c.equipment.map((eq) => ({
+                id: eq.id,
+                label: [eq.make, eq.model].filter(Boolean).join(" ") || eq.equipmentType?.name || (eq.serialNumber ? `S/N ${eq.serialNumber}` : "Unnamed equipment"),
+              })),
+            }))}
+            initialCustomerId={invoice.customerId ?? ""}
+            initialEquipmentId={invoice.equipmentId ?? ""}
+            initialAdHocEquipmentLabel={invoice.adHocEquipmentLabel ?? ""}
+          />
+        </div>
+      )}
 
       {editable && (
         <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>

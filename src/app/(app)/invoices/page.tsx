@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { InvoiceIcon, SearchIcon } from "@/components/icons";
 import { STATUS_LABELS, STATUS_BADGE, INVOICE_STATUSES, INVOICE_TYPE_LABELS, INVOICE_TYPE_BADGE, isOverdue, type InvoiceStatus, type InvoiceType } from "@/lib/invoices";
+import { DeleteInvoiceButton } from "@/components/delete-invoice-button";
 
 export default async function InvoicesPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string }> }) {
   const { q, status } = await searchParams;
@@ -26,9 +27,10 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
             : {}),
         },
         orderBy: { createdAt: "desc" },
-        include: { customer: true },
+        include: { customer: true, lineItems: { select: { partId: true } } },
       })
     : [];
+  const canDelete = organizationId ? await auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["delete"] } } }) : { success: false as const };
 
   return (
     <div className="p-6">
@@ -87,12 +89,13 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                 <th className="dt-th text-left">Status</th>
                 <th className="dt-th text-left">Total</th>
                 <th className="dt-th text-left">Due</th>
+                <th className="dt-th text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {invoices.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
+                  <td colSpan={7} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
                     {q || status ? "No invoices match those filters." : "No invoices yet — generate one from a work order that's ready for pickup, or create one directly."}
                   </td>
                 </tr>
@@ -137,6 +140,11 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                     </td>
                     <td className="dt-td num text-sm" style={{ color: "var(--text-muted)" }}>
                       {inv.dueDate.toLocaleDateString()}
+                    </td>
+                    <td className="dt-td text-right">
+                      {invStatus === "draft" && canDelete.success && (
+                        <DeleteInvoiceButton invoiceId={inv.id} invoiceNumber={inv.invoiceNumber} hasInventoryLines={inv.lineItems.some((l) => !!l.partId)} />
+                      )}
                     </td>
                   </tr>
                 );
