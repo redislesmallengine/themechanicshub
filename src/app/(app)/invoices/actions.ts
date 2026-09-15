@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendMail } from "@/lib/email";
-import { claimInvoiceNumber, generateViewToken, computeTotals, isEditable, PAYMENT_METHODS, type LineItemInput } from "@/lib/invoices";
+import { claimInvoiceNumber, generateViewToken, computeTotals, classifyInvoiceType, isEditable, PAYMENT_METHODS, type LineItemInput } from "@/lib/invoices";
 import { renderInvoicePdfFromRecord } from "@/lib/invoice-pdf";
 
 async function requireCanManageInvoices(action: "create" | "update" | "void" = "update") {
@@ -29,15 +29,21 @@ async function loadOwnInvoice(invoiceId: string, organizationId: string) {
   return invoice;
 }
 
-/** Recomputes and persists subtotal/taxAmount/total from the invoice's current line items — called after any line item change. */
+/** Recomputes and persists subtotal/taxAmount/total (and invoiceType — adding/removing a line can flip Repair Service into Combined) from the invoice's current line items — called after any line item change. */
 async function recalcTotals(invoiceId: string, organizationId: string) {
-  const [lineItems, shopProfile] = await Promise.all([
+  const [invoice, lineItems, shopProfile] = await Promise.all([
+    prisma.invoice.findUnique({ where: { id: invoiceId }, select: { equipmentId: true, workOrderId: true } }),
     prisma.invoiceLineItem.findMany({ where: { invoiceId } }),
     prisma.shopProfile.findUnique({ where: { organizationId } }),
   ]);
   const inputs: LineItemInput[] = lineItems.map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), taxable: l.taxable }));
   const totals = computeTotals(inputs, Number(shopProfile?.taxRate ?? 0));
-  await prisma.invoice.update({ where: { id: invoiceId }, data: totals });
+  const invoiceType = classifyInvoiceType({
+    hasEquipment: !!invoice?.equipmentId,
+    hasWorkOrder: !!invoice?.workOrderId,
+    lineItemTypes: lineItems.map((l) => l.type),
+  });
+  await prisma.invoice.update({ where: { id: invoiceId }, data: { ...totals, invoiceType } });
 }
 
 export async function generateInvoiceFromWorkOrder(workOrderId: string, formData: FormData) {
@@ -114,6 +120,8 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
         organizationId,
         workOrderId,
         customerId: workOrder.customerId,
+        equipmentId: workOrder.equipmentId,
+        invoiceType: classifyInvoiceType({ hasEquipment: true, hasWorkOrder: true, lineItemTypes: lines.map((l) => l.type) }),
         invoiceNumber,
         viewToken: generateViewToken(),
         ...totals,
@@ -123,6 +131,52 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
   });
 
   revalidatePath(`/work-orders/${workOrderId}`);
+  revalidatePath("/invoices");
+  redirect(`/invoices/${invoice.id}`);
+}
+
+/**
+ * Standalone invoice — no Work Order behind it. Covers a counter parts sale
+ * (no equipment picked) and a quick repair billed on the spot (equipment
+ * picked, but never tracked through the Dropped Off -> ... -> Ready for
+ * Pickup lifecycle). Customer and equipment are both optional — see
+ * "No Customer Info" handling on the invoice pages/PDF for the no-customer
+ * case. Line items are added afterward via the existing addCustomLineItem,
+ * same as any invoice.
+ */
+export async function createStandaloneInvoice(formData: FormData) {
+  const { organizationId } = await requireCanManageInvoices("create");
+
+  const customerId = String(formData.get("customerId") ?? "").trim() || null;
+  const equipmentId = String(formData.get("equipmentId") ?? "").trim() || null;
+
+  if (customerId) {
+    const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+    if (!customer || customer.organizationId !== organizationId) return { error: "That customer doesn't exist." };
+  }
+
+  if (equipmentId) {
+    if (!customerId) return { error: "Pick a customer first to attach their equipment." };
+    const equipment = await prisma.equipment.findUnique({ where: { id: equipmentId } });
+    if (!equipment || equipment.organizationId !== organizationId || equipment.customerId !== customerId) {
+      return { error: "That equipment doesn't belong to this customer." };
+    }
+  }
+
+  const invoice = await prisma.$transaction(async (tx) => {
+    const invoiceNumber = await claimInvoiceNumber(tx, organizationId);
+    return tx.invoice.create({
+      data: {
+        organizationId,
+        customerId,
+        equipmentId,
+        invoiceType: classifyInvoiceType({ hasEquipment: !!equipmentId, hasWorkOrder: false, lineItemTypes: [] }),
+        invoiceNumber,
+        viewToken: generateViewToken(),
+      },
+    });
+  });
+
   revalidatePath("/invoices");
   redirect(`/invoices/${invoice.id}`);
 }
@@ -196,11 +250,17 @@ export async function sendInvoice(invoiceId: string) {
   const { organizationId } = await requireCanManageInvoices("update");
   const invoice = await prisma.invoice.findUnique({
     where: { id: invoiceId },
-    include: { lineItems: { orderBy: { sortOrder: "asc" } }, customer: true, organization: { include: { shopProfile: true } } },
+    include: {
+      lineItems: { orderBy: { sortOrder: "asc" } },
+      customer: true,
+      equipment: { include: { equipmentType: true } },
+      organization: { include: { shopProfile: true } },
+    },
   });
   if (!invoice || invoice.organizationId !== organizationId) return { error: "That invoice doesn't exist." };
   if (invoice.status !== "draft") return { error: "This invoice was already sent." };
   if (invoice.lineItems.length === 0) return { error: "Add at least one line item before sending." };
+  if (!invoice.customer) return { error: "This invoice has no customer attached — nothing to send it to. Download the PDF instead." };
   if (!invoice.customer.email) return { error: "This customer has no email on file — add one before sending an invoice." };
 
   const pdfBuffer = await renderInvoicePdfFromRecord(invoice);
@@ -241,7 +301,7 @@ export async function markInvoicePaid(invoiceId: string, formData: FormData) {
 
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
-  revalidatePath(`/work-orders/${invoice.workOrderId}`);
+  if (invoice.workOrderId) revalidatePath(`/work-orders/${invoice.workOrderId}`);
   return { success: true };
 }
 
@@ -259,6 +319,6 @@ export async function voidInvoice(invoiceId: string, formData: FormData) {
 
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
-  revalidatePath(`/work-orders/${invoice.workOrderId}`);
+  if (invoice.workOrderId) revalidatePath(`/work-orders/${invoice.workOrderId}`);
   return { success: true };
 }

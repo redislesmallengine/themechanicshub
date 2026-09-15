@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { STATUS_LABELS, STATUS_BADGE, isEditable, isOverdue, type InvoiceStatus } from "@/lib/invoices";
+import { STATUS_LABELS, STATUS_BADGE, INVOICE_TYPE_LABELS, INVOICE_TYPE_BADGE, isEditable, isOverdue, type InvoiceStatus, type InvoiceType } from "@/lib/invoices";
 import { InvoiceLineItemsPanel } from "@/components/invoice-line-items-panel";
 import { InvoiceStatusPanel } from "@/components/invoice-status-panel";
 import { InvoiceDetailsForm } from "@/components/invoice-details-form";
@@ -17,7 +17,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const organizationId = session.session.activeOrganizationId;
   const invoice = await prisma.invoice.findUnique({
     where: { id },
-    include: { lineItems: { orderBy: { sortOrder: "asc" } }, customer: true, workOrder: { include: { equipment: { include: { equipmentType: true } } } } },
+    include: {
+      lineItems: { orderBy: { sortOrder: "asc" } },
+      customer: true,
+      equipment: { include: { equipmentType: true } },
+      workOrder: true,
+    },
   });
   if (!invoice || invoice.organizationId !== organizationId) notFound();
 
@@ -28,9 +33,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   ]);
 
   const status = invoice.status as InvoiceStatus;
+  const invoiceType = invoice.invoiceType as InvoiceType;
   const overdue = isOverdue(invoice.status, invoice.dueDate);
   const editable = isEditable(invoice.status) && canUpdate.success;
-  const equipmentLabel = [invoice.workOrder.equipment.make, invoice.workOrder.equipment.model].filter(Boolean).join(" ") || invoice.workOrder.equipment.equipmentType?.name || "Equipment";
+  const equipmentLabel = invoice.equipment
+    ? [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" ") || invoice.equipment.equipmentType?.name || "Equipment"
+    : null;
 
   return (
     <div className="p-6 space-y-6">
@@ -47,18 +55,31 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 <span className="dt-badge-dot" />
                 {overdue ? "Overdue" : STATUS_LABELS[status]}
               </span>
+              <span className={`dt-badge dt-badge--${INVOICE_TYPE_BADGE[invoiceType]}`}>
+                <span className="dt-badge-dot" />
+                {INVOICE_TYPE_LABELS[invoiceType]}
+              </span>
             </div>
             <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
               {invoice.invoiceNumber}
             </h1>
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              <Link href={`/customers/${invoice.customer.id}`} className="text-brand-600 font-semibold">
-                {invoice.customer.name}
-              </Link>{" "}
-              ·{" "}
-              <Link href={`/work-orders/${invoice.workOrderId}`} className="text-brand-600 font-semibold">
-                {equipmentLabel} work order
-              </Link>
+              {invoice.customer ? (
+                <Link href={`/customers/${invoice.customer.id}`} className="text-brand-600 font-semibold">
+                  {invoice.customer.name}
+                </Link>
+              ) : (
+                <span className="font-semibold">No Customer Info</span>
+              )}
+              {invoice.workOrderId && (
+                <>
+                  {" "}
+                  ·{" "}
+                  <Link href={`/work-orders/${invoice.workOrderId}`} className="text-brand-600 font-semibold">
+                    {equipmentLabel ?? "Work order"}
+                  </Link>
+                </>
+              )}
             </p>
           </div>
           <a
@@ -68,6 +89,71 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           >
             Download PDF
           </a>
+        </div>
+      </div>
+
+      <div className="rounded-xl p-5 grid grid-cols-1 sm:grid-cols-2 gap-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
+            Bill To
+          </div>
+          {invoice.customer ? (
+            <>
+              <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+                {invoice.customer.name}
+              </p>
+              {invoice.customer.address && (
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  {invoice.customer.address}
+                </p>
+              )}
+              {invoice.customer.phone && (
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  {invoice.customer.phone}
+                </p>
+              )}
+              {invoice.customer.email && (
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  {invoice.customer.email}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+              No Customer Info
+            </p>
+          )}
+        </div>
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
+            Machine Details
+          </div>
+          {invoice.equipment ? (
+            <>
+              <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+                {equipmentLabel}
+              </p>
+              {invoice.equipment.serialNumber && (
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  S/N {invoice.equipment.serialNumber}
+                </p>
+              )}
+              {(invoice.equipment.engineType || invoice.equipment.displacement) && (
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  {[invoice.equipment.engineType, invoice.equipment.displacement].filter(Boolean).join(" · ")}
+                </p>
+              )}
+              {invoice.equipment.year && (
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  {invoice.equipment.year}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+              Parts only — no equipment attached.
+            </p>
+          )}
         </div>
       </div>
 
@@ -138,7 +224,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
           Status
         </h2>
-        <InvoiceStatusPanel invoiceId={invoice.id} status={invoice.status} hasCustomerEmail={!!invoice.customer.email} canVoid={canVoid.success} />
+        <InvoiceStatusPanel invoiceId={invoice.id} status={invoice.status} hasCustomer={!!invoice.customer} hasCustomerEmail={!!invoice.customer?.email} canVoid={canVoid.success} />
         {invoice.status === "paid" && invoice.paymentReference && (
           <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
             Reference: {invoice.paymentReference}

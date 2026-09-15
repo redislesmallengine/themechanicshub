@@ -7,7 +7,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
 
   const invoice = await prisma.invoice.findUnique({
     where: { viewToken: token },
-    include: { lineItems: { orderBy: { sortOrder: "asc" } }, customer: true, organization: { include: { shopProfile: true } } },
+    include: {
+      lineItems: { orderBy: { sortOrder: "asc" } },
+      customer: true,
+      equipment: { include: { equipmentType: true } },
+      organization: { include: { shopProfile: true } },
+    },
   });
   if (!invoice) return new Response("Not found", { status: 404 });
 

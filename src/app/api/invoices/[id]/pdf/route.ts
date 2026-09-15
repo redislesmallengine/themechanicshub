@@ -12,7 +12,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const invoice = await prisma.invoice.findUnique({
     where: { id },
-    include: { lineItems: { orderBy: { sortOrder: "asc" } }, customer: true, organization: { include: { shopProfile: true } } },
+    include: {
+      lineItems: { orderBy: { sortOrder: "asc" } },
+      customer: true,
+      equipment: { include: { equipmentType: true } },
+      organization: { include: { shopProfile: true } },
+    },
   });
   if (!invoice || invoice.organizationId !== session.session.activeOrganizationId) return new Response("Not found", { status: 404 });
 

@@ -7,7 +7,12 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
 
   const invoice = await prisma.invoice.findUnique({
     where: { viewToken: token },
-    include: { lineItems: { orderBy: { sortOrder: "asc" } }, customer: true, organization: { include: { shopProfile: true } } },
+    include: {
+      lineItems: { orderBy: { sortOrder: "asc" } },
+      customer: true,
+      equipment: { include: { equipmentType: true } },
+      organization: { include: { shopProfile: true } },
+    },
   });
 
   if (!invoice || invoice.status === "draft") {
@@ -37,6 +42,9 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
   const status = invoice.status as InvoiceStatus;
   const shopProfile = invoice.organization.shopProfile;
   const overdue = isOverdue(invoice.status, invoice.dueDate);
+  const equipmentLabel = invoice.equipment
+    ? [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" ") || invoice.equipment.equipmentType?.name || "Equipment"
+    : null;
 
   return (
     <div className="min-h-screen p-4 md:p-10 flex justify-center" style={{ background: "var(--bg-app)" }}>
@@ -71,14 +79,34 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
             </span>
           </div>
 
-          <div className="mb-6 text-sm">
-            <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
-              Bill To
+          <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
+                Bill To
+              </div>
+              {invoice.customer ? (
+                <>
+                  <p className="font-bold" style={{ color: "var(--text-primary)" }}>
+                    {invoice.customer.name}
+                  </p>
+                  {invoice.customer.address && <p style={{ color: "var(--text-secondary)" }}>{invoice.customer.address}</p>}
+                </>
+              ) : (
+                <p style={{ color: "var(--text-muted)" }}>No Customer Info</p>
+              )}
             </div>
-            <p className="font-bold" style={{ color: "var(--text-primary)" }}>
-              {invoice.customer.name}
-            </p>
-            {invoice.customer.address && <p style={{ color: "var(--text-secondary)" }}>{invoice.customer.address}</p>}
+            {equipmentLabel && (
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
+                  Machine Details
+                </div>
+                <p className="font-bold" style={{ color: "var(--text-primary)" }}>
+                  {equipmentLabel}
+                </p>
+                {invoice.equipment?.serialNumber && <p style={{ color: "var(--text-secondary)" }}>S/N {invoice.equipment.serialNumber}</p>}
+                {invoice.equipment?.engineType && <p style={{ color: "var(--text-secondary)" }}>{invoice.equipment.engineType}</p>}
+              </div>
+            )}
           </div>
 
           <div className="dt-container mb-4">

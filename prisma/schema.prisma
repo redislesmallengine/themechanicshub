@@ -271,6 +271,7 @@ model Equipment {
   customer      Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
   equipmentType EquipmentType? @relation(fields: [equipmentTypeId], references: [id], onDelete: SetNull)
   workOrders    WorkOrder[]
+  invoices      Invoice[]
 
   @@index([organizationId])
   @@index([customerId])
@@ -418,15 +419,23 @@ model WorkOrderPart {
 // Phase 6 — Itemized Invoicing & Tax Calculation
 // =============================================================================
 
-// One invoice per work order (v1 has no standalone/ad-hoc invoicing).
+// An invoice from a Work Order (Repair Service) or created standalone
+// (Parts Only) -- workOrderId/customerId/equipmentId are all optional so a
+// counter sale never needs a work order, customer, or registered equipment
+// behind it. invoiceType is auto-derived from what's actually on the
+// invoice (src/lib/invoices.ts's classifyInvoiceType), not staff-chosen --
+// stored rather than computed on read so it's directly filterable/reportable
+// later (Phase 9 parts-vs-labour margin reporting).
 // subtotal/taxAmount/total are stored, not computed on read, so a past
 // invoice's numbers stay fixed even if the shop's tax rate changes later —
 // recalculated only when a line item actually changes (src/lib/invoices.ts).
 model Invoice {
   id                String    @id @default(cuid())
   organizationId    String
-  workOrderId       String    @unique
-  customerId        String
+  workOrderId       String?   @unique
+  customerId        String?
+  equipmentId       String? // machine this invoice is for -- live-linked (not snapshotted), so an edited Equipment record updates past invoices too
+  invoiceType       String    @default("partsOnly") // "partsOnly" | "repairService" | "combined" -- see classifyInvoiceType
   invoiceNumber     String // e.g. "INV-1001" — from ShopProfile.nextInvoiceNumber
   status            String    @default("draft") // draft | sent | viewed | paid | void
   issueDate         DateTime  @default(now())
@@ -447,13 +456,15 @@ model Invoice {
   updatedAt         DateTime  @updatedAt
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workOrder    WorkOrder         @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-  customer     Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  workOrder    WorkOrder?        @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  customer     Customer?         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  equipment    Equipment?        @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
   lineItems    InvoiceLineItem[]
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, status])
   @@index([customerId])
+  @@index([equipmentId])
 }
 
 model InvoiceLineItem {

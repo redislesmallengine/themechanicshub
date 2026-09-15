@@ -57,7 +57,8 @@ export interface InvoicePdfData {
     googleReviewUrl: string | null;
     hstNumber: string | null;
   };
-  customer: { name: string; phone: string | null; email: string | null; address: string | null };
+  customer: { name: string; phone: string | null; email: string | null; address: string | null } | null;
+  equipment: { label: string; make: string | null; model: string | null; serialNumber: string | null; year: number | null; engineType: string | null } | null;
   taxLabel: string;
   taxRate: string;
   subtotal: string;
@@ -100,12 +101,29 @@ function InvoiceDocument({ data }: { data: InvoicePdfData }) {
           </View>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Bill To</Text>
-          <Text style={{ fontWeight: 700 }}>{data.customer.name}</Text>
-          {data.customer.address && <Text style={styles.muted}>{data.customer.address}</Text>}
-          {data.customer.phone && <Text style={styles.muted}>{data.customer.phone}</Text>}
-          {data.customer.email && <Text style={styles.muted}>{data.customer.email}</Text>}
+        <View style={[styles.headerRow, { marginBottom: 20, alignItems: "flex-start" }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.sectionLabel}>Bill To</Text>
+            {data.customer ? (
+              <>
+                <Text style={{ fontWeight: 700 }}>{data.customer.name}</Text>
+                {data.customer.address && <Text style={styles.muted}>{data.customer.address}</Text>}
+                {data.customer.phone && <Text style={styles.muted}>{data.customer.phone}</Text>}
+                {data.customer.email && <Text style={styles.muted}>{data.customer.email}</Text>}
+              </>
+            ) : (
+              <Text style={styles.muted}>No Customer Info</Text>
+            )}
+          </View>
+          {data.equipment && (
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sectionLabel}>Machine Details</Text>
+              <Text style={{ fontWeight: 700 }}>{data.equipment.label}</Text>
+              {data.equipment.serialNumber && <Text style={styles.muted}>S/N {data.equipment.serialNumber}</Text>}
+              {data.equipment.engineType && <Text style={styles.muted}>{data.equipment.engineType}</Text>}
+              {data.equipment.year && <Text style={styles.muted}>{data.equipment.year}</Text>}
+            </View>
+          )}
         </View>
 
         <View style={styles.table}>
@@ -231,7 +249,8 @@ export interface InvoiceWithRelationsForPdf {
   paymentMethod: string | null;
   voidedAt: Date | null;
   voidReason: string | null;
-  customer: { name: string; phone: string | null; email: string | null; address: string | null };
+  customer: { name: string; phone: string | null; email: string | null; address: string | null } | null;
+  equipment: { make: string | null; model: string | null; serialNumber: string | null; engineType: string | null; year: number | null; equipmentType: { name: string } | null } | null;
   organization: {
     name: string;
     shopProfile: {
@@ -250,6 +269,16 @@ export interface InvoiceWithRelationsForPdf {
 
 export async function renderInvoicePdfFromRecord(invoice: InvoiceWithRelationsForPdf): Promise<Buffer> {
   const shopProfile = invoice.organization.shopProfile;
+  const equipment = invoice.equipment
+    ? {
+        label: [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" ") || invoice.equipment.equipmentType?.name || "Equipment",
+        make: invoice.equipment.make,
+        model: invoice.equipment.model,
+        serialNumber: invoice.equipment.serialNumber,
+        year: invoice.equipment.year,
+        engineType: invoice.equipment.engineType,
+      }
+    : null;
   return renderInvoicePdf({
     invoiceNumber: invoice.invoiceNumber,
     status: invoice.status,
@@ -266,6 +295,7 @@ export async function renderInvoicePdfFromRecord(invoice: InvoiceWithRelationsFo
       hstNumber: shopProfile?.hstNumber ?? null,
     },
     customer: invoice.customer,
+    equipment,
     taxLabel: shopProfile?.taxLabel ?? "Tax",
     taxRate: shopProfile?.taxRate?.toString() ?? "0",
     subtotal: String(invoice.subtotal),

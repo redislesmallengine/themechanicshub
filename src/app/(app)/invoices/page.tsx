@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { InvoiceIcon, SearchIcon } from "@/components/icons";
-import { STATUS_LABELS, STATUS_BADGE, INVOICE_STATUSES, isOverdue, type InvoiceStatus } from "@/lib/invoices";
+import { STATUS_LABELS, STATUS_BADGE, INVOICE_STATUSES, INVOICE_TYPE_LABELS, INVOICE_TYPE_BADGE, isOverdue, type InvoiceStatus, type InvoiceType } from "@/lib/invoices";
 
 export default async function InvoicesPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string }> }) {
   const { q, status } = await searchParams;
@@ -38,9 +38,12 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
             Invoices
           </h1>
           <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-            Generated from work orders — search, filter, and track payment status.
+            From a work order, or created directly for a parts-only or walk-in sale — search, filter, and track payment status.
           </p>
         </div>
+        <Link href="/invoices/new" className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white shadow-sm whitespace-nowrap">
+          + New Invoice
+        </Link>
       </div>
 
       <form method="GET" className="mb-4 flex flex-col sm:flex-row gap-3 max-w-2xl">
@@ -80,6 +83,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
               <tr>
                 <th className="dt-th text-left">Invoice #</th>
                 <th className="dt-th text-left">Customer</th>
+                <th className="dt-th text-left">Type</th>
                 <th className="dt-th text-left">Status</th>
                 <th className="dt-th text-left">Total</th>
                 <th className="dt-th text-left">Due</th>
@@ -88,13 +92,14 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
             <tbody>
               {invoices.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
-                    {q || status ? "No invoices match those filters." : "No invoices yet — generate one from a work order that's ready for pickup."}
+                  <td colSpan={6} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
+                    {q || status ? "No invoices match those filters." : "No invoices yet — generate one from a work order that's ready for pickup, or create one directly."}
                   </td>
                 </tr>
               )}
               {invoices.map((inv) => {
                 const invStatus = inv.status as InvoiceStatus;
+                const invType = inv.invoiceType as InvoiceType;
                 const overdue = isOverdue(inv.status, inv.dueDate);
                 return (
                   <tr key={inv.id} className="dt-row">
@@ -105,9 +110,21 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                       </Link>
                     </td>
                     <td className="dt-td">
-                      <Link href={`/customers/${inv.customerId}`} className="text-sm font-semibold text-brand-600 hover:underline">
-                        {inv.customer.name}
-                      </Link>
+                      {inv.customer ? (
+                        <Link href={`/customers/${inv.customerId}`} className="text-sm font-semibold text-brand-600 hover:underline">
+                          {inv.customer.name}
+                        </Link>
+                      ) : (
+                        <span className="text-sm" style={{ color: "var(--text-muted)" }}>
+                          No Customer Info
+                        </span>
+                      )}
+                    </td>
+                    <td className="dt-td">
+                      <span className={`dt-badge dt-badge--${INVOICE_TYPE_BADGE[invType]}`}>
+                        <span className="dt-badge-dot" />
+                        {INVOICE_TYPE_LABELS[invType]}
+                      </span>
                     </td>
                     <td className="dt-td">
                       <span className={`dt-badge dt-badge--${overdue ? "error" : STATUS_BADGE[invStatus]}`}>

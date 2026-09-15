@@ -13,7 +13,7 @@ const inputStyle = {
 
 type ActionResult = { success?: boolean; error?: string } | undefined;
 
-function SendForm({ invoiceId, hasCustomerEmail }: { invoiceId: string; hasCustomerEmail: boolean }) {
+function SendForm({ invoiceId, hasCustomer, hasCustomerEmail }: { invoiceId: string; hasCustomer: boolean; hasCustomerEmail: boolean }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -34,7 +34,9 @@ function SendForm({ invoiceId, hasCustomerEmail }: { invoiceId: string; hasCusto
     <div>
       {!hasCustomerEmail && (
         <p className="text-xs font-semibold mb-2" style={{ color: "var(--color-warning-solid)" }}>
-          This customer has no email on file — add one before you can send this invoice.
+          {hasCustomer
+            ? "This customer has no email on file — add one before you can send this invoice."
+            : "This invoice has no customer attached — nothing to email it to. Download the PDF instead, or hand it over in person."}
         </p>
       )}
       <button onClick={handleClick} disabled={pending || !hasCustomerEmail} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
@@ -146,18 +148,21 @@ function VoidForm({ invoiceId }: { invoiceId: string }) {
 export function InvoiceStatusPanel({
   invoiceId,
   status,
+  hasCustomer,
   hasCustomerEmail,
   canVoid,
 }: {
   invoiceId: string;
   status: string;
+  hasCustomer: boolean;
   hasCustomerEmail: boolean;
   canVoid: boolean;
 }) {
   return (
     <div className="space-y-3">
-      {status === "draft" && <SendForm invoiceId={invoiceId} hasCustomerEmail={hasCustomerEmail} />}
-      {(status === "sent" || status === "viewed") && (
+      {status === "draft" && <SendForm invoiceId={invoiceId} hasCustomer={hasCustomer} hasCustomerEmail={hasCustomerEmail} />}
+      {/* Draft is included here too, not just Sent/Viewed — a walk-in cash sale with no customer to email needs a way to close out that doesn't go through Send Invoice at all. */}
+      {(status === "draft" || status === "sent" || status === "viewed") && (
         <>
           <MarkPaidForm invoiceId={invoiceId} />
           {canVoid && <VoidForm invoiceId={invoiceId} />}

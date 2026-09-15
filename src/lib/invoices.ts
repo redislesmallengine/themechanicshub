@@ -22,6 +22,36 @@ export const STATUS_BADGE: Record<InvoiceStatus, "success" | "warning" | "error"
 
 export const PAYMENT_METHODS = ["Cash", "E-transfer", "Card", "Cheque", "Other"] as const;
 
+export const INVOICE_TYPES = ["partsOnly", "repairService", "combined"] as const;
+export type InvoiceType = (typeof INVOICE_TYPES)[number];
+
+export const INVOICE_TYPE_LABELS: Record<InvoiceType, string> = {
+  partsOnly: "Parts Only",
+  repairService: "Equipment Repair Service",
+  combined: "Combined",
+};
+
+export const INVOICE_TYPE_BADGE: Record<InvoiceType, "success" | "warning" | "error" | "info"> = {
+  partsOnly: "info",
+  repairService: "success",
+  combined: "warning",
+};
+
+/**
+ * Recomputed after every line-item change (recalcTotals in
+ * invoices/actions.ts) — never staff-chosen. No equipment attached is
+ * always Parts Only. Equipment attached is Repair Service, unless the
+ * invoice came from a Work Order (whose generated lines are always typed
+ * "labor"/"part"/"fee") and has since had an ad-hoc line added on top
+ * (always typed "custom" — see addCustomLineItem): that combination is what
+ * "Combined" means — a repair invoice with something extra tacked on.
+ */
+export function classifyInvoiceType(params: { hasEquipment: boolean; hasWorkOrder: boolean; lineItemTypes: string[] }): InvoiceType {
+  if (!params.hasEquipment) return "partsOnly";
+  if (params.hasWorkOrder && params.lineItemTypes.includes("custom")) return "combined";
+  return "repairService";
+}
+
 /** Line items are still editable while in any of these — locked once Paid or Void. */
 export function isEditable(status: string): boolean {
   return status === "draft" || status === "sent" || status === "viewed";
