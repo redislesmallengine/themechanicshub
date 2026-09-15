@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { WhatsAppIcon } from "@/components/icons";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -65,9 +66,9 @@ export function SendWhatsAppButton({
       <button
         type="button"
         onClick={handleClick}
-        className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-slate-50"
-        style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}
+        className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition text-white bg-[#25D366] hover:bg-[#20BD5A]"
       >
+        <WhatsAppIcon className="w-3.5 h-3.5" />
         Send on WhatsApp
       </button>
 
