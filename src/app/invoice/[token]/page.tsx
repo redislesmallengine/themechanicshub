@@ -44,7 +44,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
   const overdue = isOverdue(invoice.status, invoice.dueDate);
   const equipmentLabel = invoice.equipment
     ? [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" ") || invoice.equipment.equipmentType?.name || "Equipment"
-    : null;
+    : invoice.adHocEquipmentLabel;
 
   return (
     <div className="min-h-screen p-4 md:p-10 flex justify-center" style={{ background: "var(--bg-app)" }}>

@@ -251,6 +251,7 @@ export interface InvoiceWithRelationsForPdf {
   voidReason: string | null;
   customer: { name: string; phone: string | null; email: string | null; address: string | null } | null;
   equipment: { make: string | null; model: string | null; serialNumber: string | null; engineType: string | null; year: number | null; equipmentType: { name: string } | null } | null;
+  adHocEquipmentLabel: string | null;
   organization: {
     name: string;
     shopProfile: {
@@ -278,7 +279,9 @@ export async function renderInvoicePdfFromRecord(invoice: InvoiceWithRelationsFo
         year: invoice.equipment.year,
         engineType: invoice.equipment.engineType,
       }
-    : null;
+    : invoice.adHocEquipmentLabel
+      ? { label: invoice.adHocEquipmentLabel, make: null, model: null, serialNumber: null, year: null, engineType: null }
+      : null;
   return renderInvoicePdf({
     invoiceNumber: invoice.invoiceNumber,
     status: invoice.status,

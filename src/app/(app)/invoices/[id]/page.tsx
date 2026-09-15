@@ -38,7 +38,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const editable = isEditable(invoice.status) && canUpdate.success;
   const equipmentLabel = invoice.equipment
     ? [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" ") || invoice.equipment.equipmentType?.name || "Equipment"
-    : null;
+    : invoice.adHocEquipmentLabel;
 
   return (
     <div className="p-6 space-y-6">
@@ -148,6 +148,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   {invoice.equipment.year}
                 </p>
               )}
+            </>
+          ) : invoice.adHocEquipmentLabel ? (
+            <>
+              <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+                {invoice.adHocEquipmentLabel}
+              </p>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                Described directly — no equipment record on file.
+              </p>
             </>
           ) : (
             <p className="text-sm" style={{ color: "var(--text-muted)" }}>

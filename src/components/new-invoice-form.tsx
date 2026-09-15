@@ -23,6 +23,8 @@ interface CustomerWithEquipment {
 export function NewInvoiceForm({ customers }: { customers: CustomerWithEquipment[] }) {
   const router = useRouter();
   const [customerId, setCustomerId] = useState("");
+  const [equipmentId, setEquipmentId] = useState("");
+  const [adHocEquipmentLabel, setAdHocEquipmentLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -59,7 +61,10 @@ export function NewInvoiceForm({ customers }: { customers: CustomerWithEquipment
             id="customerId"
             name="customerId"
             value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
+            onChange={(e) => {
+              setCustomerId(e.target.value);
+              setEquipmentId(""); // the previously-picked equipment may not belong to the newly-picked customer
+            }}
             className="w-full px-3 py-2 rounded-lg text-xs font-semibold"
             style={inputStyle}
           >
@@ -82,7 +87,9 @@ export function NewInvoiceForm({ customers }: { customers: CustomerWithEquipment
           <select
             id="equipmentId"
             name="equipmentId"
-            disabled={!selectedCustomer}
+            value={equipmentId}
+            disabled={!selectedCustomer || !!adHocEquipmentLabel}
+            onChange={(e) => setEquipmentId(e.target.value)}
             className="w-full px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-60"
             style={inputStyle}
           >
@@ -114,9 +121,30 @@ export function NewInvoiceForm({ customers }: { customers: CustomerWithEquipment
         </div>
       </div>
 
+      <div>
+        <label htmlFor="adHocEquipmentLabel" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+          Or describe the machine — no record on file
+        </label>
+        <input
+          id="adHocEquipmentLabel"
+          name="adHocEquipmentLabel"
+          type="text"
+          value={adHocEquipmentLabel}
+          disabled={!!equipmentId}
+          onChange={(e) => setAdHocEquipmentLabel(e.target.value)}
+          placeholder="e.g. Toro 20370 mower, borrowed — no equipment record"
+          className="w-full px-3 py-2 rounded-lg text-xs font-medium disabled:opacity-60"
+          style={inputStyle}
+        />
+        <span className="text-[10px] mt-0.5 block" style={{ color: "var(--text-muted)" }}>
+          For a repair with nothing on file at all — works with or without a customer picked above. Prefer the Equipment
+          dropdown when the machine (or its owner) is already in the system, so it builds real service history.
+        </span>
+      </div>
+
       <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-        Line items — parts, labour, fees — are added on the next screen. No equipment picked = a Parts Only invoice; equipment
-        picked = an Equipment Repair Service invoice, with machine details shown on it.
+        Line items — parts, labour, fees — are added on the next screen. No machine attached = a Parts Only invoice; a machine
+        attached (either way above) = an Equipment Repair Service invoice, with machine details shown on it.
       </p>
 
       {error && (

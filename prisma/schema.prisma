@@ -38,11 +38,11 @@ model User {
   // access (Prisma Studio / TablePlus), never auto-granted by a migration.
   isSiteAdmin Boolean @default(false)
 
-  sessions          Session[]
-  accounts          Account[]
-  memberships       Member[]
-  invitationsSent   Invitation[]  @relation("InvitationInviter")
-  teamMemberships   TeamMember[]
+  sessions             Session[]
+  accounts             Account[]
+  memberships          Member[]
+  invitationsSent      Invitation[]          @relation("InvitationInviter")
+  teamMemberships      TeamMember[]
   partStockAdjustments PartStockAdjustment[]
   assignedWorkOrders   WorkOrder[]
 }
@@ -143,15 +143,15 @@ model Organization {
 // database — never plaintext at rest. Null means that provider isn't
 // configured for this shop and is skipped.
 model EmailSettings {
-  id                String   @id @default(cuid())
-  organizationId    String   @unique
-  fromName          String
-  fromEmail         String
+  id                  String   @id @default(cuid())
+  organizationId      String   @unique
+  fromName            String
+  fromEmail           String
   resendCredentials   String? // encrypted { apiKey }
   sendgridCredentials String? // encrypted { apiKey }
   smtpCredentials     String? // encrypted { host, port, user, password }
-  updatedAt         DateTime @updatedAt
-  createdAt         DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  createdAt           DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
@@ -181,23 +181,23 @@ model EmailLog {
 // fine for a brand-new shop to have none yet — Settings -> Shop Profile
 // just shows empty fields.
 model ShopProfile {
-  id             String   @id @default(cuid())
-  organizationId String   @unique
-  logoKey        String? // object key in the Garage/S3 bucket (src/lib/storage.ts) — not a public URL, served via /api/shop-logo/[organizationId]
-  address        String?
-  phone          String?
-  labourRate     Decimal? @db.Decimal(10, 2) // per hour
-  diagnosticFee  Decimal? @db.Decimal(10, 2) // flat fee
-  taxRate        Decimal? @db.Decimal(5, 2) // percentage, e.g. 15.00
-  taxLabel       String? // e.g. "HST", "GST+PST"
-  province       String?
-  agingAlertDays Int      @default(14) // Phase 4 — flag a work order sitting in "Ready for Pickup" past this many days
-  nextInvoiceNumber Int   @default(1001) // Phase 6 — incremented atomically (src/lib/invoices.ts) each time an invoice is generated; the number used is this value *before* the increment
-  facebookUrl      String? // shown on the invoice (PDF + public view page) if set
-  googleReviewUrl  String? // shop's "leave a review" link (Google Business Profile) — shown as a button on the invoice if set
-  hstNumber        String? // government tax registration number (HST/GST) — printed in the invoice footer if set
-  updatedAt      DateTime @updatedAt
-  createdAt      DateTime @default(now())
+  id                String   @id @default(cuid())
+  organizationId    String   @unique
+  logoKey           String? // object key in the Garage/S3 bucket (src/lib/storage.ts) — not a public URL, served via /api/shop-logo/[organizationId]
+  address           String?
+  phone             String?
+  labourRate        Decimal? @db.Decimal(10, 2) // per hour
+  diagnosticFee     Decimal? @db.Decimal(10, 2) // flat fee
+  taxRate           Decimal? @db.Decimal(5, 2) // percentage, e.g. 15.00
+  taxLabel          String? // e.g. "HST", "GST+PST"
+  province          String?
+  agingAlertDays    Int      @default(14) // Phase 4 — flag a work order sitting in "Ready for Pickup" past this many days
+  nextInvoiceNumber Int      @default(1001) // Phase 6 — incremented atomically (src/lib/invoices.ts) each time an invoice is generated; the number used is this value *before* the increment
+  facebookUrl       String? // shown on the invoice (PDF + public view page) if set
+  googleReviewUrl   String? // shop's "leave a review" link (Google Business Profile) — shown as a button on the invoice if set
+  hstNumber         String? // government tax registration number (HST/GST) — printed in the invoice footer if set
+  updatedAt         DateTime @updatedAt
+  createdAt         DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
@@ -320,8 +320,8 @@ model Part {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  category       PartCategory?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category       PartCategory?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   adjustments    PartStockAdjustment[]
   workOrderParts WorkOrderPart[]
 
@@ -400,14 +400,14 @@ model WorkOrder {
 // Phase 6 invoicing accurate historical numbers to build a line item from
 // without having to guess.
 model WorkOrderPart {
-  id             String   @id @default(cuid())
-  workOrderId    String
-  partId         String?
-  name           String
-  quantity       Int
-  unitCostPrice  Decimal? @db.Decimal(10, 2)
-  unitSellPrice  Decimal? @db.Decimal(10, 2)
-  createdAt      DateTime @default(now())
+  id            String   @id @default(cuid())
+  workOrderId   String
+  partId        String?
+  name          String
+  quantity      Int
+  unitCostPrice Decimal? @db.Decimal(10, 2)
+  unitSellPrice Decimal? @db.Decimal(10, 2)
+  createdAt     DateTime @default(now())
 
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
   part      Part?     @relation(fields: [partId], references: [id], onDelete: SetNull)
@@ -430,30 +430,31 @@ model WorkOrderPart {
 // invoice's numbers stay fixed even if the shop's tax rate changes later —
 // recalculated only when a line item actually changes (src/lib/invoices.ts).
 model Invoice {
-  id                String    @id @default(cuid())
-  organizationId    String
-  workOrderId       String?   @unique
-  customerId        String?
-  equipmentId       String? // machine this invoice is for -- live-linked (not snapshotted), so an edited Equipment record updates past invoices too
-  invoiceType       String    @default("partsOnly") // "partsOnly" | "repairService" | "combined" -- see classifyInvoiceType
-  invoiceNumber     String // e.g. "INV-1001" — from ShopProfile.nextInvoiceNumber
-  status            String    @default("draft") // draft | sent | viewed | paid | void
-  issueDate         DateTime  @default(now())
-  dueDate           DateTime  @default(now())
-  subtotal          Decimal   @db.Decimal(10, 2) @default(0)
-  taxAmount         Decimal   @db.Decimal(10, 2) @default(0)
-  total             Decimal   @db.Decimal(10, 2) @default(0)
-  notes             String?
-  viewToken         String    @unique // powers the public /invoice/[token] page, same pattern as WorkOrder.approvalToken
-  sentAt            DateTime?
-  viewedAt          DateTime? // set the first time the customer opens their invoice link
-  paidAt            DateTime?
-  paymentMethod     String? // "Cash" | "E-transfer" | "Card" | "Cheque" | "Other"
-  paymentReference  String?
-  voidedAt          DateTime?
-  voidReason        String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                  String    @id @default(cuid())
+  organizationId      String
+  workOrderId         String?   @unique
+  customerId          String?
+  equipmentId         String? // machine this invoice is for -- live-linked (not snapshotted), so an edited Equipment record updates past invoices too
+  adHocEquipmentLabel String? // free-text machine description when there's no registered Equipment (and often no Customer) behind this invoice at all -- e.g. a walk-in repair with nothing on file. Mutually exclusive with equipmentId -- see createStandaloneInvoice.
+  invoiceType         String    @default("partsOnly") // "partsOnly" | "repairService" | "combined" -- see classifyInvoiceType
+  invoiceNumber       String // e.g. "INV-1001" — from ShopProfile.nextInvoiceNumber
+  status              String    @default("draft") // draft | sent | viewed | paid | void
+  issueDate           DateTime  @default(now())
+  dueDate             DateTime  @default(now())
+  subtotal            Decimal   @default(0) @db.Decimal(10, 2)
+  taxAmount           Decimal   @default(0) @db.Decimal(10, 2)
+  total               Decimal   @default(0) @db.Decimal(10, 2)
+  notes               String?
+  viewToken           String    @unique // powers the public /invoice/[token] page, same pattern as WorkOrder.approvalToken
+  sentAt              DateTime?
+  viewedAt            DateTime? // set the first time the customer opens their invoice link
+  paidAt              DateTime?
+  paymentMethod       String? // "Cash" | "E-transfer" | "Card" | "Cheque" | "Other"
+  paymentReference    String?
+  voidedAt            DateTime?
+  voidReason          String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   workOrder    WorkOrder?        @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
@@ -472,7 +473,7 @@ model InvoiceLineItem {
   invoiceId   String
   type        String // "labor" | "part" | "fee" | "custom"
   description String
-  quantity    Decimal  @db.Decimal(10, 2) @default(1)
+  quantity    Decimal  @default(1) @db.Decimal(10, 2)
   unitPrice   Decimal  @db.Decimal(10, 2)
   unitCost    Decimal? @db.Decimal(10, 2) // "part" lines only — what the shop paid, shown only to invoice:viewMargins
   taxable     Boolean  @default(true)
@@ -513,11 +514,11 @@ model Member {
 // writes directly to this table, mirroring every PlatformRole into every
 // Organization's row set — see PlatformRole below for why.
 model OrganizationRole {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   organizationId String
   role           String // matches PlatformRole.key
   permission     String // JSON-encoded { [resource]: string[] } — Better Auth stores/reads this as a string, not jsonb
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
   updatedAt      DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)

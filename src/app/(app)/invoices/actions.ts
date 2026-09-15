@@ -32,14 +32,14 @@ async function loadOwnInvoice(invoiceId: string, organizationId: string) {
 /** Recomputes and persists subtotal/taxAmount/total (and invoiceType — adding/removing a line can flip Repair Service into Combined) from the invoice's current line items — called after any line item change. */
 async function recalcTotals(invoiceId: string, organizationId: string) {
   const [invoice, lineItems, shopProfile] = await Promise.all([
-    prisma.invoice.findUnique({ where: { id: invoiceId }, select: { equipmentId: true, workOrderId: true } }),
+    prisma.invoice.findUnique({ where: { id: invoiceId }, select: { equipmentId: true, adHocEquipmentLabel: true, workOrderId: true } }),
     prisma.invoiceLineItem.findMany({ where: { invoiceId } }),
     prisma.shopProfile.findUnique({ where: { organizationId } }),
   ]);
   const inputs: LineItemInput[] = lineItems.map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), taxable: l.taxable }));
   const totals = computeTotals(inputs, Number(shopProfile?.taxRate ?? 0));
   const invoiceType = classifyInvoiceType({
-    hasEquipment: !!invoice?.equipmentId,
+    hasEquipment: !!invoice?.equipmentId || !!invoice?.adHocEquipmentLabel,
     hasWorkOrder: !!invoice?.workOrderId,
     lineItemTypes: lineItems.map((l) => l.type),
   });
@@ -137,18 +137,24 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
 
 /**
  * Standalone invoice — no Work Order behind it. Covers a counter parts sale
- * (no equipment picked) and a quick repair billed on the spot (equipment
- * picked, but never tracked through the Dropped Off -> ... -> Ready for
- * Pickup lifecycle). Customer and equipment are both optional — see
- * "No Customer Info" handling on the invoice pages/PDF for the no-customer
- * case. Line items are added afterward via the existing addCustomLineItem,
- * same as any invoice.
+ * (nothing about equipment), a repair billed on the spot for a customer's
+ * registered equipment, and a repair with no record at all behind it — a
+ * walk-in with nothing on file, described in plain text via
+ * adHocEquipmentLabel instead of a real Equipment link. Customer and
+ * equipment are independently optional — see "No Customer Info" handling on
+ * the invoice pages/PDF. Line items are added afterward via the existing
+ * addCustomLineItem, same as any invoice.
  */
 export async function createStandaloneInvoice(formData: FormData) {
   const { organizationId } = await requireCanManageInvoices("create");
 
   const customerId = String(formData.get("customerId") ?? "").trim() || null;
   const equipmentId = String(formData.get("equipmentId") ?? "").trim() || null;
+  const adHocEquipmentLabel = String(formData.get("adHocEquipmentLabel") ?? "").trim() || null;
+
+  if (equipmentId && adHocEquipmentLabel) {
+    return { error: "Pick registered equipment or describe the machine — not both." };
+  }
 
   if (customerId) {
     const customer = await prisma.customer.findUnique({ where: { id: customerId } });
@@ -170,7 +176,8 @@ export async function createStandaloneInvoice(formData: FormData) {
         organizationId,
         customerId,
         equipmentId,
-        invoiceType: classifyInvoiceType({ hasEquipment: !!equipmentId, hasWorkOrder: false, lineItemTypes: [] }),
+        adHocEquipmentLabel,
+        invoiceType: classifyInvoiceType({ hasEquipment: !!equipmentId || !!adHocEquipmentLabel, hasWorkOrder: false, lineItemTypes: [] }),
         invoiceNumber,
         viewToken: generateViewToken(),
       },
