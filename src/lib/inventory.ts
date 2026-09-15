@@ -7,7 +7,7 @@ import { sendMail } from "@/lib/email";
  * adding/removing a part on a Work Order (Phase 4). Keep this as the single
  * list rather than letting each call site invent its own subset.
  */
-export const ADJUSTMENT_REASONS = ["Restock", "Correction", "Damaged/Lost", "Return to Supplier", "Used on Work Order", "Other"] as const;
+export const ADJUSTMENT_REASONS = ["Restock", "Correction", "Damaged/Lost", "Return to Supplier", "Used on Work Order", "Sold on Invoice", "Other"] as const;
 export type AdjustmentReason = (typeof ADJUSTMENT_REASONS)[number];
 
 /**

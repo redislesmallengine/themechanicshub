@@ -42,13 +42,18 @@ export const INVOICE_TYPE_BADGE: Record<InvoiceType, "success" | "warning" | "er
  * invoices/actions.ts) — never staff-chosen. No equipment attached is
  * always Parts Only. Equipment attached is Repair Service, unless the
  * invoice came from a Work Order (whose generated lines are always typed
- * "labor"/"part"/"fee") and has since had an ad-hoc line added on top
- * (always typed "custom" — see addCustomLineItem): that combination is what
- * "Combined" means — a repair invoice with something extra tacked on.
+ * "labor"/"part"/"fee" with no partId — see generateInvoiceFromWorkOrder)
+ * and has since had something rung up directly on the invoice on top of
+ * that — a free-text line (type "custom", addCustomLineItem) or a part
+ * picked From Inventory (partId set, addInventoryLineItem): that
+ * combination is what "Combined" means — a repair invoice with something
+ * extra tacked on. partId is the reliable signal for "added directly on
+ * the invoice" precisely because a Work Order's own part lines never carry
+ * one (their stock was already decremented at the work order, not here).
  */
-export function classifyInvoiceType(params: { hasEquipment: boolean; hasWorkOrder: boolean; lineItemTypes: string[] }): InvoiceType {
+export function classifyInvoiceType(params: { hasEquipment: boolean; hasWorkOrder: boolean; lineItems: { type: string; partId?: string | null }[] }): InvoiceType {
   if (!params.hasEquipment) return "partsOnly";
-  if (params.hasWorkOrder && params.lineItemTypes.includes("custom")) return "combined";
+  if (params.hasWorkOrder && params.lineItems.some((l) => l.type === "custom" || !!l.partId)) return "combined";
   return "repairService";
 }
 

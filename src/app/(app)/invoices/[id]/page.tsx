@@ -26,10 +26,11 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   });
   if (!invoice || invoice.organizationId !== organizationId) notFound();
 
-  const [canUpdate, canVoid, canViewMargins] = await Promise.all([
+  const [canUpdate, canVoid, canViewMargins, availableParts] = await Promise.all([
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["update"] } } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["void"] } } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["viewMargins"] } } }),
+    prisma.part.findMany({ where: { organizationId, quantityOnHand: { gt: 0 } }, orderBy: { name: "asc" } }),
   ]);
 
   const status = invoice.status as InvoiceStatus;
@@ -177,6 +178,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           lines={invoice.lineItems.map((l) => ({
             id: l.id,
             type: l.type,
+            partId: l.partId,
             description: l.description,
             quantity: l.quantity.toString(),
             unitPrice: l.unitPrice.toString(),
@@ -184,6 +186,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             taxable: l.taxable,
             lineTotal: l.lineTotal.toString(),
           }))}
+          availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, quantityOnHand: p.quantityOnHand, sellPrice: p.sellPrice?.toString() ?? null }))}
         />
         <div className="flex justify-end mt-4">
           <div className="w-56 text-sm">

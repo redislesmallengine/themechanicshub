@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendMail } from "@/lib/email";
 import { claimInvoiceNumber, generateViewToken, computeTotals, classifyInvoiceType, isEditable, PAYMENT_METHODS, type LineItemInput } from "@/lib/invoices";
+import { applyStockAdjustment } from "@/lib/inventory";
 import { renderInvoicePdfFromRecord } from "@/lib/invoice-pdf";
 
 async function requireCanManageInvoices(action: "create" | "update" | "void" = "update") {
@@ -20,7 +21,7 @@ async function requireCanManageInvoices(action: "create" | "update" | "void" = "
   });
   if (!allowed.success) throw new Error("You don't have permission to do that.");
 
-  return { organizationId: session.session.activeOrganizationId };
+  return { organizationId: session.session.activeOrganizationId, userId: session.user.id };
 }
 
 async function loadOwnInvoice(invoiceId: string, organizationId: string) {
@@ -41,7 +42,7 @@ async function recalcTotals(invoiceId: string, organizationId: string) {
   const invoiceType = classifyInvoiceType({
     hasEquipment: !!invoice?.equipmentId || !!invoice?.adHocEquipmentLabel,
     hasWorkOrder: !!invoice?.workOrderId,
-    lineItemTypes: lineItems.map((l) => l.type),
+    lineItems: lineItems.map((l) => ({ type: l.type, partId: l.partId })),
   });
   await prisma.invoice.update({ where: { id: invoiceId }, data: { ...totals, invoiceType } });
 }
@@ -121,7 +122,7 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
         workOrderId,
         customerId: workOrder.customerId,
         equipmentId: workOrder.equipmentId,
-        invoiceType: classifyInvoiceType({ hasEquipment: true, hasWorkOrder: true, lineItemTypes: lines.map((l) => l.type) }),
+        invoiceType: classifyInvoiceType({ hasEquipment: true, hasWorkOrder: true, lineItems: lines.map((l) => ({ type: l.type })) }),
         invoiceNumber,
         viewToken: generateViewToken(),
         ...totals,
@@ -177,7 +178,7 @@ export async function createStandaloneInvoice(formData: FormData) {
         customerId,
         equipmentId,
         adHocEquipmentLabel,
-        invoiceType: classifyInvoiceType({ hasEquipment: !!equipmentId || !!adHocEquipmentLabel, hasWorkOrder: false, lineItemTypes: [] }),
+        invoiceType: classifyInvoiceType({ hasEquipment: !!equipmentId || !!adHocEquipmentLabel, hasWorkOrder: false, lineItems: [] }),
         invoiceNumber,
         viewToken: generateViewToken(),
       },
@@ -223,17 +224,92 @@ export async function addCustomLineItem(invoiceId: string, formData: FormData) {
   return { success: true };
 }
 
+/**
+ * The "From Inventory" counterpart to addCustomLineItem — rings up a real
+ * Part directly on the invoice: decrements actual stock through the same
+ * applyStockAdjustment() Work Orders already use (same negative-stock
+ * block, same low-stock email, same Stock History audit trail), and
+ * snapshots its name/prices onto the line the same way WorkOrderPart does.
+ * partId being set here (vs. left null on a line copied in from a Work
+ * Order) is what tells removeLineItem and classifyInvoiceType this part's
+ * stock was moved right here, on this invoice.
+ */
+export async function addInventoryLineItem(invoiceId: string, formData: FormData) {
+  const { organizationId, userId } = await requireCanManageInvoices("update");
+  const invoice = await loadOwnInvoice(invoiceId, organizationId);
+  if (!invoice) return { error: "That invoice doesn't exist." };
+  if (!isEditable(invoice.status)) return { error: "This invoice can't be edited anymore." };
+
+  const partId = String(formData.get("partId") ?? "").trim();
+  const quantityRaw = String(formData.get("quantity") ?? "").trim();
+  const quantity = Number(quantityRaw);
+  if (!partId) return { error: "Pick a part." };
+  if (!Number.isInteger(quantity) || quantity <= 0) return { error: "Quantity needs to be a whole number greater than zero." };
+
+  const part = await prisma.part.findUnique({ where: { id: partId } });
+  if (!part || part.organizationId !== organizationId) return { error: "That part doesn't exist." };
+
+  const taxable = formData.get("taxable") === "on";
+  const unitPrice = Number(part.sellPrice ?? 0);
+
+  const adjustment = await applyStockAdjustment({
+    organizationId,
+    partId,
+    delta: -quantity,
+    reason: "Sold on Invoice",
+    note: `Invoice ${invoiceId}`,
+    createdByUserId: userId,
+  });
+  if ("error" in adjustment) return { error: adjustment.error };
+
+  await prisma.invoiceLineItem.create({
+    data: {
+      invoiceId,
+      type: "part",
+      partId,
+      description: part.name,
+      quantity: quantity.toFixed(2),
+      unitPrice: unitPrice.toFixed(2),
+      unitCost: part.costPrice?.toString() ?? null,
+      taxable,
+      lineTotal: (quantity * unitPrice).toFixed(2),
+      sortOrder: invoice.lineItems.length,
+    },
+  });
+  await recalcTotals(invoiceId, organizationId);
+
+  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/inventory");
+  return { success: true };
+}
+
 export async function removeLineItem(lineItemId: string) {
-  const { organizationId } = await requireCanManageInvoices("update");
+  const { organizationId, userId } = await requireCanManageInvoices("update");
 
   const line = await prisma.invoiceLineItem.findUnique({ where: { id: lineItemId }, include: { invoice: true } });
   if (!line || line.invoice.organizationId !== organizationId) return { error: "That line doesn't exist." };
   if (!isEditable(line.invoice.status)) return { error: "This invoice can't be edited anymore." };
 
+  // Only a line rung up directly on this invoice ever moved stock (partId
+  // set — see addInventoryLineItem); a line copied in from a Work Order was
+  // already decremented there, so removing it here must NOT touch stock.
+  if (line.partId) {
+    const restore = await applyStockAdjustment({
+      organizationId,
+      partId: line.partId,
+      delta: Number(line.quantity),
+      reason: "Correction",
+      note: `Removed from invoice ${line.invoiceId}`,
+      createdByUserId: userId,
+    });
+    if ("error" in restore) return { error: restore.error };
+  }
+
   await prisma.invoiceLineItem.delete({ where: { id: lineItemId } });
   await recalcTotals(line.invoiceId, organizationId);
 
   revalidatePath(`/invoices/${line.invoiceId}`);
+  revalidatePath("/inventory");
   return { success: true };
 }
 

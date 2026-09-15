@@ -320,10 +320,11 @@ model Part {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  category       PartCategory?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  adjustments    PartStockAdjustment[]
-  workOrderParts WorkOrderPart[]
+  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category         PartCategory?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  adjustments      PartStockAdjustment[]
+  workOrderParts   WorkOrderPart[]
+  invoiceLineItems InvoiceLineItem[]
 
   @@unique([organizationId, sku])
   @@index([organizationId])
@@ -472,6 +473,7 @@ model InvoiceLineItem {
   id          String   @id @default(cuid())
   invoiceId   String
   type        String // "labor" | "part" | "fee" | "custom"
+  partId      String? // set ONLY when this line was rung up directly on the invoice via the "From Inventory" picker -- see addInventoryLineItem. A part line copied in from a Work Order (already decremented there) deliberately leaves this null, so a part's stock only ever moves once, never twice.
   description String
   quantity    Decimal  @default(1) @db.Decimal(10, 2)
   unitPrice   Decimal  @db.Decimal(10, 2)
@@ -482,8 +484,10 @@ model InvoiceLineItem {
   createdAt   DateTime @default(now())
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  part    Part?   @relation(fields: [partId], references: [id], onDelete: SetNull)
 
   @@index([invoiceId])
+  @@index([partId])
 }
 
 model Member {
