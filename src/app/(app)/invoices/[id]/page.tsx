@@ -9,6 +9,7 @@ import { InvoiceStatusPanel } from "@/components/invoice-status-panel";
 import { InvoiceDetailsForm } from "@/components/invoice-details-form";
 import { InvoicePartyForm } from "@/components/invoice-party-form";
 import { DeleteInvoiceButton } from "@/components/delete-invoice-button";
+import { SendWhatsAppButton } from "@/components/send-whatsapp-button";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -24,6 +25,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       customer: true,
       equipment: { include: { equipmentType: true } },
       workOrder: true,
+      organization: { select: { name: true } },
     },
   });
   if (!invoice || invoice.organizationId !== organizationId) notFound();
@@ -45,6 +47,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     : invoice.adHocEquipmentLabel;
   const hasInventoryLines = invoice.lineItems.some((l) => !!l.partId);
   const canEditParty = editable && !invoice.workOrderId;
+  const pdfUrl = `${process.env.BETTER_AUTH_URL}/api/invoice/${invoice.viewToken}/pdf`;
 
   const partyCustomers = canEditParty
     ? await prisma.customer.findMany({
@@ -104,6 +107,13 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             >
               Download PDF
             </a>
+            <SendWhatsAppButton
+              initialPhone={invoice.customer?.phone ?? null}
+              customerName={invoice.customer?.name ?? null}
+              invoiceNumber={invoice.invoiceNumber}
+              shopName={invoice.organization.name}
+              pdfUrl={pdfUrl}
+            />
             {status === "draft" && canDelete.success && (
               <DeleteInvoiceButton invoiceId={invoice.id} invoiceNumber={invoice.invoiceNumber} hasInventoryLines={hasInventoryLines} redirectTo="/invoices" />
             )}
