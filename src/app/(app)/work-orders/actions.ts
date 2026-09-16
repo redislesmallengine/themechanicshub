@@ -122,6 +122,48 @@ export async function updateDiagnosis(workOrderId: string, formData: FormData) {
   return { success: true };
 }
 
+/** Shared by sendEstimate (real send) and previewEstimateEmail (preview only) so the two can never drift apart. */
+function buildEstimateEmail(params: { equipmentLabel: string; shopName: string; amount: number; estimateNotes: string; url: string }) {
+  return {
+    subject: `Repair estimate for ${params.equipmentLabel} — ${params.shopName}`,
+    html: `<p>Here's the estimate for ${params.equipmentLabel}:</p>
+           <p><b>$${params.amount.toFixed(2)}</b> — ${params.estimateNotes}</p>
+           <p><a href="${params.url}">Review and approve or decline</a></p>
+           <p>If you'd rather talk it through, just give the shop a call.</p>`,
+  };
+}
+
+/** Validates the draft and returns the exact email sendEstimate would send — without sending it or touching the work order. The real link's unique code doesn't exist yet at preview time (it's only generated on actual send), so this shows a placeholder in its place. */
+export async function previewEstimateEmail(workOrderId: string, formData: FormData) {
+  const { organizationId } = await requireCanManageWorkOrders("update");
+  const workOrder = await loadOwnWorkOrder(workOrderId, organizationId);
+  if (!workOrder) return { error: "That work order doesn't exist." };
+
+  const amountRaw = String(formData.get("estimateAmount") ?? "").trim();
+  const amount = Number(amountRaw);
+  if (!amountRaw || !Number.isFinite(amount) || amount < 0) return { error: "Enter a valid estimate amount." };
+
+  const estimateNotes = String(formData.get("estimateNotes") ?? "").trim();
+  if (!estimateNotes) return { error: "Give the customer a plain-language line or two on what the estimate covers." };
+
+  const [customer, equipment, shop] = await Promise.all([
+    prisma.customer.findUnique({ where: { id: workOrder.customerId } }),
+    prisma.equipment.findUnique({ where: { id: workOrder.equipmentId }, include: { equipmentType: true } }),
+    prisma.organization.findUnique({ where: { id: organizationId } }),
+  ]);
+
+  const equipmentLabel = [equipment?.make, equipment?.model].filter(Boolean).join(" / ") || equipment?.equipmentType?.name || "your equipment";
+  const { subject, html } = buildEstimateEmail({
+    equipmentLabel,
+    shopName: shop?.name ?? "your shop",
+    amount,
+    estimateNotes,
+    url: `${process.env.BETTER_AUTH_URL}/estimate/a-unique-link-generated-when-you-send`,
+  });
+
+  return { success: true, subject, html, to: customer?.email ?? null };
+}
+
 /** Diagnosing (or later) -> Awaiting Approval. Generates the token and emails the customer their approval link. */
 export async function sendEstimate(workOrderId: string, formData: FormData) {
   const { organizationId } = await requireCanManageWorkOrders("update");
@@ -152,14 +194,14 @@ export async function sendEstimate(workOrderId: string, formData: FormData) {
 
   const url = `${process.env.BETTER_AUTH_URL}/estimate/${token}`;
   const equipmentLabel = [equipment?.make, equipment?.model].filter(Boolean).join(" / ") || equipment?.equipmentType?.name || "your equipment";
+  const { subject, html } = buildEstimateEmail({ equipmentLabel, shopName: shop?.name ?? "your shop", amount, estimateNotes, url });
   await sendMail({
     to: customer.email,
-    subject: `Repair estimate for ${equipmentLabel} — ${shop?.name ?? "your shop"}`,
-    html: `<p>Here's the estimate for ${equipmentLabel}:</p>
-           <p><b>$${amount.toFixed(2)}</b> — ${estimateNotes}</p>
-           <p><a href="${url}">Review and approve or decline</a></p>
-           <p>If you'd rather talk it through, just give the shop a call.</p>`,
+    subject,
+    html,
     organizationId,
+    relatedType: "estimate",
+    relatedId: workOrderId,
   });
 
   revalidatePath(`/work-orders/${workOrderId}`);

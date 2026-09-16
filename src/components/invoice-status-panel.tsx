@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { sendInvoice, markInvoicePaid, voidInvoice } from "@/app/(app)/invoices/actions";
+import { sendInvoice, previewInvoiceEmail, markInvoicePaid, voidInvoice } from "@/app/(app)/invoices/actions";
 import { PAYMENT_METHODS } from "@/lib/invoices";
 
 const inputStyle = {
@@ -16,11 +16,25 @@ type ActionResult = { success?: boolean; error?: string } | undefined;
 function SendForm({ invoiceId, hasCustomer, hasCustomerEmail }: { invoiceId: string; hasCustomer: boolean; hasCustomerEmail: boolean }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null);
+  const [pendingPreview, startPreview] = useTransition();
+  const [pendingSend, startSend] = useTransition();
 
-  function handleClick() {
+  function handlePreview() {
     setError(null);
-    startTransition(async () => {
+    startPreview(async () => {
+      const result = await previewInvoiceEmail(invoiceId);
+      if (result?.error || !result.subject || !result.html) {
+        setError(result?.error ?? "Couldn't load the preview.");
+        return;
+      }
+      setPreview({ subject: result.subject, html: result.html });
+    });
+  }
+
+  function handleConfirmSend() {
+    setError(null);
+    startSend(async () => {
       const result: ActionResult = await sendInvoice(invoiceId);
       if (result?.error) {
         setError(result.error);
@@ -39,13 +53,46 @@ function SendForm({ invoiceId, hasCustomer, hasCustomerEmail }: { invoiceId: str
             : "This invoice has no customer attached — nothing to email it to. Download the PDF instead, or hand it over in person."}
         </p>
       )}
-      <button onClick={handleClick} disabled={pending || !hasCustomerEmail} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-        {pending ? "Sending…" : "Send Invoice"}
+      <button onClick={handlePreview} disabled={pendingPreview || !hasCustomerEmail} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
+        {pendingPreview ? "Loading Preview…" : "Preview Email"}
       </button>
       {error && (
         <p className="text-xs font-semibold mt-2" style={{ color: "var(--color-error-solid)" }}>
           {error}
         </p>
+      )}
+
+      {preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.4)" }} onClick={() => setPreview(null)}>
+          <div
+            className="w-full max-w-lg max-h-[85vh] flex flex-col rounded-xl overflow-hidden"
+            style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-md)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+              <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+                {preview.subject}
+              </h3>
+              <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+                Exactly what will be sent, PDF attached — this is the real view/pay link the customer will use.
+              </p>
+            </div>
+            <iframe title="Invoice email preview" srcDoc={preview.html} sandbox="" className="flex-1 w-full bg-white" />
+            <div className="p-4 flex items-center justify-end gap-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+              <button
+                type="button"
+                onClick={() => setPreview(null)}
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold"
+                style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}
+              >
+                Cancel
+              </button>
+              <button type="button" onClick={handleConfirmSend} disabled={pendingSend} className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
+                {pendingSend ? "Sending…" : "Confirm & Send"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

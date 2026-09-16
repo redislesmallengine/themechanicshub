@@ -9,6 +9,7 @@ import { WorkOrderStatusPanel } from "@/components/work-order-status-panel";
 import { WorkOrderDiagnosisForm } from "@/components/work-order-diagnosis-form";
 import { WorkOrderPartsPanel } from "@/components/work-order-parts-panel";
 import { GenerateInvoiceButton } from "@/components/generate-invoice-button";
+import { SentEmailsPanel } from "@/components/sent-emails-panel";
 
 export default async function WorkOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -29,10 +30,11 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   });
   if (!workOrder || workOrder.organizationId !== organizationId) notFound();
 
-  const [{ members }, availableParts, shopProfile] = await Promise.all([
+  const [{ members }, availableParts, shopProfile, sentEmails] = await Promise.all([
     auth.api.listMembers({ headers: reqHeaders }),
     prisma.part.findMany({ where: { organizationId, quantityOnHand: { gt: 0 } }, orderBy: { name: "asc" } }),
     prisma.shopProfile.findUnique({ where: { organizationId } }),
+    prisma.sentEmail.findMany({ where: { relatedType: "estimate", relatedId: workOrder.id }, orderBy: { createdAt: "desc" } }),
   ]);
 
   const status = workOrder.status as WorkOrderStatus;
@@ -102,6 +104,24 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
             )}
           </div>
         )}
+      </div>
+
+      <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+        <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
+          Emails Sent
+        </h2>
+        <SentEmailsPanel
+          emails={sentEmails.map((e) => ({
+            id: e.id,
+            to: e.to,
+            subject: e.subject,
+            html: e.html,
+            success: e.success,
+            provider: e.provider,
+            errorMessage: e.errorMessage,
+            createdAt: e.createdAt.toISOString(),
+          }))}
+        />
       </div>
 
       <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>

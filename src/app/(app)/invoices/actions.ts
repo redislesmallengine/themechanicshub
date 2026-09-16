@@ -374,6 +374,36 @@ export async function updateInvoiceParty(invoiceId: string, formData: FormData) 
   return { success: true };
 }
 
+/** Shared by sendInvoice (real send) and previewInvoiceEmail (preview only) so the two can never drift apart. */
+function buildInvoiceEmail(params: { invoiceNumber: string; shopName: string; total: string; url: string }) {
+  return {
+    subject: `Invoice ${params.invoiceNumber} from ${params.shopName}`,
+    html: `<p>Your invoice is ready — total due: <b>$${params.total}</b>.</p>
+           <p><a href="${params.url}">View your invoice</a></p>
+           <p>A PDF copy is attached.</p>`,
+  };
+}
+
+/** Returns the exact email sendInvoice would send, without sending it. Unlike the estimate's approval link, an invoice's viewToken already exists (set at creation), so this shows the real, final link — not a placeholder. */
+export async function previewInvoiceEmail(invoiceId: string) {
+  const { organizationId } = await requireCanManageInvoices("update");
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    include: { customer: true, organization: true },
+  });
+  if (!invoice || invoice.organizationId !== organizationId) return { error: "That invoice doesn't exist." };
+
+  const url = `${process.env.BETTER_AUTH_URL}/invoice/${invoice.viewToken}`;
+  const { subject, html } = buildInvoiceEmail({
+    invoiceNumber: invoice.invoiceNumber,
+    shopName: invoice.organization.name,
+    total: invoice.total.toString(),
+    url,
+  });
+
+  return { success: true, subject, html, to: invoice.customer?.email ?? null };
+}
+
 export async function sendInvoice(invoiceId: string) {
   const { organizationId } = await requireCanManageInvoices("update");
   const invoice = await prisma.invoice.findUnique({
@@ -394,14 +424,15 @@ export async function sendInvoice(invoiceId: string) {
   const pdfBuffer = await renderInvoicePdfFromRecord(invoice);
 
   const url = `${process.env.BETTER_AUTH_URL}/invoice/${invoice.viewToken}`;
+  const { subject, html } = buildInvoiceEmail({ invoiceNumber: invoice.invoiceNumber, shopName: invoice.organization.name, total: invoice.total.toString(), url });
   await sendMail({
     to: invoice.customer.email,
-    subject: `Invoice ${invoice.invoiceNumber} from ${invoice.organization.name}`,
-    html: `<p>Your invoice is ready — total due: <b>$${invoice.total.toString()}</b>.</p>
-           <p><a href="${url}">View your invoice</a></p>
-           <p>A PDF copy is attached.</p>`,
+    subject,
+    html,
     organizationId,
     attachments: [{ filename: `${invoice.invoiceNumber}.pdf`, content: pdfBuffer }],
+    relatedType: "invoice",
+    relatedId: invoiceId,
   });
 
   await prisma.invoice.update({ where: { id: invoiceId }, data: { status: "sent", sentAt: new Date() } });

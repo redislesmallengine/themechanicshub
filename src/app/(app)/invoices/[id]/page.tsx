@@ -10,6 +10,7 @@ import { InvoiceDetailsForm } from "@/components/invoice-details-form";
 import { InvoicePartyForm } from "@/components/invoice-party-form";
 import { DeleteInvoiceButton } from "@/components/delete-invoice-button";
 import { SendWhatsAppButton } from "@/components/send-whatsapp-button";
+import { SentEmailsPanel } from "@/components/sent-emails-panel";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -30,12 +31,13 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   });
   if (!invoice || invoice.organizationId !== organizationId) notFound();
 
-  const [canUpdate, canVoid, canDelete, canViewMargins, availableParts] = await Promise.all([
+  const [canUpdate, canVoid, canDelete, canViewMargins, availableParts, sentEmails] = await Promise.all([
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["update"] } } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["void"] } } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["delete"] } } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["viewMargins"] } } }),
     prisma.part.findMany({ where: { organizationId, quantityOnHand: { gt: 0 } }, orderBy: { name: "asc" } }),
+    prisma.sentEmail.findMany({ where: { relatedType: "invoice", relatedId: id }, orderBy: { createdAt: "desc" } }),
   ]);
 
   const status = invoice.status as InvoiceStatus;
@@ -299,6 +301,24 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             Reason: {invoice.voidReason}
           </p>
         )}
+      </div>
+
+      <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+        <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
+          Emails Sent
+        </h2>
+        <SentEmailsPanel
+          emails={sentEmails.map((e) => ({
+            id: e.id,
+            to: e.to,
+            subject: e.subject,
+            html: e.html,
+            success: e.success,
+            provider: e.provider,
+            errorMessage: e.errorMessage,
+            createdAt: e.createdAt.toISOString(),
+          }))}
+        />
       </div>
     </div>
   );

@@ -118,6 +118,7 @@ model Organization {
   teams             Team[]
   emailSettings     EmailSettings?
   emailLogs         EmailLog[]
+  sentEmails        SentEmail[]
   organizationRoles OrganizationRole[]
   shopProfile       ShopProfile?
   equipmentTypes    EquipmentType[]
@@ -174,6 +175,35 @@ model EmailLog {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, provider, createdAt])
+}
+
+// A permanent copy of every email the app actually sends -- exact subject,
+// exact HTML, exactly as handed to the provider -- written from sendMail()
+// itself (src/lib/email.ts) so every email type is covered by one change
+// rather than each call site logging its own copy. organizationId is
+// optional because sendMail() itself sometimes has none yet (a password
+// reset before the user's org membership is resolved). relatedType/
+// relatedId (e.g. "estimate"/workOrderId, "invoice"/invoiceId) are what
+// power the "Emails Sent" panel on those detail pages; left null for
+// sends with no natural single record to attach to (staff invites, low
+// stock alerts).
+model SentEmail {
+  id             String   @id @default(cuid())
+  organizationId String?
+  to             String
+  subject        String
+  html           String
+  provider       String? // "resend" | "sendgrid" | "smtp" -- whichever actually sent it (or made the final failed attempt)
+  success        Boolean
+  errorMessage   String?
+  relatedType    String? // "estimate" | "invoice"
+  relatedId      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([relatedType, relatedId])
 }
 
 // Phase 2 — Shop Configuration. Everything later phases read as "the

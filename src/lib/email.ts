@@ -141,14 +141,56 @@ export async function getUsageSummary(organizationId: string) {
  * quota tracking — there's no organization to attribute usage logs to, and
  * the platform default is a single fixed provider anyway.
  */
-export async function sendMail(params: { to: string; subject: string; html: string; organizationId?: string | null; attachments?: EmailAttachment[] }) {
+export async function sendMail(params: {
+  to: string;
+  subject: string;
+  html: string;
+  organizationId?: string | null;
+  attachments?: EmailAttachment[];
+  /** Powers the "Emails Sent" panel on that record's detail page — e.g. "estimate"/workOrderId, "invoice"/invoiceId. Omit for sends with no single natural record to attach to. */
+  relatedType?: string;
+  relatedId?: string;
+}) {
+  // Best-effort permanent copy of exactly what was attempted, regardless of
+  // outcome — this must never be the reason an actual send fails, so any
+  // error writing it is swallowed. See SentEmail's schema comment for why
+  // this lives in sendMail() itself rather than each call site.
+  async function logSent(success: boolean, provider: EmailProvider | null, errorMessage?: string) {
+    try {
+      await prisma.sentEmail.create({
+        data: {
+          organizationId: params.organizationId || null,
+          to: params.to,
+          subject: params.subject,
+          html: params.html,
+          provider,
+          success,
+          errorMessage: errorMessage ?? null,
+          relatedType: params.relatedType ?? null,
+          relatedId: params.relatedId ?? null,
+        },
+      });
+    } catch {
+      // logging the copy is best-effort — never let it mask the real outcome
+    }
+  }
+
   const fallback = platformDefault();
 
   if (!params.organizationId) {
-    if (!fallback) throw new Error("No email provider configured (SMTP_HOST is unset).");
+    if (!fallback) {
+      await logSent(false, null, "No email provider configured (SMTP_HOST is unset).");
+      throw new Error("No email provider configured (SMTP_HOST is unset).");
+    }
     const from = `Mechanic Shop Hub <${process.env.SMTP_FROM ?? process.env.SMTP_USER ?? ""}>`;
-    await sendVia(fallback, from, params.to, params.subject, params.html, params.attachments);
-    return;
+    try {
+      await sendVia(fallback, from, params.to, params.subject, params.html, params.attachments);
+      await logSent(true, fallback.provider);
+      return;
+    } catch (err) {
+      await logSent(false, fallback.provider, err instanceof Error ? err.message : String(err));
+      throw err;
+    }
   }
 
   const organizationId = params.organizationId;
@@ -161,7 +203,9 @@ export async function sendMail(params: { to: string; subject: string; html: stri
   if (fallback) candidates.push(fallback); // platform default always brings up the rear
 
   if (candidates.length === 0) {
-    throw new Error("No email provider configured (not even the platform default — check SMTP_HOST).");
+    const message = "No email provider configured (not even the platform default — check SMTP_HOST).";
+    await logSent(false, null, message);
+    throw new Error(message);
   }
 
   const fromName = settings?.fromName ?? "Mechanic Shop Hub";
@@ -169,23 +213,26 @@ export async function sendMail(params: { to: string; subject: string; html: stri
   const from = `${fromName} <${fromEmail}>`;
 
   let lastError: unknown;
+  let lastProvider: EmailProvider | null = null;
   for (const candidate of candidates) {
     if (!(await isUnderQuota(organizationId, candidate.provider))) continue; // next in the cascade
 
     try {
       await sendVia(candidate, from, params.to, params.subject, params.html, params.attachments);
       await prisma.emailLog.create({ data: { organizationId, provider: candidate.provider, success: true } });
+      await logSent(true, candidate.provider);
       return;
     } catch (err) {
       lastError = err;
+      lastProvider = candidate.provider;
       await prisma.emailLog.create({ data: { organizationId, provider: candidate.provider, success: false } });
       // fall through to the next candidate
     }
   }
 
-  throw new Error(
-    `All configured email providers are over quota or failing. Last error: ${
-      lastError instanceof Error ? lastError.message : String(lastError)
-    }`
-  );
+  const message = `All configured email providers are over quota or failing. Last error: ${
+    lastError instanceof Error ? lastError.message : String(lastError)
+  }`;
+  await logSent(false, lastProvider, message);
+  throw new Error(message);
 }
