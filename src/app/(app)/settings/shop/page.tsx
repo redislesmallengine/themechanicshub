@@ -47,6 +47,7 @@ export default async function ShopProfilePage() {
           initialFacebookUrl={profile?.facebookUrl ?? ""}
           initialGoogleReviewUrl={profile?.googleReviewUrl ?? ""}
           initialHstNumber={profile?.hstNumber ?? ""}
+          initialInvoiceReplyToEmail={profile?.invoiceReplyToEmail ?? ""}
           hasLogo={!!profile?.logoKey}
         />
       </div>

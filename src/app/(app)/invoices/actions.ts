@@ -389,7 +389,7 @@ export async function previewInvoiceEmail(invoiceId: string) {
   const { organizationId } = await requireCanManageInvoices("update");
   const invoice = await prisma.invoice.findUnique({
     where: { id: invoiceId },
-    include: { customer: true, organization: true },
+    include: { customer: true, organization: { include: { shopProfile: true } } },
   });
   if (!invoice || invoice.organizationId !== organizationId) return { error: "That invoice doesn't exist." };
 
@@ -401,9 +401,16 @@ export async function previewInvoiceEmail(invoiceId: string) {
     url,
   });
 
-  return { success: true, subject, html, to: invoice.customer?.email ?? null };
+  return { success: true, subject, html, to: invoice.customer?.email ?? null, replyTo: invoice.organization.shopProfile?.invoiceReplyToEmail ?? null };
 }
 
+/**
+ * Sendable at any status except Void — including Paid, so a shop can hand a
+ * customer a fresh copy after the fact (lost the email, wants it for their
+ * own records, etc.). Only flips status/sentAt to "sent" the first time
+ * (currently Draft); resending an already-Sent/Viewed/Paid invoice must
+ * never downgrade its status back and lose that it was actually paid.
+ */
 export async function sendInvoice(invoiceId: string) {
   const { organizationId } = await requireCanManageInvoices("update");
   const invoice = await prisma.invoice.findUnique({
@@ -416,7 +423,7 @@ export async function sendInvoice(invoiceId: string) {
     },
   });
   if (!invoice || invoice.organizationId !== organizationId) return { error: "That invoice doesn't exist." };
-  if (invoice.status !== "draft") return { error: "This invoice was already sent." };
+  if (invoice.status === "void") return { error: "This invoice has been voided — nothing to send." };
   if (invoice.lineItems.length === 0) return { error: "Add at least one line item before sending." };
   if (!invoice.customer) return { error: "This invoice has no customer attached — nothing to send it to. Download the PDF instead." };
   if (!invoice.customer.email) return { error: "This customer has no email on file — add one before sending an invoice." };
@@ -433,9 +440,12 @@ export async function sendInvoice(invoiceId: string) {
     attachments: [{ filename: `${invoice.invoiceNumber}.pdf`, content: pdfBuffer }],
     relatedType: "invoice",
     relatedId: invoiceId,
+    replyTo: invoice.organization.shopProfile?.invoiceReplyToEmail ?? undefined,
   });
 
-  await prisma.invoice.update({ where: { id: invoiceId }, data: { status: "sent", sentAt: new Date() } });
+  if (invoice.status === "draft") {
+    await prisma.invoice.update({ where: { id: invoiceId }, data: { status: "sent", sentAt: new Date() } });
+  }
 
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");

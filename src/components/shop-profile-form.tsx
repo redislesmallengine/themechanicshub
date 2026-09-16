@@ -26,6 +26,7 @@ export function ShopProfileForm({
   initialFacebookUrl,
   initialGoogleReviewUrl,
   initialHstNumber,
+  initialInvoiceReplyToEmail,
   hasLogo,
 }: {
   organizationId: string;
@@ -41,6 +42,7 @@ export function ShopProfileForm({
   initialFacebookUrl: string;
   initialGoogleReviewUrl: string;
   initialHstNumber: string;
+  initialInvoiceReplyToEmail: string;
   hasLogo: boolean;
 }) {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -209,6 +211,24 @@ export function ShopProfileForm({
         <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
           Pulled onto every invoice automatically once invoicing (Phase 6) lands.
         </p>
+        <div className="mt-3">
+          <label htmlFor="invoiceReplyToEmail" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+            Reply-To Email Address for Invoice
+          </label>
+          <input
+            id="invoiceReplyToEmail"
+            name="invoiceReplyToEmail"
+            type="email"
+            defaultValue={initialInvoiceReplyToEmail}
+            placeholder="billing@yourshop.com"
+            className="w-full max-w-sm px-3 py-2 rounded-lg text-xs font-medium"
+            style={inputStyle}
+          />
+          <span className="text-[10px] mt-0.5 block" style={{ color: "var(--text-muted)" }}>
+            Optional — when a customer hits Reply on an invoice email, it goes here instead of wherever the email actually sent
+            from. Leave blank to use the sending address.
+          </span>
+        </div>
       </div>
 
       <div>

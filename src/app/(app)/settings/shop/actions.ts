@@ -44,6 +44,14 @@ function normalizeUrl(raw: FormDataEntryValue | null): string | null {
   return /^https?:\/\//i.test(text) ? text : `https://${text}`;
 }
 
+/** Optional email field — blank stays blank, otherwise needs to at least look like an address. */
+function parseOptionalEmail(raw: FormDataEntryValue | null, label: string): { value: string | null } | { error: string } {
+  const text = String(raw ?? "").trim();
+  if (!text) return { value: null };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) return { error: `${label} doesn't look like a valid email address.` };
+  return { value: text };
+}
+
 export async function saveShopProfile(formData: FormData) {
   const { organizationId, reqHeaders } = await requireCanManageShopSettings();
 
@@ -73,6 +81,9 @@ export async function saveShopProfile(formData: FormData) {
   const facebookUrl = normalizeUrl(formData.get("facebookUrl"));
   const googleReviewUrl = normalizeUrl(formData.get("googleReviewUrl"));
   const hstNumber = String(formData.get("hstNumber") ?? "").trim();
+
+  const invoiceReplyToEmail = parseOptionalEmail(formData.get("invoiceReplyToEmail"), "Reply-To Email Address for Invoice");
+  if ("error" in invoiceReplyToEmail) return { error: invoiceReplyToEmail.error };
 
   // Organization.name is Better Auth's own field (organization plugin) —
   // update it there rather than duplicating a name column on ShopProfile.
@@ -105,6 +116,7 @@ export async function saveShopProfile(formData: FormData) {
       facebookUrl,
       googleReviewUrl,
       hstNumber: hstNumber || null,
+      invoiceReplyToEmail: invoiceReplyToEmail.value,
     },
     update: {
       address: address || null,
@@ -118,6 +130,7 @@ export async function saveShopProfile(formData: FormData) {
       facebookUrl,
       googleReviewUrl,
       hstNumber: hstNumber || null,
+      invoiceReplyToEmail: invoiceReplyToEmail.value,
     },
   });
 

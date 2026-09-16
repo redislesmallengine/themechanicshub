@@ -66,7 +66,7 @@ export interface EmailAttachment {
   content: Buffer;
 }
 
-async function sendViaResend(creds: ResendCredentials, from: string, to: string, subject: string, html: string, attachments?: EmailAttachment[]) {
+async function sendViaResend(creds: ResendCredentials, from: string, to: string, subject: string, html: string, attachments?: EmailAttachment[], replyTo?: string) {
   const resend = new Resend(creds.apiKey);
   const { error } = await resend.emails.send({
     from,
@@ -74,11 +74,12 @@ async function sendViaResend(creds: ResendCredentials, from: string, to: string,
     subject,
     html,
     attachments: attachments?.map((a) => ({ filename: a.filename, content: a.content })),
+    ...(replyTo ? { replyTo } : {}),
   });
   if (error) throw new Error(`Resend: ${error.message}`);
 }
 
-async function sendViaSendGrid(creds: SendGridCredentials, from: string, to: string, subject: string, html: string, attachments?: EmailAttachment[]) {
+async function sendViaSendGrid(creds: SendGridCredentials, from: string, to: string, subject: string, html: string, attachments?: EmailAttachment[], replyTo?: string) {
   sgMail.setApiKey(creds.apiKey);
   await sgMail.send({
     from,
@@ -87,27 +88,28 @@ async function sendViaSendGrid(creds: SendGridCredentials, from: string, to: str
     html,
     // SendGrid wants base64-encoded content as a string, not a raw Buffer.
     attachments: attachments?.map((a) => ({ filename: a.filename, content: a.content.toString("base64"), disposition: "attachment" })),
+    ...(replyTo ? { replyTo } : {}),
   });
 }
 
-async function sendViaSmtp(creds: SmtpCredentials, from: string, to: string, subject: string, html: string, attachments?: EmailAttachment[]) {
+async function sendViaSmtp(creds: SmtpCredentials, from: string, to: string, subject: string, html: string, attachments?: EmailAttachment[], replyTo?: string) {
   const transport = nodemailer.createTransport({
     host: creds.host,
     port: creds.port,
     secure: creds.port === 465,
     auth: { user: creds.user, pass: creds.password },
   });
-  await transport.sendMail({ from, to, subject, html, attachments });
+  await transport.sendMail({ from, to, subject, html, attachments, ...(replyTo ? { replyTo } : {}) });
 }
 
-async function sendVia(candidate: Candidate, from: string, to: string, subject: string, html: string, attachments?: EmailAttachment[]) {
+async function sendVia(candidate: Candidate, from: string, to: string, subject: string, html: string, attachments?: EmailAttachment[], replyTo?: string) {
   switch (candidate.provider) {
     case "resend":
-      return sendViaResend(candidate.credentials as ResendCredentials, from, to, subject, html, attachments);
+      return sendViaResend(candidate.credentials as ResendCredentials, from, to, subject, html, attachments, replyTo);
     case "sendgrid":
-      return sendViaSendGrid(candidate.credentials as SendGridCredentials, from, to, subject, html, attachments);
+      return sendViaSendGrid(candidate.credentials as SendGridCredentials, from, to, subject, html, attachments, replyTo);
     case "smtp":
-      return sendViaSmtp(candidate.credentials as SmtpCredentials, from, to, subject, html, attachments);
+      return sendViaSmtp(candidate.credentials as SmtpCredentials, from, to, subject, html, attachments, replyTo);
   }
 }
 
@@ -150,6 +152,8 @@ export async function sendMail(params: {
   /** Powers the "Emails Sent" panel on that record's detail page — e.g. "estimate"/workOrderId, "invoice"/invoiceId. Omit for sends with no single natural record to attach to. */
   relatedType?: string;
   relatedId?: string;
+  /** Where a customer's reply lands — independent of which provider/address actually sent the email. */
+  replyTo?: string;
 }) {
   // Best-effort permanent copy of exactly what was attempted, regardless of
   // outcome — this must never be the reason an actual send fails, so any
@@ -184,7 +188,7 @@ export async function sendMail(params: {
     }
     const from = `Mechanic Shop Hub <${process.env.SMTP_FROM ?? process.env.SMTP_USER ?? ""}>`;
     try {
-      await sendVia(fallback, from, params.to, params.subject, params.html, params.attachments);
+      await sendVia(fallback, from, params.to, params.subject, params.html, params.attachments, params.replyTo);
       await logSent(true, fallback.provider);
       return;
     } catch (err) {
@@ -218,7 +222,7 @@ export async function sendMail(params: {
     if (!(await isUnderQuota(organizationId, candidate.provider))) continue; // next in the cascade
 
     try {
-      await sendVia(candidate, from, params.to, params.subject, params.html, params.attachments);
+      await sendVia(candidate, from, params.to, params.subject, params.html, params.attachments, params.replyTo);
       await prisma.emailLog.create({ data: { organizationId, provider: candidate.provider, success: true } });
       await logSent(true, candidate.provider);
       return;

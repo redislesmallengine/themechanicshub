@@ -13,10 +13,10 @@ const inputStyle = {
 
 type ActionResult = { success?: boolean; error?: string } | undefined;
 
-function SendForm({ invoiceId, hasCustomer, hasCustomerEmail }: { invoiceId: string; hasCustomer: boolean; hasCustomerEmail: boolean }) {
+function SendForm({ invoiceId, hasCustomer, hasCustomerEmail, isResend }: { invoiceId: string; hasCustomer: boolean; hasCustomerEmail: boolean; isResend: boolean }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null);
+  const [preview, setPreview] = useState<{ subject: string; html: string; replyTo: string | null } | null>(null);
   const [pendingPreview, startPreview] = useTransition();
   const [pendingSend, startSend] = useTransition();
 
@@ -28,7 +28,7 @@ function SendForm({ invoiceId, hasCustomer, hasCustomerEmail }: { invoiceId: str
         setError(result?.error ?? "Couldn't load the preview.");
         return;
       }
-      setPreview({ subject: result.subject, html: result.html });
+      setPreview({ subject: result.subject, html: result.html, replyTo: result.replyTo ?? null });
     });
   }
 
@@ -54,7 +54,7 @@ function SendForm({ invoiceId, hasCustomer, hasCustomerEmail }: { invoiceId: str
         </p>
       )}
       <button onClick={handlePreview} disabled={pendingPreview || !hasCustomerEmail} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-        {pendingPreview ? "Loading Preview…" : "Preview Email"}
+        {pendingPreview ? "Loading Preview…" : isResend ? "Preview & Resend" : "Preview Email"}
       </button>
       {error && (
         <p className="text-xs font-semibold mt-2" style={{ color: "var(--color-error-solid)" }}>
@@ -75,7 +75,18 @@ function SendForm({ invoiceId, hasCustomer, hasCustomerEmail }: { invoiceId: str
               </h3>
               <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
                 Exactly what will be sent, PDF attached — this is the real view/pay link the customer will use.
+                {preview.replyTo && (
+                  <>
+                    {" "}
+                    Replies go to <b>{preview.replyTo}</b>.
+                  </>
+                )}
               </p>
+              {isResend && (
+                <p className="text-[10px] mt-1 font-semibold" style={{ color: "var(--color-warning-solid)" }}>
+                  This invoice was already sent — this will send it again.
+                </p>
+              )}
             </div>
             <iframe title="Invoice email preview" srcDoc={preview.html} sandbox="" className="flex-1 w-full bg-white" />
             <div className="p-4 flex items-center justify-end gap-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
@@ -88,7 +99,7 @@ function SendForm({ invoiceId, hasCustomer, hasCustomerEmail }: { invoiceId: str
                 Cancel
               </button>
               <button type="button" onClick={handleConfirmSend} disabled={pendingSend} className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-                {pendingSend ? "Sending…" : "Confirm & Send"}
+                {pendingSend ? "Sending…" : isResend ? "Confirm & Resend" : "Confirm & Send"}
               </button>
             </div>
           </div>
@@ -207,7 +218,8 @@ export function InvoiceStatusPanel({
 }) {
   return (
     <div className="space-y-3">
-      {status === "draft" && <SendForm invoiceId={invoiceId} hasCustomer={hasCustomer} hasCustomerEmail={hasCustomerEmail} />}
+      {/* Sendable at any status except Void — including Paid, so a shop can hand over a fresh copy after the fact (lost the email, wants it for their records). sendInvoice itself only ever advances status forward from Draft, never backward on a resend. */}
+      {status !== "void" && <SendForm invoiceId={invoiceId} hasCustomer={hasCustomer} hasCustomerEmail={hasCustomerEmail} isResend={status !== "draft"} />}
       {/* Draft is included here too, not just Sent/Viewed — a walk-in cash sale with no customer to email needs a way to close out that doesn't go through Send Invoice at all. */}
       {(status === "draft" || status === "sent" || status === "viewed") && (
         <>
