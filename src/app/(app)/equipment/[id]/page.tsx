@@ -46,7 +46,7 @@ export default async function EquipmentDetailPage({ params }: { params: Promise<
         </p>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
-            {[equipment.make, equipment.model].filter(Boolean).join(" ") || equipment.equipmentType?.name || "Equipment"}
+            {[equipment.make, equipment.model].filter(Boolean).join(" / ") || equipment.equipmentType?.name || "Equipment"}
           </h1>
           <div className="flex items-center gap-3">
             <Link
@@ -58,7 +58,7 @@ export default async function EquipmentDetailPage({ params }: { params: Promise<
             </Link>
             <DeleteEquipmentButton
               equipmentId={equipment.id}
-              label={[equipment.make, equipment.model].filter(Boolean).join(" ") || "this equipment"}
+              label={[equipment.make, equipment.model].filter(Boolean).join(" / ") || "this equipment"}
               redirectTo={`/customers/${equipment.customer.id}`}
             />
           </div>

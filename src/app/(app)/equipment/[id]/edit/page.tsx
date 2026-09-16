@@ -29,7 +29,7 @@ export default async function EditEquipmentPage({ params }: { params: Promise<{ 
           </a>{" "}
           <span style={{ color: "var(--text-muted)" }}>/</span>{" "}
           <a href={`/equipment/${equipment.id}`} className="font-semibold text-brand-600">
-            {[equipment.make, equipment.model].filter(Boolean).join(" ") || "Equipment"}
+            {[equipment.make, equipment.model].filter(Boolean).join(" / ") || "Equipment"}
           </a>
         </p>
         <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>

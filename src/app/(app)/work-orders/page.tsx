@@ -86,7 +86,7 @@ export default async function WorkOrdersBoardPage({ searchParams }: { searchPara
                 )}
                 {items.map((wo) => {
                   const isAging = wo.status === "readyForPickup" && wo.readyForPickupAt && (now - wo.readyForPickupAt.getTime()) / 86400000 > agingDays;
-                  const equipmentLabel = [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" ") || wo.equipment.equipmentType?.name || "Equipment";
+                  const equipmentLabel = [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment";
                   return (
                     <Link
                       key={wo.id}

@@ -165,7 +165,7 @@ export default async function EquipmentListPage({ searchParams }: { searchParams
                       </Link>
                       <DeleteEquipmentButton
                         equipmentId={eq.id}
-                        label={[eq.make, eq.model].filter(Boolean).join(" ") || "this equipment"}
+                        label={[eq.make, eq.model].filter(Boolean).join(" / ") || "this equipment"}
                       />
                     </div>
                   </td>

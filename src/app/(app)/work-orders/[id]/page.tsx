@@ -36,7 +36,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   ]);
 
   const status = workOrder.status as WorkOrderStatus;
-  const equipmentLabel = [workOrder.equipment.make, workOrder.equipment.model].filter(Boolean).join(" ") || workOrder.equipment.equipmentType?.name || "Equipment";
+  const equipmentLabel = [workOrder.equipment.make, workOrder.equipment.model].filter(Boolean).join(" / ") || workOrder.equipment.equipmentType?.name || "Equipment";
 
   return (
     <div className="p-6 space-y-6">

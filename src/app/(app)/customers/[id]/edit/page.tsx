@@ -58,7 +58,7 @@ export default async function EditCustomerPage({ params }: { params: Promise<{ i
             showAddLink={false}
             equipment={customer.equipment.map((eq) => ({
               id: eq.id,
-              label: [eq.make, eq.model].filter(Boolean).join(" ") || eq.equipmentType?.name || "Unnamed equipment",
+              label: [eq.make, eq.model].filter(Boolean).join(" / ") || eq.equipmentType?.name || "Unnamed equipment",
               typeName: eq.equipmentType?.name ?? null,
               serialNumber: eq.serialNumber,
               photoKey: eq.photoKey,

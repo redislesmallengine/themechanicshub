@@ -151,7 +151,7 @@ export async function sendEstimate(workOrderId: string, formData: FormData) {
   });
 
   const url = `${process.env.BETTER_AUTH_URL}/estimate/${token}`;
-  const equipmentLabel = [equipment?.make, equipment?.model].filter(Boolean).join(" ") || equipment?.equipmentType?.name || "your equipment";
+  const equipmentLabel = [equipment?.make, equipment?.model].filter(Boolean).join(" / ") || equipment?.equipmentType?.name || "your equipment";
   await sendMail({
     to: customer.email,
     subject: `Repair estimate for ${equipmentLabel} — ${shop?.name ?? "your shop"}`,

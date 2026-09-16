@@ -128,7 +128,7 @@ export default async function DashboardPage() {
               {workOrders.slice(0, 15).map((wo) => {
                 const status = wo.status as WorkOrderStatus;
                 const isAging = status === "readyForPickup" && wo.readyForPickupAt && (now - wo.readyForPickupAt.getTime()) / 86400000 > agingDays;
-                const equipmentLabel = [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" ") || wo.equipment.equipmentType?.name || "Equipment";
+                const equipmentLabel = [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment";
                 return (
                   <tr key={wo.id} className="dt-row">
                     <td className="dt-td">

@@ -43,7 +43,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const overdue = isOverdue(invoice.status, invoice.dueDate);
   const editable = isEditable(invoice.status) && canUpdate.success;
   const equipmentLabel = invoice.equipment
-    ? [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" ") || invoice.equipment.equipmentType?.name || "Equipment"
+    ? [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" / ") || invoice.equipment.equipmentType?.name || "Equipment"
     : invoice.adHocEquipmentLabel;
   const hasInventoryLines = invoice.lineItems.some((l) => !!l.partId);
   const canEditParty = editable && !invoice.workOrderId;
@@ -254,7 +254,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               email: c.email,
               equipment: c.equipment.map((eq) => ({
                 id: eq.id,
-                label: [eq.make, eq.model].filter(Boolean).join(" ") || eq.equipmentType?.name || (eq.serialNumber ? `S/N ${eq.serialNumber}` : "Unnamed equipment"),
+                label: [eq.make, eq.model].filter(Boolean).join(" / ") || eq.equipmentType?.name || (eq.serialNumber ? `S/N ${eq.serialNumber}` : "Unnamed equipment"),
               })),
             }))}
             initialCustomerId={invoice.customerId ?? ""}

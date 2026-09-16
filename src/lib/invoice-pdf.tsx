@@ -272,7 +272,7 @@ export async function renderInvoicePdfFromRecord(invoice: InvoiceWithRelationsFo
   const shopProfile = invoice.organization.shopProfile;
   const equipment = invoice.equipment
     ? {
-        label: [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" ") || invoice.equipment.equipmentType?.name || "Equipment",
+        label: [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" / ") || invoice.equipment.equipmentType?.name || "Equipment",
         make: invoice.equipment.make,
         model: invoice.equipment.model,
         serialNumber: invoice.equipment.serialNumber,

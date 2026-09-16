@@ -130,7 +130,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                       customerName={c.name}
                       equipment={c.equipment.map((eq) => ({
                         id: eq.id,
-                        label: [eq.make, eq.model].filter(Boolean).join(" ") || eq.equipmentType?.name || "Unnamed equipment",
+                        label: [eq.make, eq.model].filter(Boolean).join(" / ") || eq.equipmentType?.name || "Unnamed equipment",
                         typeName: eq.equipmentType?.name ?? null,
                         serialNumber: eq.serialNumber,
                         photoKey: eq.photoKey,

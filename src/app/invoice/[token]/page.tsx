@@ -43,7 +43,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
   const shopProfile = invoice.organization.shopProfile;
   const overdue = isOverdue(invoice.status, invoice.dueDate);
   const equipmentLabel = invoice.equipment
-    ? [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" ") || invoice.equipment.equipmentType?.name || "Equipment"
+    ? [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" / ") || invoice.equipment.equipmentType?.name || "Equipment"
     : invoice.adHocEquipmentLabel;
 
   return (

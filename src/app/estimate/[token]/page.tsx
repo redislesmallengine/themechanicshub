@@ -31,7 +31,7 @@ export default async function EstimatePage({ params }: { params: Promise<{ token
     );
   }
 
-  const equipmentLabel = [workOrder.equipment.make, workOrder.equipment.model].filter(Boolean).join(" ") || workOrder.equipment.equipmentType?.name || "your equipment";
+  const equipmentLabel = [workOrder.equipment.make, workOrder.equipment.model].filter(Boolean).join(" / ") || workOrder.equipment.equipmentType?.name || "your equipment";
 
   return (
     <EstimateApprovalForm
