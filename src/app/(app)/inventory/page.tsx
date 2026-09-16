@@ -2,35 +2,64 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { InventoryIcon, SearchIcon } from "@/components/icons";
 import { DeletePartButton } from "@/components/delete-part-button";
+import { Pagination } from "@/components/pagination";
 
-export default async function InventoryPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const { q } = await searchParams;
+const PAGE_SIZE = 50;
+
+export default async function InventoryPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
+  const { q, page: pageRaw } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
 
-  const parts = organizationId
-    ? await prisma.part.findMany({
-        where: {
-          organizationId,
-          ...(q?.trim()
-            ? {
-                OR: [
-                  { name: { contains: q.trim(), mode: "insensitive" } },
-                  { sku: { contains: q.trim(), mode: "insensitive" } },
-                  { barcode: { contains: q.trim(), mode: "insensitive" } },
-                ],
-              }
-            : {}),
-        },
-        orderBy: { name: "asc" },
-        include: { category: true },
-      })
-    : [];
+  const page = Math.max(1, Number.parseInt(pageRaw ?? "1", 10) || 1);
+  const searchTerm = q?.trim();
 
-  const lowStockCount = parts.filter((p) => p.quantityOnHand <= p.reorderPoint).length;
+  const where: Prisma.PartWhereInput | undefined = organizationId
+    ? {
+        organizationId,
+        ...(searchTerm
+          ? {
+              OR: [
+                { name: { contains: searchTerm, mode: "insensitive" } },
+                { sku: { contains: searchTerm, mode: "insensitive" } },
+                { barcode: { contains: searchTerm, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      }
+    : undefined;
+
+  // Three independent queries instead of "load everything and derive in JS"
+  // — at real inventory scale (thousands of parts) that old approach meant
+  // every page view fetched and rendered the entire catalog just to show 50
+  // rows and a low-stock badge. quantityOnHand <= reorderPoint compares two
+  // columns on the same row, which Prisma's query API can't express — hence
+  // the one raw, parameterized count query below (safe: Prisma.sql binds
+  // organizationId/searchTerm as real parameters, never string-concatenated).
+  const [parts, total, lowStockRows] = organizationId
+    ? await Promise.all([
+        prisma.part.findMany({
+          where,
+          orderBy: { name: "asc" },
+          include: { category: true },
+          skip: (page - 1) * PAGE_SIZE,
+          take: PAGE_SIZE,
+        }),
+        prisma.part.count({ where }),
+        prisma.$queryRaw<{ count: bigint }[]>(
+          Prisma.sql`SELECT count(*)::bigint AS count FROM "Part"
+            WHERE "organizationId" = ${organizationId}
+              AND "quantityOnHand" <= "reorderPoint"
+              ${searchTerm ? Prisma.sql`AND ("name" ILIKE ${`%${searchTerm}%`} OR "sku" ILIKE ${`%${searchTerm}%`} OR "barcode" ILIKE ${`%${searchTerm}%`})` : Prisma.empty}`
+        ),
+      ])
+    : [[], 0, []];
+
+  const lowStockCount = lowStockRows[0] ? Number(lowStockRows[0].count) : 0;
 
   return (
     <div className="p-6">
@@ -56,7 +85,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
           className="mb-4 p-3 rounded-lg text-xs font-semibold max-w-md"
           style={{ background: "var(--color-error-subtle)", border: "1px solid var(--color-error-border)", color: "var(--color-error-text)" }}
         >
-          {lowStockCount} part{lowStockCount === 1 ? "" : "s"} at or below reorder point.
+          {lowStockCount} part{lowStockCount === 1 ? "" : "s"} at or below reorder point{searchTerm ? " (matching this search)" : ""}.
         </div>
       )}
 
@@ -149,6 +178,8 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
           </table>
         </div>
       </div>
+
+      <Pagination page={page} pageSize={PAGE_SIZE} total={total} basePath="/inventory" params={{ q: searchTerm }} />
     </div>
   );
 }

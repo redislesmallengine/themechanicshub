@@ -304,6 +304,11 @@ model PartCategory {
 // Work Order parts-reservation (Phase 4) and invoice-payment auto-decrement
 // (Phase 6/7) will both create adjustments here once they exist, rather
 // than needing their own separate stock-tracking logic.
+//
+// name/sku/barcode also carry a pg_trgm GIN index each (see migration
+// 20260916110000_inventory_trigram_search) -- not expressible here without
+// the postgresqlExtensions preview feature, but Postgres picks them up
+// automatically for the existing ILIKE search, no query code change needed.
 model Part {
   id             String   @id @default(cuid())
   organizationId String
