@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { CustomersIcon, SearchIcon } from "@/components/icons";
 import { DeleteCustomerButton } from "@/components/delete-customer-button";
 import { Pagination } from "@/components/pagination";
+import { CustomerEquipmentPopup } from "@/components/customer-equipment-popup";
 
 const PAGE_SIZE = 50;
 
@@ -37,7 +38,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
         prisma.customer.findMany({
           where,
           orderBy: { createdAt: "desc" },
-          include: { _count: { select: { equipment: true } } },
+          include: { equipment: { include: { equipmentType: true }, orderBy: { createdAt: "desc" } } },
           skip: (page - 1) * PAGE_SIZE,
           take: PAGE_SIZE,
         }),
@@ -124,7 +125,17 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                     {c.email ?? "—"}
                   </td>
                   <td className="dt-td text-sm" style={{ color: "var(--text-secondary)" }}>
-                    {c._count.equipment}
+                    <CustomerEquipmentPopup
+                      customerId={c.id}
+                      customerName={c.name}
+                      equipment={c.equipment.map((eq) => ({
+                        id: eq.id,
+                        label: [eq.make, eq.model].filter(Boolean).join(" ") || eq.equipmentType?.name || "Unnamed equipment",
+                        typeName: eq.equipmentType?.name ?? null,
+                        serialNumber: eq.serialNumber,
+                        photoKey: eq.photoKey,
+                      }))}
+                    />
                   </td>
                   <td className="dt-td num text-sm" style={{ color: "var(--text-muted)" }}>
                     {c.createdAt.toLocaleDateString()}
@@ -134,7 +145,10 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                       <Link href={`/customers/${c.id}/edit`} className="text-[11px] font-bold text-brand-600">
                         Edit
                       </Link>
-                      <DeleteCustomerButton customerId={c.id} name={c.name} equipmentCount={c._count.equipment} />
+                      <Link href={`/customers/${c.id}/equipment/new`} className="text-[11px] font-bold text-brand-600">
+                        Add Equipment
+                      </Link>
+                      <DeleteCustomerButton customerId={c.id} name={c.name} equipmentCount={c.equipment.length} />
                     </div>
                   </td>
                 </tr>
