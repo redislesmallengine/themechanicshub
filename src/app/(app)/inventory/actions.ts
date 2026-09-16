@@ -154,3 +154,54 @@ export async function adjustStock(partId: string, formData: FormData) {
   revalidatePath("/inventory");
   return { success: true };
 }
+
+// ---------------------------------------------------------------------------
+// Saved views — shop-wide filter shortcuts on the Inventory list. Not gated
+// behind requireCanManageInventory("create"/"update") on purpose: viewing
+// /inventory itself has no permission check either (every staff member who
+// belongs to the shop can browse it), so a personal filter shortcut on top
+// of that shouldn't need inventory-editing rights someone might not have.
+// ---------------------------------------------------------------------------
+
+async function requireSignedIn() {
+  const reqHeaders = await headers();
+  const session = await auth.api.getSession({ headers: reqHeaders });
+  if (!session?.session.activeOrganizationId) throw new Error("Not signed in to a shop.");
+  return { organizationId: session.session.activeOrganizationId, userId: session.user.id };
+}
+
+export async function createSavedView(formData: FormData) {
+  const { organizationId, userId } = await requireSignedIn();
+
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return { error: "Give this view a name." };
+
+  const q = String(formData.get("q") ?? "").trim();
+  const category = String(formData.get("category") ?? "").trim();
+  const stock = String(formData.get("stock") ?? "").trim();
+  const filters = JSON.stringify({ q: q || undefined, category: category || undefined, stock: stock || undefined });
+
+  const existing = await prisma.savedView.findUnique({
+    where: { organizationId_resource_name: { organizationId, resource: "inventory", name } },
+  });
+  if (existing) return { error: `A view named "${name}" already exists.` };
+
+  await prisma.savedView.create({
+    data: { organizationId, resource: "inventory", name, filters, createdByUserId: userId },
+  });
+
+  revalidatePath("/inventory");
+  return { success: true };
+}
+
+export async function deleteSavedView(viewId: string) {
+  const { organizationId } = await requireSignedIn();
+
+  const view = await prisma.savedView.findUnique({ where: { id: viewId } });
+  if (!view || view.organizationId !== organizationId) return { error: "That view doesn't exist." };
+
+  await prisma.savedView.delete({ where: { id: viewId } });
+
+  revalidatePath("/inventory");
+  return { success: true };
+}

@@ -45,6 +45,7 @@ model User {
   teamMemberships      TeamMember[]
   partStockAdjustments PartStockAdjustment[]
   assignedWorkOrders   WorkOrder[]
+  savedViews           SavedView[]
 }
 
 model Session {
@@ -126,6 +127,7 @@ model Organization {
   parts             Part[]
   workOrders        WorkOrder[]
   invoices          Invoice[]
+  savedViews        SavedView[]
 }
 
 // =============================================================================
@@ -349,6 +351,32 @@ model PartStockAdjustment {
   createdBy User? @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
 
   @@index([partId])
+}
+
+// Staff-created, shop-wide filter shortcuts -- "resource" scopes this one
+// table to whichever list page saved it (starting with "inventory"; other
+// list pages with the same load-everything-then-filter problem can reuse it
+// later instead of getting their own table). "filters" is the list page's
+// own query-string params as JSON (e.g. {"q":"belt","stock":"low"}) --
+// applying a view is just navigating to that URL, no separate filtering
+// logic needed. Shared across the whole shop (not per-user) since a small
+// team benefits more from "here's the view I use" being visible to everyone
+// than from private lists; any staff member with inventory access can
+// create or remove one.
+model SavedView {
+  id              String   @id @default(cuid())
+  organizationId  String
+  resource        String
+  name            String
+  filters         String // JSON-encoded
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, resource, name])
+  @@index([organizationId, resource])
 }
 
 // =============================================================================

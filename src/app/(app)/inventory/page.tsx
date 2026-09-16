@@ -6,6 +6,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { InventoryIcon, SearchIcon } from "@/components/icons";
 import { DeletePartButton } from "@/components/delete-part-button";
 import { Pagination } from "@/components/pagination";
+import { SavedViewsBar, type SavedViewItem } from "@/components/saved-views-bar";
 
 const PAGE_SIZE = 50;
 
@@ -52,6 +53,9 @@ export default async function InventoryPage({
   const stock: StockView = (STOCK_VIEWS as readonly string[]).includes(stockRaw ?? "") ? (stockRaw as StockView) : "all";
 
   const categories = organizationId ? await prisma.partCategory.findMany({ where: { organizationId }, orderBy: { name: "asc" } }) : [];
+  const savedViewRows = organizationId
+    ? await prisma.savedView.findMany({ where: { organizationId, resource: "inventory" }, orderBy: { createdAt: "asc" } })
+    : [];
 
   // Everything below is one raw, fully-parameterized query family instead of
   // Prisma's normal query builder — "at or below reorder point" and "in
@@ -127,6 +131,26 @@ export default async function InventoryPage({
     return qs ? `/inventory?${qs}` : "/inventory";
   }
 
+  const savedViews: SavedViewItem[] = savedViewRows.map((v) => {
+    let parsed: { q?: string; category?: string; stock?: string } = {};
+    try {
+      parsed = JSON.parse(v.filters);
+    } catch {
+      parsed = {};
+    }
+    const sp = new URLSearchParams();
+    if (parsed.q) sp.set("q", parsed.q);
+    if (parsed.category) sp.set("category", parsed.category);
+    if (parsed.stock) sp.set("stock", parsed.stock);
+    const qs = sp.toString();
+    return {
+      id: v.id,
+      name: v.name,
+      href: qs ? `/inventory?${qs}` : "/inventory",
+      active: (parsed.q ?? "") === (searchTerm ?? "") && (parsed.category ?? "") === (categoryId ?? "") && (parsed.stock ?? "all") === stock,
+    };
+  });
+
   return (
     <div className="p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
@@ -166,6 +190,8 @@ export default async function InventoryPage({
           );
         })}
       </div>
+
+      <SavedViewsBar views={savedViews} currentFilters={{ q: searchTerm, category: categoryId, stock: stock !== "all" ? stock : undefined }} />
 
       <form method="GET" className="mb-4 flex flex-col sm:flex-row gap-3 max-w-2xl">
         {stock !== "all" && <input type="hidden" name="stock" value={stock} />}
