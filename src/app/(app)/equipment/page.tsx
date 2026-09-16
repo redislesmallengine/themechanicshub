@@ -98,7 +98,7 @@ export default async function EquipmentListPage({ searchParams }: { searchParams
           <table className="dt-table">
             <thead className="dt-head">
               <tr>
-                <th className="dt-th text-left">Equipment</th>
+                <th className="dt-th text-left">Make/Model</th>
                 <th className="dt-th text-left">Type</th>
                 <th className="dt-th text-left">Serial Number</th>
                 <th className="dt-th text-left">Customer</th>
@@ -140,7 +140,7 @@ export default async function EquipmentListPage({ searchParams }: { searchParams
                         )}
                       </div>
                       <span className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
-                        {[eq.make, eq.model].filter(Boolean).join(" ") || "Unnamed equipment"}
+                        {[eq.make, eq.model].filter(Boolean).join(" / ") || "Unnamed equipment"}
                       </span>
                     </Link>
                   </td>
