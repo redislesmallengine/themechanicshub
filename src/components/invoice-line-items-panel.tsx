@@ -218,7 +218,7 @@ function LineRow({ line, showMargins }: { line: InvoiceLine; showMargins: boolea
         ${line.lineTotal}
       </td>
       <td className="dt-td text-right">
-        <button onClick={handleRemove} disabled={pending} className="text-[11px] font-bold opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50" style={{ color: "var(--color-error-solid)" }}>
+        <button onClick={handleRemove} disabled={pending} className="text-[11px] font-bold disabled:opacity-50" style={{ color: "var(--color-error-solid)" }}>
           {pending ? "…" : "Remove"}
         </button>
       </td>

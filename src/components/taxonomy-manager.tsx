@@ -195,7 +195,7 @@ function TaxonomyRow({
       </td>
       <td className="dt-td text-right">
         {!editing && (
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-3">
+          <div className="flex justify-end gap-3">
             <button onClick={() => setEditing(true)} className="text-[11px] font-bold text-brand-600">
               Rename
             </button>

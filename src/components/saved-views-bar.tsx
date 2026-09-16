@@ -52,7 +52,7 @@ function ViewPill({ view }: { view: SavedViewItem }) {
         onClick={handleDelete}
         disabled={pending}
         aria-label={`Delete ${view.name} view`}
-        className="w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+        className="w-4 h-4 rounded-full flex items-center justify-center disabled:opacity-50"
         style={{ background: view.active ? "rgba(255,255,255,0.25)" : "var(--bg-surface)" }}
       >
         ×

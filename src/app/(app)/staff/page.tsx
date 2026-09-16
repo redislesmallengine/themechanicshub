@@ -135,7 +135,7 @@ export default async function StaffPage() {
                     </td>
                     <td className="dt-td text-right">
                       {!isSelf && (
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex justify-end">
+                        <div className="flex justify-end">
                           <RemoveMemberButton memberId={m.id} name={m.user?.name ?? "this person"} />
                         </div>
                       )}

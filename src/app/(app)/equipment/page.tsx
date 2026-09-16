@@ -124,7 +124,7 @@ export default async function EquipmentListPage({ searchParams }: { searchParams
                     {eq.createdAt.toLocaleDateString()}
                   </td>
                   <td className="dt-td text-right">
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex justify-end items-center gap-3">
+                    <div className="flex justify-end items-center gap-3">
                       <Link href={`/equipment/${eq.id}/edit`} className="text-[11px] font-bold text-brand-600">
                         Edit
                       </Link>
