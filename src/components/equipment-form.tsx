@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createEquipment } from "@/app/(app)/equipment/actions";
 import { InventoryIcon } from "@/components/icons";
@@ -23,8 +23,22 @@ export function EquipmentForm({
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoName, setPhotoName] = useState<string | null>(null);
 
   const boundCreate = createEquipment.bind(null, customerId);
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setPhotoPreview(null);
+      setPhotoName(null);
+      return;
+    }
+    setPhotoPreview(URL.createObjectURL(file));
+    setPhotoName(file.name);
+  }
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -118,10 +132,39 @@ export function EquipmentForm({
           <input id="year" name="year" type="number" min="1900" max={new Date().getFullYear() + 1} placeholder="2019" className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
         </div>
         <div>
-          <label htmlFor="photo" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+          <label className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
             Photo
           </label>
-          <input id="photo" name="photo" type="file" accept="image/*" className="text-xs" />
+          <div className="flex items-center gap-3">
+            <div
+              className="w-12 h-12 rounded-lg flex items-center justify-center shrink-0 overflow-hidden"
+              style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)" }}
+            >
+              {photoPreview ? (
+                // eslint-disable-next-line @next/next/no-img-element -- local object URL preview, not from our streaming routes
+                <img src={photoPreview} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-[9px] font-semibold text-center px-1" style={{ color: "var(--text-muted)" }}>
+                  No photo
+                </span>
+              )}
+            </div>
+            <div className="min-w-0">
+              <input ref={fileRef} id="photo" name="photo" type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white"
+              >
+                {photoName ? "Change Photo" : "Choose Photo"}
+              </button>
+              {photoName && (
+                <p className="text-[10px] mt-1 truncate max-w-[140px]" style={{ color: "var(--text-muted)" }}>
+                  {photoName}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
         <div className="md:col-span-3">
           <label htmlFor="notes" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
