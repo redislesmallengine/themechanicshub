@@ -29,7 +29,7 @@ export default async function EditEquipmentPage({ params }: { params: Promise<{ 
           </a>
         </p>
         <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
-          Edit Equipment
+          Edit Customer Equipment
         </h1>
       </div>
       <div className="max-w-3xl">

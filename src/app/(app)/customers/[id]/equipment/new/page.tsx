@@ -20,13 +20,13 @@ export default async function NewEquipmentPage({ params }: { params: Promise<{ i
     <div className="p-6 space-y-4">
       <div>
         <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
-          Register Equipment for {customer.name}
+          Register Customer Equipment for {customer.name}
         </h1>
         <p className="text-xs" style={{ color: "var(--text-muted)" }}>
           <a href={`/customers/${customer.id}`} className="text-brand-600 font-semibold">
             {customer.name}
           </a>{" "}
-          &rarr; New Equipment
+          &rarr; New Customer Equipment
         </p>
       </div>
       <div className="max-w-3xl">

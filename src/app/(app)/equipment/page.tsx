@@ -4,39 +4,58 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { EquipmentIcon, SearchIcon } from "@/components/icons";
 import { DeleteEquipmentButton } from "@/components/delete-equipment-button";
+import { Pagination } from "@/components/pagination";
 
-export default async function EquipmentListPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const { q } = await searchParams;
+const PAGE_SIZE = 50;
+
+export default async function EquipmentListPage({ searchParams }: { searchParams: Promise<{ q?: string; type?: string; page?: string }> }) {
+  const { q, type, page: pageRaw } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
 
-  const equipment = organizationId
-    ? await prisma.equipment.findMany({
-        where: {
-          organizationId,
-          ...(q?.trim()
-            ? {
-                OR: [
-                  { make: { contains: q.trim(), mode: "insensitive" } },
-                  { model: { contains: q.trim(), mode: "insensitive" } },
-                  { serialNumber: { contains: q.trim(), mode: "insensitive" } },
-                  { customer: { name: { contains: q.trim(), mode: "insensitive" } } },
-                ],
-              }
-            : {}),
-        },
-        orderBy: { createdAt: "desc" },
-        include: { customer: true, equipmentType: true },
-      })
-    : [];
+  const page = Math.max(1, Number.parseInt(pageRaw ?? "1", 10) || 1);
+  const searchTerm = q?.trim();
+  const typeId = type?.trim() || undefined;
+
+  const equipmentTypes = organizationId ? await prisma.equipmentType.findMany({ where: { organizationId }, orderBy: { name: "asc" } }) : [];
+
+  const where = organizationId
+    ? {
+        organizationId,
+        ...(typeId ? { equipmentTypeId: typeId } : {}),
+        ...(searchTerm
+          ? {
+              OR: [
+                { make: { contains: searchTerm, mode: "insensitive" as const } },
+                { model: { contains: searchTerm, mode: "insensitive" as const } },
+                { serialNumber: { contains: searchTerm, mode: "insensitive" as const } },
+                { customer: { name: { contains: searchTerm, mode: "insensitive" as const } } },
+              ],
+            }
+          : {}),
+      }
+    : undefined;
+
+  const [equipment, total] = organizationId
+    ? await Promise.all([
+        prisma.equipment.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          include: { customer: true, equipmentType: true },
+          skip: (page - 1) * PAGE_SIZE,
+          take: PAGE_SIZE,
+        }),
+        prisma.equipment.count({ where }),
+      ])
+    : [[], 0];
 
   return (
     <div className="p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
-            Equipment
+            Customer Equipment
           </h1>
           <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
             Every piece of equipment registered across all customers.
@@ -44,8 +63,8 @@ export default async function EquipmentListPage({ searchParams }: { searchParams
         </div>
       </div>
 
-      <form method="GET" className="mb-4 max-w-md">
-        <div className="relative">
+      <form method="GET" className="mb-4 flex flex-col sm:flex-row gap-3 max-w-2xl">
+        <div className="relative flex-1">
           <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
           <input
             type="text"
@@ -56,6 +75,22 @@ export default async function EquipmentListPage({ searchParams }: { searchParams
             style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)", color: "var(--text-primary)" }}
           />
         </div>
+        <select
+          name="type"
+          defaultValue={typeId ?? ""}
+          className="px-3 py-2 rounded-lg text-xs font-semibold"
+          style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)", color: "var(--text-primary)" }}
+        >
+          <option value="">All Types</option>
+          {equipmentTypes.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+        <button type="submit" className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white">
+          Filter
+        </button>
       </form>
 
       <div className="dt-container">
@@ -75,8 +110,8 @@ export default async function EquipmentListPage({ searchParams }: { searchParams
               {equipment.length === 0 && (
                 <tr>
                   <td colSpan={6} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
-                    {q ? (
-                      <>No equipment matches &ldquo;{q}&rdquo;.</>
+                    {q || typeId ? (
+                      <>No equipment matches these filters.</>
                     ) : (
                       <>
                         No equipment registered yet — start from a{" "}
@@ -140,6 +175,8 @@ export default async function EquipmentListPage({ searchParams }: { searchParams
           </table>
         </div>
       </div>
+
+      <Pagination page={page} pageSize={PAGE_SIZE} total={total} basePath="/equipment" params={{ q: searchTerm, type: typeId }} />
     </div>
   );
 }
