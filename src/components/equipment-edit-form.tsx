@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateEquipment, uploadEquipmentPhotoAction, removeEquipmentPhoto } from "@/app/(app)/equipment/actions";
@@ -12,12 +13,12 @@ const inputStyle = {
   color: "var(--text-primary)",
 };
 
-const ENGINE_TYPES = ["2-stroke", "4-stroke", "Electric", "Battery"];
-
 export function EquipmentEditForm({
   equipmentId,
   hasPhoto,
   equipmentTypes,
+  equipmentMakes,
+  engineTypes,
   initialEquipmentTypeId,
   initialMake,
   initialModel,
@@ -30,6 +31,8 @@ export function EquipmentEditForm({
   equipmentId: string;
   hasPhoto: boolean;
   equipmentTypes: { id: string; name: string }[];
+  equipmentMakes: { id: string; name: string }[];
+  engineTypes: { id: string; name: string }[];
   initialEquipmentTypeId: string;
   initialMake: string;
   initialModel: string;
@@ -46,6 +49,13 @@ export function EquipmentEditForm({
   const boundUpdate = updateEquipment.bind(null, equipmentId);
   const boundUpload = uploadEquipmentPhotoAction.bind(null, equipmentId);
   const boundRemove = removeEquipmentPhoto.bind(null, equipmentId);
+
+  // If this equipment's saved make/engine type isn't in the current list
+  // (renamed elsewhere without going through this shop's list, or set
+  // before this dropdown existed), keep it selectable so opening Edit and
+  // saving without touching the field doesn't silently blank it out.
+  const makeOptions = !initialMake || equipmentMakes.some((m) => m.name === initialMake) ? equipmentMakes : [{ id: "__current", name: initialMake }, ...equipmentMakes];
+  const engineTypeOptions = !initialEngineType || engineTypes.some((e) => e.name === initialEngineType) ? engineTypes : [{ id: "__current", name: initialEngineType }, ...engineTypes];
 
   function handleSubmit(formData: FormData) {
     setError(null);
@@ -106,12 +116,21 @@ export function EquipmentEditForm({
             <label htmlFor="make" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
               Make
             </label>
-            <input id="make" name="make" type="text" list="common-makes" defaultValue={initialMake} placeholder="Honda" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
-            <datalist id="common-makes">
-              {["Honda", "Briggs & Stratton", "Toro", "Husqvarna", "Stihl", "MTD", "Craftsman", "Kohler", "Yamaha", "Mercury"].map((m) => (
-                <option key={m} value={m} />
+            <select id="make" name="make" defaultValue={initialMake} className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
+              <option value="">Select…</option>
+              {makeOptions.map((m) => (
+                <option key={m.id} value={m.name}>
+                  {m.name}
+                </option>
               ))}
-            </datalist>
+            </select>
+            <span className="text-[10px] mt-0.5 block" style={{ color: "var(--text-muted)" }}>
+              Don&apos;t see it?{" "}
+              <Link href="/settings/equipment-makes" className="text-brand-600 font-semibold">
+                Add it in Settings
+              </Link>
+              .
+            </span>
           </div>
           <div>
             <label htmlFor="model" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
@@ -132,9 +151,9 @@ export function EquipmentEditForm({
             </label>
             <select id="engineType" name="engineType" defaultValue={initialEngineType} className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
               <option value="">Select…</option>
-              {ENGINE_TYPES.map((e) => (
-                <option key={e} value={e}>
-                  {e}
+              {engineTypeOptions.map((e) => (
+                <option key={e.id} value={e.name}>
+                  {e.name}
                 </option>
               ))}
             </select>

@@ -121,6 +121,8 @@ model Organization {
   organizationRoles OrganizationRole[]
   shopProfile       ShopProfile?
   equipmentTypes    EquipmentType[]
+  equipmentMakes    EquipmentMake[]
+  engineTypes       EngineType[]
   customers         Customer[]
   equipment         Equipment[]
   partCategories    PartCategory[]
@@ -223,6 +225,42 @@ model EquipmentType {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   equipment    Equipment[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+// Both of these back the Make / Engine Type dropdowns on the Equipment
+// form (Settings -> Equipment Makes / Engine Types) -- deliberately NOT a
+// hard foreign key from Equipment (which keeps its own free-text make/
+// engineType columns, unchanged). Equipment already has dozens of read
+// call sites treating make/engineType as plain strings; turning this into
+// a real relation would mean touching every one of them for a feature
+// that's really about constraining input, not modeling a relationship.
+// Renaming a value here propagates to existing Equipment rows explicitly
+// (see settings/equipment-makes|engine-types actions' rename), and delete
+// is blocked while any Equipment still uses the name (a plain count query
+// against Equipment.make/engineType) -- same safety net EquipmentType
+// gives via its real relation, without the relation itself.
+model EquipmentMake {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model EngineType {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, name])
   @@index([organizationId])

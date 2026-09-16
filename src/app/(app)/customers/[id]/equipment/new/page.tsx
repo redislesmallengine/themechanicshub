@@ -14,7 +14,11 @@ export default async function NewEquipmentPage({ params }: { params: Promise<{ i
   const customer = await prisma.customer.findUnique({ where: { id } });
   if (!customer || customer.organizationId !== organizationId) notFound();
 
-  const equipmentTypes = await prisma.equipmentType.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+  const [equipmentTypes, equipmentMakes, engineTypes] = await Promise.all([
+    prisma.equipmentType.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
+    prisma.equipmentMake.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
+    prisma.engineType.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
+  ]);
 
   return (
     <div className="p-6 space-y-4">
@@ -30,7 +34,7 @@ export default async function NewEquipmentPage({ params }: { params: Promise<{ i
         </p>
       </div>
       <div className="max-w-3xl">
-        <EquipmentForm customerId={customer.id} equipmentTypes={equipmentTypes} />
+        <EquipmentForm customerId={customer.id} equipmentTypes={equipmentTypes} equipmentMakes={equipmentMakes} engineTypes={engineTypes} />
       </div>
     </div>
   );

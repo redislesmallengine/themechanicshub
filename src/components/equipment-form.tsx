@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createEquipment } from "@/app/(app)/equipment/actions";
@@ -11,14 +12,16 @@ const inputStyle = {
   color: "var(--text-primary)",
 };
 
-const ENGINE_TYPES = ["2-stroke", "4-stroke", "Electric", "Battery"];
-
 export function EquipmentForm({
   customerId,
   equipmentTypes,
+  equipmentMakes,
+  engineTypes,
 }: {
   customerId: string;
   equipmentTypes: { id: string; name: string }[];
+  equipmentMakes: { id: string; name: string }[];
+  engineTypes: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -85,12 +88,21 @@ export function EquipmentForm({
           <label htmlFor="make" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
             Make
           </label>
-          <input id="make" name="make" type="text" list="common-makes" placeholder="Honda" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
-          <datalist id="common-makes">
-            {["Honda", "Briggs & Stratton", "Toro", "Husqvarna", "Stihl", "MTD", "Craftsman", "Kohler", "Yamaha", "Mercury"].map((m) => (
-              <option key={m} value={m} />
+          <select id="make" name="make" className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
+            <option value="">Select…</option>
+            {equipmentMakes.map((m) => (
+              <option key={m.id} value={m.name}>
+                {m.name}
+              </option>
             ))}
-          </datalist>
+          </select>
+          <span className="text-[10px] mt-0.5 block" style={{ color: "var(--text-muted)" }}>
+            Don&apos;t see it?{" "}
+            <Link href="/settings/equipment-makes" className="text-brand-600 font-semibold">
+              Add it in Settings
+            </Link>
+            .
+          </span>
         </div>
         <div>
           <label htmlFor="model" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
@@ -111,9 +123,9 @@ export function EquipmentForm({
           </label>
           <select id="engineType" name="engineType" className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
             <option value="">Select…</option>
-            {ENGINE_TYPES.map((e) => (
-              <option key={e} value={e}>
-                {e}
+            {engineTypes.map((e) => (
+              <option key={e.id} value={e.name}>
+                {e.name}
               </option>
             ))}
           </select>

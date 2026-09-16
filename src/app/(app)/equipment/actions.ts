@@ -36,9 +36,17 @@ export async function createEquipment(customerId: string, formData: FormData) {
   }
 
   const make = String(formData.get("make") ?? "").trim();
+  if (make) {
+    const validMake = await prisma.equipmentMake.findUnique({ where: { organizationId_name: { organizationId, name: make } } });
+    if (!validMake) return { error: `"${make}" isn't in your Equipment Makes list — add it in Settings first.` };
+  }
   const model = String(formData.get("model") ?? "").trim();
   const serialNumber = String(formData.get("serialNumber") ?? "").trim();
   const engineType = String(formData.get("engineType") ?? "").trim();
+  if (engineType) {
+    const validEngineType = await prisma.engineType.findUnique({ where: { organizationId_name: { organizationId, name: engineType } } });
+    if (!validEngineType) return { error: `"${engineType}" isn't in your Engine Types list — add it in Settings first.` };
+  }
   const displacement = String(formData.get("displacement") ?? "").trim();
   const notes = String(formData.get("notes") ?? "").trim();
 
@@ -91,10 +99,24 @@ export async function updateEquipment(equipmentId: string, formData: FormData) {
     if (!type || type.organizationId !== organizationId) return { error: "That equipment type doesn't exist." };
   }
 
+  // Allow the field through unchanged even if it's drifted out of the
+  // shop's current Make/Engine Type list (renamed elsewhere before that
+  // started propagating, or set before this dropdown existed) — only a
+  // genuinely new value has to match the list. Otherwise re-saving this
+  // form without touching the field would fail validation on data the
+  // form itself displayed as selected.
   const make = String(formData.get("make") ?? "").trim();
+  if (make && make !== existing.make) {
+    const validMake = await prisma.equipmentMake.findUnique({ where: { organizationId_name: { organizationId, name: make } } });
+    if (!validMake) return { error: `"${make}" isn't in your Equipment Makes list — add it in Settings first.` };
+  }
   const model = String(formData.get("model") ?? "").trim();
   const serialNumber = String(formData.get("serialNumber") ?? "").trim();
   const engineType = String(formData.get("engineType") ?? "").trim();
+  if (engineType && engineType !== existing.engineType) {
+    const validEngineType = await prisma.engineType.findUnique({ where: { organizationId_name: { organizationId, name: engineType } } });
+    if (!validEngineType) return { error: `"${engineType}" isn't in your Engine Types list — add it in Settings first.` };
+  }
   const displacement = String(formData.get("displacement") ?? "").trim();
   const notes = String(formData.get("notes") ?? "").trim();
 

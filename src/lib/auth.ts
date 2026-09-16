@@ -6,6 +6,8 @@ import { sendMail } from "@/lib/email";
 import { ac, STATIC_ROLES } from "@/lib/permissions";
 import { OWNER_ROLE, seedDefaultRolesForOrg } from "@/lib/rbac";
 import { seedDefaultEquipmentTypes } from "@/lib/equipment-types";
+import { seedDefaultEquipmentMakes } from "@/lib/equipment-makes";
+import { seedDefaultEngineTypes } from "@/lib/engine-types";
 import { seedDefaultPartCategories } from "@/lib/part-categories";
 
 export const auth = betterAuth({
@@ -64,6 +66,8 @@ export const auth = betterAuth({
         afterCreateOrganization: async ({ organization }) => {
           await seedDefaultRolesForOrg(organization.id);
           await seedDefaultEquipmentTypes(organization.id);
+          await seedDefaultEquipmentMakes(organization.id);
+          await seedDefaultEngineTypes(organization.id);
           await seedDefaultPartCategories(organization.id);
         },
       },

@@ -14,7 +14,11 @@ export default async function EditEquipmentPage({ params }: { params: Promise<{ 
   const equipment = await prisma.equipment.findUnique({ where: { id }, include: { customer: true } });
   if (!equipment || equipment.organizationId !== organizationId) notFound();
 
-  const equipmentTypes = await prisma.equipmentType.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+  const [equipmentTypes, equipmentMakes, engineTypes] = await Promise.all([
+    prisma.equipmentType.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
+    prisma.equipmentMake.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
+    prisma.engineType.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
+  ]);
 
   return (
     <div className="p-6 space-y-4">
@@ -37,6 +41,8 @@ export default async function EditEquipmentPage({ params }: { params: Promise<{ 
           equipmentId={equipment.id}
           hasPhoto={!!equipment.photoKey}
           equipmentTypes={equipmentTypes}
+          equipmentMakes={equipmentMakes}
+          engineTypes={engineTypes}
           initialEquipmentTypeId={equipment.equipmentTypeId ?? ""}
           initialMake={equipment.make ?? ""}
           initialModel={equipment.model ?? ""}

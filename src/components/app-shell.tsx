@@ -344,6 +344,24 @@ export function AppShell({
                   active={pathname.startsWith("/settings/equipment-types")}
                 />
                 <NavLink
+                  href="/settings/equipment-makes"
+                  label="Equipment Makes"
+                  icon={EquipmentIcon}
+                  color="text-violet-400"
+                  collapsed={collapsed}
+                  onNavigate={closeMobileMenu}
+                  active={pathname.startsWith("/settings/equipment-makes")}
+                />
+                <NavLink
+                  href="/settings/engine-types"
+                  label="Engine Types"
+                  icon={EquipmentIcon}
+                  color="text-violet-400"
+                  collapsed={collapsed}
+                  onNavigate={closeMobileMenu}
+                  active={pathname.startsWith("/settings/engine-types")}
+                />
+                <NavLink
                   href="/settings/part-categories"
                   label="Part Categories"
                   icon={InventoryIcon}
