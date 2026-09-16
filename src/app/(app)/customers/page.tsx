@@ -4,31 +4,46 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { CustomersIcon, SearchIcon } from "@/components/icons";
 import { DeleteCustomerButton } from "@/components/delete-customer-button";
+import { Pagination } from "@/components/pagination";
 
-export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const { q } = await searchParams;
+const PAGE_SIZE = 50;
+
+export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
+  const { q, page: pageRaw } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
 
-  const customers = organizationId
-    ? await prisma.customer.findMany({
-        where: {
-          organizationId,
-          ...(q?.trim()
-            ? {
-                OR: [
-                  { name: { contains: q.trim(), mode: "insensitive" } },
-                  { phone: { contains: q.trim(), mode: "insensitive" } },
-                  { email: { contains: q.trim(), mode: "insensitive" } },
-                ],
-              }
-            : {}),
-        },
-        orderBy: { createdAt: "desc" },
-        include: { _count: { select: { equipment: true } } },
-      })
-    : [];
+  const page = Math.max(1, Number.parseInt(pageRaw ?? "1", 10) || 1);
+  const searchTerm = q?.trim();
+
+  const where = organizationId
+    ? {
+        organizationId,
+        ...(searchTerm
+          ? {
+              OR: [
+                { name: { contains: searchTerm, mode: "insensitive" as const } },
+                { phone: { contains: searchTerm, mode: "insensitive" as const } },
+                { email: { contains: searchTerm, mode: "insensitive" as const } },
+              ],
+            }
+          : {}),
+      }
+    : undefined;
+
+  const [customers, total] = organizationId
+    ? await Promise.all([
+        prisma.customer.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          include: { _count: { select: { equipment: true } } },
+          skip: (page - 1) * PAGE_SIZE,
+          take: PAGE_SIZE,
+        }),
+        prisma.customer.count({ where }),
+      ])
+    : [[], 0];
 
   return (
     <div className="p-6">
@@ -81,9 +96,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                 <tr>
                   <td colSpan={6} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
                     {q ? (
-                      <>
-                        No customers match &ldquo;{q}&rdquo;.
-                      </>
+                      <>No customers match &ldquo;{q}&rdquo;.</>
                     ) : (
                       <>
                         No customers yet —{" "}
@@ -130,6 +143,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
           </table>
         </div>
       </div>
+
+      <Pagination page={page} pageSize={PAGE_SIZE} total={total} basePath="/customers" params={{ q: searchTerm }} />
     </div>
   );
 }

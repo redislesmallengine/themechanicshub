@@ -3,34 +3,62 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { InvoiceIcon, SearchIcon } from "@/components/icons";
-import { STATUS_LABELS, STATUS_BADGE, INVOICE_STATUSES, INVOICE_TYPE_LABELS, INVOICE_TYPE_BADGE, isOverdue, type InvoiceStatus, type InvoiceType } from "@/lib/invoices";
+import {
+  STATUS_LABELS,
+  STATUS_BADGE,
+  INVOICE_STATUSES,
+  INVOICE_TYPES,
+  INVOICE_TYPE_LABELS,
+  INVOICE_TYPE_BADGE,
+  isOverdue,
+  type InvoiceStatus,
+  type InvoiceType,
+} from "@/lib/invoices";
 import { DeleteInvoiceButton } from "@/components/delete-invoice-button";
+import { Pagination } from "@/components/pagination";
 
-export default async function InvoicesPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string }> }) {
-  const { q, status } = await searchParams;
+const PAGE_SIZE = 50;
+
+export default async function InvoicesPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; type?: string; page?: string }> }) {
+  const { q, status, type, page: pageRaw } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
 
-  const invoices = organizationId
-    ? await prisma.invoice.findMany({
-        where: {
-          organizationId,
-          ...(status && (INVOICE_STATUSES as readonly string[]).includes(status) ? { status } : {}),
-          ...(q?.trim()
-            ? {
-                OR: [
-                  { invoiceNumber: { contains: q.trim(), mode: "insensitive" } },
-                  { customer: { name: { contains: q.trim(), mode: "insensitive" } } },
-                ],
-              }
-            : {}),
-        },
-        orderBy: { createdAt: "desc" },
-        include: { customer: true, lineItems: { select: { partId: true } } },
-      })
-    : [];
-  const canDelete = organizationId ? await auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["delete"] } } }) : { success: false as const };
+  const page = Math.max(1, Number.parseInt(pageRaw ?? "1", 10) || 1);
+  const searchTerm = q?.trim();
+  const statusFilter = status && (INVOICE_STATUSES as readonly string[]).includes(status) ? status : undefined;
+  const typeFilter = type && (INVOICE_TYPES as readonly string[]).includes(type) ? type : undefined;
+
+  const where = organizationId
+    ? {
+        organizationId,
+        ...(statusFilter ? { status: statusFilter } : {}),
+        ...(typeFilter ? { invoiceType: typeFilter } : {}),
+        ...(searchTerm
+          ? {
+              OR: [
+                { invoiceNumber: { contains: searchTerm, mode: "insensitive" as const } },
+                { customer: { name: { contains: searchTerm, mode: "insensitive" as const } } },
+              ],
+            }
+          : {}),
+      }
+    : undefined;
+
+  const [invoices, total, canDelete] = organizationId
+    ? await Promise.all([
+        prisma.invoice.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          include: { customer: true, lineItems: { select: { partId: true } } },
+          skip: (page - 1) * PAGE_SIZE,
+          take: PAGE_SIZE,
+        }),
+        prisma.invoice.count({ where }),
+        auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["delete"] } } }),
+      ])
+    : [[], 0, { success: false as const }];
 
   return (
     <div className="p-6">
@@ -73,6 +101,19 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
             </option>
           ))}
         </select>
+        <select
+          name="type"
+          defaultValue={type ?? ""}
+          className="px-3 py-2 rounded-lg text-xs font-semibold"
+          style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)", color: "var(--text-primary)" }}
+        >
+          <option value="">All types</option>
+          {INVOICE_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {INVOICE_TYPE_LABELS[t]}
+            </option>
+          ))}
+        </select>
         <button type="submit" className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white">
           Filter
         </button>
@@ -96,7 +137,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
               {invoices.length === 0 && (
                 <tr>
                   <td colSpan={7} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
-                    {q || status ? "No invoices match those filters." : "No invoices yet — generate one from a work order that's ready for pickup, or create one directly."}
+                    {q || status || type ? "No invoices match those filters." : "No invoices yet — generate one from a work order that's ready for pickup, or create one directly."}
                   </td>
                 </tr>
               )}
@@ -153,6 +194,8 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
           </table>
         </div>
       </div>
+
+      <Pagination page={page} pageSize={PAGE_SIZE} total={total} basePath="/invoices" params={{ q: searchTerm, status: statusFilter, type: typeFilter }} />
     </div>
   );
 }
