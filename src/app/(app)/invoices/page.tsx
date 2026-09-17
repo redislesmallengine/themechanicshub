@@ -11,6 +11,7 @@ import {
   INVOICE_TYPE_LABELS,
   INVOICE_TYPE_BADGE,
   isOverdue,
+  isEditable,
   type InvoiceStatus,
   type InvoiceType,
 } from "@/lib/invoices";
@@ -46,7 +47,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
       }
     : undefined;
 
-  const [invoices, total, canDelete] = organizationId
+  const [invoices, total, canDelete, canUpdate] = organizationId
     ? await Promise.all([
         prisma.invoice.findMany({
           where,
@@ -57,8 +58,9 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
         }),
         prisma.invoice.count({ where }),
         auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["delete"] } } }),
+        auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["update"] } } }),
       ])
-    : [[], 0, { success: false as const }];
+    : [[], 0, { success: false as const }, { success: false as const }];
 
   return (
     <div className="p-6">
@@ -183,9 +185,16 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                       {inv.dueDate.toLocaleDateString()}
                     </td>
                     <td className="dt-td text-right">
-                      {invStatus === "draft" && canDelete.success && (
-                        <DeleteInvoiceButton invoiceId={inv.id} invoiceNumber={inv.invoiceNumber} hasInventoryLines={inv.lineItems.some((l) => !!l.partId)} />
-                      )}
+                      <div className="flex justify-end items-center gap-3">
+                        {isEditable(invStatus) && canUpdate.success && (
+                          <Link href={`/invoices/${inv.id}`} className="text-[11px] font-bold text-brand-600">
+                            Edit
+                          </Link>
+                        )}
+                        {invStatus === "draft" && canDelete.success && (
+                          <DeleteInvoiceButton invoiceId={inv.id} invoiceNumber={inv.invoiceNumber} hasInventoryLines={inv.lineItems.some((l) => !!l.partId)} />
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
