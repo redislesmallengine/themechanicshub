@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveEmailTemplate, restoreDefaultTemplate, previewEmailTemplate } from "@/app/(app)/settings/email-templates/actions";
+import { RichTextEditor, type RichTextEditorHandle } from "@/components/rich-text-editor";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -59,9 +60,11 @@ export function EmailTemplateEditor({ templates }: { templates: EmailTemplateDat
 
 function TemplatePanel({ template }: { template: EmailTemplateData }) {
   const router = useRouter();
-  const htmlRef = useRef<HTMLTextAreaElement>(null);
+  const richTextEditorRef = useRef<RichTextEditorHandle>(null);
+  const rawHtmlRef = useRef<HTMLTextAreaElement>(null);
   const subjectRef = useRef<HTMLInputElement>(null);
   const lastFocused = useRef<"subject" | "html">("html");
+  const [showRawHtml, setShowRawHtml] = useState(false);
 
   const [subject, setSubject] = useState(template.subject);
   const [html, setHtml] = useState(template.html);
@@ -88,8 +91,8 @@ function TemplatePanel({ template }: { template: EmailTemplateData }) {
         el.focus();
         el.setSelectionRange(start + placeholder.length, start + placeholder.length);
       });
-    } else if (htmlRef.current) {
-      const el = htmlRef.current;
+    } else if (showRawHtml && rawHtmlRef.current) {
+      const el = rawHtmlRef.current;
       const start = el.selectionStart ?? html.length;
       const end = el.selectionEnd ?? html.length;
       const next = html.slice(0, start) + placeholder + html.slice(end);
@@ -98,6 +101,8 @@ function TemplatePanel({ template }: { template: EmailTemplateData }) {
         el.focus();
         el.setSelectionRange(start + placeholder.length, start + placeholder.length);
       });
+    } else {
+      richTextEditorRef.current?.insertAtCursor(placeholder);
     }
   }
 
@@ -178,20 +183,34 @@ function TemplatePanel({ template }: { template: EmailTemplateData }) {
           />
         </div>
         <div>
-          <label htmlFor={`html-${template.key}`} className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
-            Email Body (HTML)
-          </label>
-          <textarea
-            ref={htmlRef}
-            id={`html-${template.key}`}
-            name="html"
-            rows={10}
-            value={html}
-            onFocus={() => (lastFocused.current = "html")}
-            onChange={(e) => setHtml(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg text-xs font-mono leading-relaxed"
-            style={inputStyle}
-          />
+          <div className="flex items-center justify-between mb-1">
+            <label htmlFor={`html-${template.key}`} className="block font-bold text-xs" style={{ color: "var(--text-secondary)" }}>
+              Email Body
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowRawHtml((v) => !v)}
+              className="text-[10px] font-bold underline underline-offset-2"
+              style={{ color: "var(--text-muted)" }}
+            >
+              {showRawHtml ? "Back to visual editor" : "Edit HTML directly"}
+            </button>
+          </div>
+          {showRawHtml ? (
+            <textarea
+              ref={rawHtmlRef}
+              id={`html-${template.key}`}
+              rows={12}
+              value={html}
+              onFocus={() => (lastFocused.current = "html")}
+              onChange={(e) => setHtml(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg text-xs font-mono leading-relaxed"
+              style={inputStyle}
+            />
+          ) : (
+            <RichTextEditor ref={richTextEditorRef} id={`html-${template.key}`} value={html} onChange={setHtml} onFocus={() => (lastFocused.current = "html")} />
+          )}
+          <input type="hidden" name="html" value={html} />
         </div>
 
         <div className="p-3 rounded-lg" style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-subtle)" }}>
@@ -205,6 +224,7 @@ function TemplatePanel({ template }: { template: EmailTemplateData }) {
                 <button
                   key={t.token}
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => insertToken(t.token)}
                   title={t.description}
                   className="px-2 py-1 rounded text-[10px] font-mono font-semibold transition hover:bg-slate-50"
