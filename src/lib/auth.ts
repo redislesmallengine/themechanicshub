@@ -3,6 +3,7 @@ import { prismaAdapter } from "better-auth/adapters/prisma";
 import { organization } from "better-auth/plugins/organization";
 import { prisma } from "@/lib/prisma";
 import { sendMail } from "@/lib/email";
+import { loadEmailTemplate, renderTemplate, EMAIL_TEMPLATE_META } from "@/lib/email-templates";
 import { ac, STATIC_ROLES } from "@/lib/permissions";
 import { OWNER_ROLE, seedDefaultRolesForOrg } from "@/lib/rbac";
 import { seedDefaultEquipmentTypes } from "@/lib/equipment-types";
@@ -31,13 +32,17 @@ export const auth = betterAuth({
     sendResetPassword: async ({ user, url }) => {
       // No organization context at this point in the flow — resolveConfig
       // in src/lib/email.ts falls back to the platform default provider.
+      // Same for the template: no org membership yet means no per-shop
+      // customization to load, so this uses the built-in default.
       const membership = await prisma.member.findFirst({ where: { userId: user.id } });
+      const template = membership?.organizationId
+        ? await loadEmailTemplate(membership.organizationId, "passwordReset")
+        : { subject: EMAIL_TEMPLATE_META.passwordReset.defaultSubject, html: EMAIL_TEMPLATE_META.passwordReset.defaultHtml };
+      const data = { user_name: user.name, reset_link: url };
       await sendMail({
         to: user.email,
-        subject: "Reset your Mechanic Shop Hub password",
-        html: `<p>Someone requested a password reset for your account.</p>
-               <p><a href="${url}">Reset your password</a></p>
-               <p>If this wasn't you, you can ignore this email.</p>`,
+        subject: renderTemplate(template.subject, data),
+        html: renderTemplate(template.html, data),
         organizationId: membership?.organizationId,
       });
     },
@@ -75,11 +80,12 @@ export const auth = betterAuth({
         const url = `${process.env.BETTER_AUTH_URL}/accept-invite?id=${data.id}`;
         const roleLabel =
           data.role === "owner" ? OWNER_ROLE.label : ((await prisma.platformRole.findUnique({ where: { key: data.role } }))?.label ?? data.role);
+        const template = await loadEmailTemplate(data.organization.id, "staffInvite");
+        const templateData = { inviter_name: data.inviter.user.name, shop_name: data.organization.name, role_label: roleLabel, invite_link: url };
         await sendMail({
           to: data.email,
-          subject: `You're invited to join ${data.organization.name} on Mechanic Shop Hub`,
-          html: `<p>${data.inviter.user.name} invited you to join <b>${data.organization.name}</b> as a <b>${roleLabel}</b>.</p>
-                 <p><a href="${url}">Accept the invite</a></p>`,
+          subject: renderTemplate(template.subject, templateData),
+          html: renderTemplate(template.html, templateData),
           organizationId: data.organization.id,
         });
       },

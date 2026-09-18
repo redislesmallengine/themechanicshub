@@ -333,7 +333,16 @@ export function AppShell({
               <SectionLabel collapsed={collapsed}>Shop</SectionLabel>
               <nav className="space-y-0.5 mb-4">
                 <NavLink href="/settings/shop" label="Shop Profile" icon={StoreIcon} color="text-teal-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname.startsWith("/settings/shop")} />
-                <NavLink href="/settings/email" label="Email" icon={SettingsIcon} color="text-rose-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname.startsWith("/settings/email")} />
+                <NavLink href="/settings/email" label="Email" icon={SettingsIcon} color="text-rose-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname === "/settings/email"} />
+                <NavLink
+                  href="/settings/email-templates"
+                  label="Email Templates"
+                  icon={SettingsIcon}
+                  color="text-rose-400"
+                  collapsed={collapsed}
+                  onNavigate={closeMobileMenu}
+                  active={pathname.startsWith("/settings/email-templates")}
+                />
                 <NavLink
                   href="/settings/equipment-types"
                   label="Equipment Types"

@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import sgMail from "@sendgrid/mail";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/crypto";
+import { htmlToPlainText } from "@/lib/email-templates";
 
 export type EmailProvider = "resend" | "sendgrid" | "smtp";
 
@@ -66,50 +67,70 @@ export interface EmailAttachment {
   content: Buffer;
 }
 
-async function sendViaResend(creds: ResendCredentials, from: string, to: string, subject: string, html: string, attachments?: EmailAttachment[], replyTo?: string) {
+interface OutgoingMessage {
+  from: string;
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  attachments?: EmailAttachment[];
+  replyTo?: string;
+}
+
+async function sendViaResend(creds: ResendCredentials, msg: OutgoingMessage) {
   const resend = new Resend(creds.apiKey);
   const { error } = await resend.emails.send({
-    from,
-    to,
-    subject,
-    html,
-    attachments: attachments?.map((a) => ({ filename: a.filename, content: a.content })),
-    ...(replyTo ? { replyTo } : {}),
+    from: msg.from,
+    to: msg.to,
+    subject: msg.subject,
+    html: msg.html,
+    text: msg.text,
+    attachments: msg.attachments?.map((a) => ({ filename: a.filename, content: a.content })),
+    ...(msg.replyTo ? { replyTo: msg.replyTo } : {}),
   });
   if (error) throw new Error(`Resend: ${error.message}`);
 }
 
-async function sendViaSendGrid(creds: SendGridCredentials, from: string, to: string, subject: string, html: string, attachments?: EmailAttachment[], replyTo?: string) {
+async function sendViaSendGrid(creds: SendGridCredentials, msg: OutgoingMessage) {
   sgMail.setApiKey(creds.apiKey);
   await sgMail.send({
-    from,
-    to,
-    subject,
-    html,
+    from: msg.from,
+    to: msg.to,
+    subject: msg.subject,
+    html: msg.html,
+    text: msg.text,
     // SendGrid wants base64-encoded content as a string, not a raw Buffer.
-    attachments: attachments?.map((a) => ({ filename: a.filename, content: a.content.toString("base64"), disposition: "attachment" })),
-    ...(replyTo ? { replyTo } : {}),
+    attachments: msg.attachments?.map((a) => ({ filename: a.filename, content: a.content.toString("base64"), disposition: "attachment" })),
+    ...(msg.replyTo ? { replyTo: msg.replyTo } : {}),
   });
 }
 
-async function sendViaSmtp(creds: SmtpCredentials, from: string, to: string, subject: string, html: string, attachments?: EmailAttachment[], replyTo?: string) {
+async function sendViaSmtp(creds: SmtpCredentials, msg: OutgoingMessage) {
   const transport = nodemailer.createTransport({
     host: creds.host,
     port: creds.port,
     secure: creds.port === 465,
     auth: { user: creds.user, pass: creds.password },
   });
-  await transport.sendMail({ from, to, subject, html, attachments, ...(replyTo ? { replyTo } : {}) });
+  await transport.sendMail({
+    from: msg.from,
+    to: msg.to,
+    subject: msg.subject,
+    html: msg.html,
+    text: msg.text,
+    attachments: msg.attachments,
+    ...(msg.replyTo ? { replyTo: msg.replyTo } : {}),
+  });
 }
 
-async function sendVia(candidate: Candidate, from: string, to: string, subject: string, html: string, attachments?: EmailAttachment[], replyTo?: string) {
+async function sendVia(candidate: Candidate, msg: OutgoingMessage) {
   switch (candidate.provider) {
     case "resend":
-      return sendViaResend(candidate.credentials as ResendCredentials, from, to, subject, html, attachments, replyTo);
+      return sendViaResend(candidate.credentials as ResendCredentials, msg);
     case "sendgrid":
-      return sendViaSendGrid(candidate.credentials as SendGridCredentials, from, to, subject, html, attachments, replyTo);
+      return sendViaSendGrid(candidate.credentials as SendGridCredentials, msg);
     case "smtp":
-      return sendViaSmtp(candidate.credentials as SmtpCredentials, from, to, subject, html, attachments, replyTo);
+      return sendViaSmtp(candidate.credentials as SmtpCredentials, msg);
   }
 }
 
@@ -188,7 +209,15 @@ export async function sendMail(params: {
     }
     const from = `Mechanic Shop Hub <${process.env.SMTP_FROM ?? process.env.SMTP_USER ?? ""}>`;
     try {
-      await sendVia(fallback, from, params.to, params.subject, params.html, params.attachments, params.replyTo);
+      await sendVia(fallback, {
+        from,
+        to: params.to,
+        subject: params.subject,
+        html: params.html,
+        text: htmlToPlainText(params.html),
+        attachments: params.attachments,
+        replyTo: params.replyTo,
+      });
       await logSent(true, fallback.provider);
       return;
     } catch (err) {
@@ -222,7 +251,15 @@ export async function sendMail(params: {
     if (!(await isUnderQuota(organizationId, candidate.provider))) continue; // next in the cascade
 
     try {
-      await sendVia(candidate, from, params.to, params.subject, params.html, params.attachments, params.replyTo);
+      await sendVia(candidate, {
+        from,
+        to: params.to,
+        subject: params.subject,
+        html: params.html,
+        text: htmlToPlainText(params.html),
+        attachments: params.attachments,
+        replyTo: params.replyTo,
+      });
       await prisma.emailLog.create({ data: { organizationId, provider: candidate.provider, success: true } });
       await logSent(true, candidate.provider);
       return;

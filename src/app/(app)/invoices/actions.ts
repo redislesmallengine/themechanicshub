@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendMail } from "@/lib/email";
+import { loadEmailTemplate, renderTemplate } from "@/lib/email-templates";
 import { claimInvoiceNumber, generateViewToken, computeTotals, classifyInvoiceType, isEditable, PAYMENT_METHODS, type LineItemInput } from "@/lib/invoices";
 import { applyStockAdjustment } from "@/lib/inventory";
 import { renderInvoicePdfFromRecord } from "@/lib/invoice-pdf";
@@ -375,13 +376,16 @@ export async function updateInvoiceParty(invoiceId: string, formData: FormData) 
 }
 
 /** Shared by sendInvoice (real send) and previewInvoiceEmail (preview only) so the two can never drift apart. */
-function buildInvoiceEmail(params: { invoiceNumber: string; shopName: string; total: string; url: string }) {
-  return {
-    subject: `Invoice ${params.invoiceNumber} from ${params.shopName}`,
-    html: `<p>Your invoice is ready — total due: <b>$${params.total}</b>.</p>
-           <p><a href="${params.url}">View your invoice</a></p>
-           <p>A PDF copy is attached.</p>`,
+async function buildInvoiceEmail(organizationId: string, params: { customerName: string; invoiceNumber: string; shopName: string; total: string; url: string }) {
+  const template = await loadEmailTemplate(organizationId, "invoice");
+  const data = {
+    customer_name: params.customerName,
+    shop_name: params.shopName,
+    invoice_number: params.invoiceNumber,
+    total: `$${params.total}`,
+    invoice_link: params.url,
   };
+  return { subject: renderTemplate(template.subject, data), html: renderTemplate(template.html, data) };
 }
 
 /** Returns the exact email sendInvoice would send, without sending it. Unlike the estimate's approval link, an invoice's viewToken already exists (set at creation), so this shows the real, final link — not a placeholder. */
@@ -394,7 +398,8 @@ export async function previewInvoiceEmail(invoiceId: string) {
   if (!invoice || invoice.organizationId !== organizationId) return { error: "That invoice doesn't exist." };
 
   const url = `${process.env.BETTER_AUTH_URL}/invoice/${invoice.viewToken}`;
-  const { subject, html } = buildInvoiceEmail({
+  const { subject, html } = await buildInvoiceEmail(organizationId, {
+    customerName: invoice.customer?.name ?? "there",
     invoiceNumber: invoice.invoiceNumber,
     shopName: invoice.organization.name,
     total: invoice.total.toString(),
@@ -431,7 +436,13 @@ export async function sendInvoice(invoiceId: string) {
   const pdfBuffer = await renderInvoicePdfFromRecord(invoice);
 
   const url = `${process.env.BETTER_AUTH_URL}/invoice/${invoice.viewToken}`;
-  const { subject, html } = buildInvoiceEmail({ invoiceNumber: invoice.invoiceNumber, shopName: invoice.organization.name, total: invoice.total.toString(), url });
+  const { subject, html } = await buildInvoiceEmail(organizationId, {
+    customerName: invoice.customer.name,
+    invoiceNumber: invoice.invoiceNumber,
+    shopName: invoice.organization.name,
+    total: invoice.total.toString(),
+    url,
+  });
   await sendMail({
     to: invoice.customer.email,
     subject,

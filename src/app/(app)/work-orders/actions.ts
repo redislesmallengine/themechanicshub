@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { sendMail } from "@/lib/email";
+import { loadEmailTemplate, renderTemplate } from "@/lib/email-templates";
 import { applyStockAdjustment } from "@/lib/inventory";
 
 async function requireCanManageWorkOrders(action: "create" | "update" | "delete" = "create") {
@@ -122,15 +123,21 @@ export async function updateDiagnosis(workOrderId: string, formData: FormData) {
   return { success: true };
 }
 
-/** Shared by sendEstimate (real send) and previewEstimateEmail (preview only) so the two can never drift apart. */
-function buildEstimateEmail(params: { equipmentLabel: string; shopName: string; amount: number; estimateNotes: string; url: string }) {
-  return {
-    subject: `Repair estimate for ${params.equipmentLabel} — ${params.shopName}`,
-    html: `<p>Here's the estimate for ${params.equipmentLabel}:</p>
-           <p><b>$${params.amount.toFixed(2)}</b> — ${params.estimateNotes}</p>
-           <p><a href="${params.url}">Review and approve or decline</a></p>
-           <p>If you'd rather talk it through, just give the shop a call.</p>`,
+/** Shared by sendEstimate (real send) and previewEstimateEmail (preview only) so the two can never drift apart. Renders the shop's saved template (Settings -> Email Templates) or the built-in default if they haven't customized it. */
+async function buildEstimateEmail(
+  organizationId: string,
+  params: { customerName: string; equipmentLabel: string; shopName: string; amount: number; estimateNotes: string; url: string }
+) {
+  const template = await loadEmailTemplate(organizationId, "estimate");
+  const data = {
+    customer_name: params.customerName,
+    shop_name: params.shopName,
+    equipment_label: params.equipmentLabel,
+    amount: `$${params.amount.toFixed(2)}`,
+    estimate_notes: params.estimateNotes,
+    approval_link: params.url,
   };
+  return { subject: renderTemplate(template.subject, data), html: renderTemplate(template.html, data) };
 }
 
 /** Validates the draft and returns the exact email sendEstimate would send — without sending it or touching the work order. The real link's unique code doesn't exist yet at preview time (it's only generated on actual send), so this shows a placeholder in its place. */
@@ -153,7 +160,8 @@ export async function previewEstimateEmail(workOrderId: string, formData: FormDa
   ]);
 
   const equipmentLabel = [equipment?.make, equipment?.model].filter(Boolean).join(" / ") || equipment?.equipmentType?.name || "your equipment";
-  const { subject, html } = buildEstimateEmail({
+  const { subject, html } = await buildEstimateEmail(organizationId, {
+    customerName: customer?.name ?? "there",
     equipmentLabel,
     shopName: shop?.name ?? "your shop",
     amount,
@@ -194,7 +202,14 @@ export async function sendEstimate(workOrderId: string, formData: FormData) {
 
   const url = `${process.env.BETTER_AUTH_URL}/estimate/${token}`;
   const equipmentLabel = [equipment?.make, equipment?.model].filter(Boolean).join(" / ") || equipment?.equipmentType?.name || "your equipment";
-  const { subject, html } = buildEstimateEmail({ equipmentLabel, shopName: shop?.name ?? "your shop", amount, estimateNotes, url });
+  const { subject, html } = await buildEstimateEmail(organizationId, {
+    customerName: customer.name,
+    equipmentLabel,
+    shopName: shop?.name ?? "your shop",
+    amount,
+    estimateNotes,
+    url,
+  });
   await sendMail({
     to: customer.email,
     subject,

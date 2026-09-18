@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { sendMail } from "@/lib/email";
+import { loadEmailTemplate, renderTemplate } from "@/lib/email-templates";
 
 /**
  * Every reason quantityOnHand is allowed to change, across every place that
@@ -47,13 +48,23 @@ export async function applyStockAdjustment(params: {
   ]);
 
   if (wasAboveReorderPoint && newQuantity <= part.reorderPoint) {
-    const ownerMembership = await prisma.member.findFirst({ where: { organizationId, role: "owner" }, include: { user: true } });
+    const [ownerMembership, organization] = await Promise.all([
+      prisma.member.findFirst({ where: { organizationId, role: "owner" }, include: { user: true } }),
+      prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
+    ]);
     if (ownerMembership) {
+      const template = await loadEmailTemplate(organizationId, "lowStock");
+      const data = {
+        part_name: part.name,
+        sku: part.sku ?? "—",
+        quantity: String(newQuantity),
+        reorder_point: String(part.reorderPoint),
+        shop_name: organization?.name ?? "your shop",
+      };
       await sendMail({
         to: ownerMembership.user.email,
-        subject: `Low stock: ${part.name}`,
-        html: `<p><b>${part.name}</b>${part.sku ? ` (SKU ${part.sku})` : ""} is down to <b>${newQuantity}</b> — at or below its reorder point of ${part.reorderPoint}.</p>
-               <p>Restock when you get a chance.</p>`,
+        subject: renderTemplate(template.subject, data),
+        html: renderTemplate(template.html, data),
         organizationId,
       }).catch(() => null); // stock update already succeeded — a failed notification email shouldn't surface as an error to the caller
     }

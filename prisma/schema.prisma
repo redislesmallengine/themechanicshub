@@ -119,6 +119,7 @@ model Organization {
   emailSettings     EmailSettings?
   emailLogs         EmailLog[]
   sentEmails        SentEmail[]
+  emailTemplates    EmailTemplate[]
   organizationRoles OrganizationRole[]
   shopProfile       ShopProfile?
   equipmentTypes    EquipmentType[]
@@ -204,6 +205,26 @@ model SentEmail {
 
   @@index([organizationId, createdAt])
   @@index([relatedType, relatedId])
+}
+
+// A shop's saved override for one of the app's built-in email templates
+// (see src/lib/email-templates.ts for the registry of keys/tokens/
+// defaults). subject/html null means "use the built-in default" -- a row
+// only exists once a shop has actually customized that template, so a
+// fresh shop has none of these and every email uses the hardcoded
+// default, unchanged from before this feature existed.
+model EmailTemplate {
+  id             String   @id @default(cuid())
+  organizationId String
+  key            String // "estimate" | "invoice" | "lowStock" | "staffInvite" | "passwordReset" | "testEmail"
+  subject        String
+  html           String
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
 }
 
 // Phase 2 — Shop Configuration. Everything later phases read as "the

@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/crypto";
 import { sendMail } from "@/lib/email";
+import { loadEmailTemplate, renderTemplate } from "@/lib/email-templates";
 
 async function requireCanManageSettings() {
   const reqHeaders = await headers();
@@ -78,10 +79,15 @@ export async function sendTestEmail() {
   const { organizationId, userEmail } = await requireCanManageSettings();
 
   try {
+    const [template, organization] = await Promise.all([
+      loadEmailTemplate(organizationId, "testEmail"),
+      prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
+    ]);
+    const data = { shop_name: organization?.name ?? "your shop" };
     await sendMail({
       to: userEmail,
-      subject: "Mechanic Shop Hub — test email",
-      html: `<p>This is a test email from your Mechanic Shop Hub email settings. If you got this, it's working.</p>`,
+      subject: renderTemplate(template.subject, data),
+      html: renderTemplate(template.html, data),
       organizationId,
     });
     return { success: true };
