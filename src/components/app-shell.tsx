@@ -80,6 +80,25 @@ const NAV = [
   { href: "/invoices", label: "Invoices", icon: InvoiceIcon, color: "text-sky-400" },
 ];
 
+// The "Configuration" submenu — everything a shop owner sets up once and
+// rarely touches again, tucked behind its own collapsible parent instead of
+// competing with the daily-use items above for sidebar space.
+// "Email" needs an exact match, not startsWith, or its highlight would also
+// light up on /settings/email-templates.
+const CONFIG_NAV = [
+  { href: "/settings/shop", label: "Shop Profile", icon: StoreIcon, color: "text-teal-400" },
+  { href: "/settings/email", label: "Email", icon: SettingsIcon, color: "text-rose-400", exact: true },
+  { href: "/settings/email-templates", label: "Email Templates", icon: SettingsIcon, color: "text-rose-400" },
+  { href: "/settings/equipment-types", label: "Equipment Types", icon: EquipmentIcon, color: "text-violet-400" },
+  { href: "/settings/equipment-makes", label: "Equipment Makes", icon: EquipmentIcon, color: "text-violet-400" },
+  { href: "/settings/engine-types", label: "Engine Types", icon: EquipmentIcon, color: "text-violet-400" },
+  { href: "/settings/part-categories", label: "Part Categories", icon: InventoryIcon, color: "text-indigo-400" },
+];
+
+function isConfigNavActive(item: (typeof CONFIG_NAV)[number], pathname: string) {
+  return item.exact ? pathname === item.href : pathname.startsWith(item.href);
+}
+
 function initials(name: string) {
   return name
     .split(" ")
@@ -105,6 +124,14 @@ function MenuIcon(props: SVGProps<SVGSVGElement>) {
       <path d="M4 6h16" />
       <path d="M4 12h16" />
       <path d="M4 18h16" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="m6 9 6 6 6-6" />
     </svg>
   );
 }
@@ -287,6 +314,12 @@ export function AppShell({
   // fixed-position and hidden by default (see the `aside` className below);
   // this is what slides it into view.
   const [mobileOpen, setMobileOpen] = useState(false);
+  const configActive = CONFIG_NAV.some((item) => isConfigNavActive(item, pathname));
+  // Opens automatically on first load if you're already on a Configuration
+  // page (deep link, bookmark, refresh); otherwise starts closed. Once
+  // toggled it stays as the user left it while they navigate elsewhere,
+  // since this component isn't remounted between pages.
+  const [configOpen, setConfigOpen] = useState(configActive);
 
   function toggleCollapsed() {
     setCollapsed(!collapsed);
@@ -329,58 +362,37 @@ export function AppShell({
           </nav>
 
           {canManageSettings && (
-            <>
-              <SectionLabel collapsed={collapsed}>Shop</SectionLabel>
-              <nav className="space-y-0.5 mb-4">
-                <NavLink href="/settings/shop" label="Shop Profile" icon={StoreIcon} color="text-teal-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname.startsWith("/settings/shop")} />
-                <NavLink href="/settings/email" label="Email" icon={SettingsIcon} color="text-rose-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname === "/settings/email"} />
-                <NavLink
-                  href="/settings/email-templates"
-                  label="Email Templates"
-                  icon={SettingsIcon}
-                  color="text-rose-400"
-                  collapsed={collapsed}
-                  onNavigate={closeMobileMenu}
-                  active={pathname.startsWith("/settings/email-templates")}
-                />
-                <NavLink
-                  href="/settings/equipment-types"
-                  label="Equipment Types"
-                  icon={EquipmentIcon}
-                  color="text-violet-400"
-                  collapsed={collapsed}
-                  onNavigate={closeMobileMenu}
-                  active={pathname.startsWith("/settings/equipment-types")}
-                />
-                <NavLink
-                  href="/settings/equipment-makes"
-                  label="Equipment Makes"
-                  icon={EquipmentIcon}
-                  color="text-violet-400"
-                  collapsed={collapsed}
-                  onNavigate={closeMobileMenu}
-                  active={pathname.startsWith("/settings/equipment-makes")}
-                />
-                <NavLink
-                  href="/settings/engine-types"
-                  label="Engine Types"
-                  icon={EquipmentIcon}
-                  color="text-violet-400"
-                  collapsed={collapsed}
-                  onNavigate={closeMobileMenu}
-                  active={pathname.startsWith("/settings/engine-types")}
-                />
-                <NavLink
-                  href="/settings/part-categories"
-                  label="Part Categories"
-                  icon={InventoryIcon}
-                  color="text-indigo-400"
-                  collapsed={collapsed}
-                  onNavigate={closeMobileMenu}
-                  active={pathname.startsWith("/settings/part-categories")}
-                />
-              </nav>
-            </>
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={() => setConfigOpen((o) => !o)}
+                title={collapsed ? "Configuration" : undefined}
+                aria-expanded={configOpen}
+                className={`w-full flex items-center gap-2.5 py-2 rounded-lg text-xs transition px-2.5 ${collapsed ? "md:justify-center md:px-2" : ""}`}
+                style={configActive ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
+              >
+                <SettingsIcon className={`w-3.5 h-3.5 shrink-0 ${configActive ? "text-white" : "text-teal-400"}`} />
+                {collapsed ? <span className="md:hidden flex-1 text-left">Configuration</span> : <span className="flex-1 text-left">Configuration</span>}
+                <ChevronDownIcon className={`w-3 h-3 shrink-0 transition-transform ${configOpen ? "rotate-180" : ""} ${collapsed ? "md:hidden" : ""}`} />
+              </button>
+
+              {configOpen && (
+                <nav className={`space-y-0.5 mt-0.5 pl-3.5 ml-4 border-l border-l-[#1E293B] ${collapsed ? "md:pl-0 md:ml-0 md:border-l-0" : ""}`}>
+                  {CONFIG_NAV.map((item) => (
+                    <NavLink
+                      key={item.href}
+                      href={item.href}
+                      label={item.label}
+                      icon={item.icon}
+                      color={item.color}
+                      collapsed={collapsed}
+                      onNavigate={closeMobileMenu}
+                      active={isConfigNavActive(item, pathname)}
+                    />
+                  ))}
+                </nav>
+              )}
+            </div>
           )}
 
           {isSiteAdmin && (
