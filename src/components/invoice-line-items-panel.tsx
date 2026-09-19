@@ -188,6 +188,24 @@ function LineRow({ line, showMargins }: { line: InvoiceLine; showMargins: boolea
     });
   }
 
+  // A section divider from a combined invoice (one per work order folded
+  // in) rather than a priced line -- spans the numeric columns instead of
+  // showing zeroed-out qty/price/total.
+  if (line.type === "header") {
+    return (
+      <tr className="dt-row group">
+        <td colSpan={showMargins ? 5 : 4} className="dt-td text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)", background: "var(--bg-surface-subtle)" }}>
+          {line.description}
+        </td>
+        <td className="dt-td text-right" style={{ background: "var(--bg-surface-subtle)" }}>
+          <button onClick={handleRemove} disabled={pending} className="text-[11px] font-bold disabled:opacity-50" style={{ color: "var(--color-error-solid)" }}>
+            {pending ? "…" : "Remove"}
+          </button>
+        </td>
+      </tr>
+    );
+  }
+
   return (
     <tr className="dt-row group">
       <td className="dt-td text-sm font-semibold" style={{ color: "var(--text-primary)" }}>

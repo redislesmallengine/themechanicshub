@@ -502,12 +502,13 @@ model WorkOrder {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  customer     Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  equipment    Equipment       @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
-  assignedTo   User?           @relation(fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  equipment    Equipment         @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  assignedTo   User?             @relation(fields: [assignedToUserId], references: [id], onDelete: SetNull)
   parts        WorkOrderPart[]
-  invoice      Invoice?
+  invoice      Invoice? // set when this work order was invoiced on its own -- see generateInvoiceFromWorkOrder
+  combinedInto InvoiceWorkOrder? // set when this work order was folded into a combined invoice alongside others instead -- see generateCombinedInvoice. Mutually exclusive with `invoice`.
 
   @@index([organizationId, status])
   @@index([customerId])
@@ -580,16 +581,39 @@ model Invoice {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workOrder    WorkOrder?        @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
-  customer     Customer?         @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  equipment    Equipment?        @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
-  lineItems    InvoiceLineItem[]
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workOrder          WorkOrder?         @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  customer           Customer?          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  equipment          Equipment?         @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+  lineItems          InvoiceLineItem[]
+  combinedWorkOrders InvoiceWorkOrder[]
 
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, status])
   @@index([customerId])
   @@index([equipmentId])
+}
+
+// Folds 2+ work orders (same customer, each ready to invoice) into ONE
+// invoice -- see generateCombinedInvoice. Deliberately a separate join table
+// rather than widening Invoice.workOrderId to a list: that field's 1:1
+// meaning ("this invoice came from exactly this one work order") stays
+// intact and every existing single-work-order invoice is untouched: this
+// table only ever has rows for combined invoices. workOrderId is unique so
+// a work order can be folded into at most one invoice, same rule as the
+// direct link. A header InvoiceLineItem (type "header") per work order,
+// created alongside these rows, is what actually separates the invoice into
+// per-equipment sections on screen/PDF.
+model InvoiceWorkOrder {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  workOrderId String   @unique
+  createdAt   DateTime @default(now())
+
+  invoice   Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
 }
 
 model InvoiceLineItem {

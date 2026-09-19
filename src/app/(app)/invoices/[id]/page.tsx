@@ -26,6 +26,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       customer: true,
       equipment: { include: { equipmentType: true } },
       workOrder: true,
+      combinedWorkOrders: { include: { workOrder: { include: { equipment: { include: { equipmentType: true } } } } } },
       organization: { select: { name: true } },
     },
   });
@@ -48,7 +49,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     ? [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" / ") || invoice.equipment.equipmentType?.name || "Equipment"
     : invoice.adHocEquipmentLabel;
   const hasInventoryLines = invoice.lineItems.some((l) => !!l.partId);
-  const canEditParty = editable && !invoice.workOrderId;
+  const canEditParty = editable && !invoice.workOrderId && invoice.combinedWorkOrders.length === 0;
   const pdfUrl = `${process.env.BETTER_AUTH_URL}/api/invoice/${invoice.viewToken}/pdf`;
 
   const partyCustomers = canEditParty
@@ -97,6 +98,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   <Link href={`/work-orders/${invoice.workOrderId}`} className="text-brand-600 font-semibold">
                     {equipmentLabel ?? "Work order"}
                   </Link>
+                </>
+              )}
+              {invoice.combinedWorkOrders.length > 0 && (
+                <>
+                  {" "}
+                  · <span className="font-semibold">Combined from {invoice.combinedWorkOrders.length} work orders</span>
                 </>
               )}
             </p>
@@ -157,9 +164,21 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </div>
         <div>
           <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
-            Machine Details
+            {invoice.combinedWorkOrders.length > 0 ? "Machines (combined invoice)" : "Machine Details"}
           </div>
-          {invoice.equipment ? (
+          {invoice.combinedWorkOrders.length > 0 ? (
+            <div className="space-y-1.5">
+              {invoice.combinedWorkOrders.map((cwo) => {
+                const eq = cwo.workOrder.equipment;
+                const label = [eq.make, eq.model].filter(Boolean).join(" / ") || eq.equipmentType?.name || "Equipment";
+                return (
+                  <Link key={cwo.id} href={`/work-orders/${cwo.workOrder.id}`} className="block text-sm font-bold text-brand-600 hover:underline">
+                    {label}
+                  </Link>
+                );
+              })}
+            </div>
+          ) : invoice.equipment ? (
             <>
               <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
                 {equipmentLabel}

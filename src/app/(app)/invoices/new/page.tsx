@@ -15,11 +15,14 @@ export default async function NewInvoicePage() {
   });
   if (!allowed.success) redirect("/invoices");
 
-  const customers = await prisma.customer.findMany({
-    where: { organizationId: session.session.activeOrganizationId },
-    orderBy: { name: "asc" },
-    include: { equipment: { include: { equipmentType: true } } },
-  });
+  const [customers, shopProfile] = await Promise.all([
+    prisma.customer.findMany({
+      where: { organizationId: session.session.activeOrganizationId },
+      orderBy: { name: "asc" },
+      include: { equipment: { include: { equipmentType: true } } },
+    }),
+    prisma.shopProfile.findUnique({ where: { organizationId: session.session.activeOrganizationId } }),
+  ]);
 
   return (
     <div className="p-6 space-y-4">
@@ -33,6 +36,7 @@ export default async function NewInvoicePage() {
       </div>
       <div className="max-w-3xl">
         <NewInvoiceForm
+          hasDiagnosticFee={!!shopProfile?.diagnosticFee}
           customers={customers.map((c) => ({
             id: c.id,
             name: c.name,

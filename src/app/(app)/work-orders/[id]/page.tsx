@@ -26,6 +26,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
       assignedTo: true,
       parts: { orderBy: { createdAt: "asc" } },
       invoice: true,
+      combinedInto: { include: { invoice: true } },
     },
   });
   if (!workOrder || workOrder.organizationId !== organizationId) notFound();
@@ -152,19 +153,25 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
           Invoice
         </h2>
-        {workOrder.invoice ? (
+        {workOrder.invoice || workOrder.combinedInto ? (
           (() => {
-            const invStatus = workOrder.invoice.status as InvoiceStatus;
-            const overdue = isOverdue(workOrder.invoice.status, workOrder.invoice.dueDate);
+            const linkedInvoice = workOrder.invoice ?? workOrder.combinedInto!.invoice;
+            const invStatus = linkedInvoice.status as InvoiceStatus;
+            const overdue = isOverdue(linkedInvoice.status, linkedInvoice.dueDate);
             return (
-              <Link href={`/invoices/${workOrder.invoice.id}`} className="flex items-center justify-between hover:underline">
+              <Link href={`/invoices/${linkedInvoice.id}`} className="flex items-center justify-between hover:underline">
                 <div>
                   <span className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
-                    {workOrder.invoice.invoiceNumber}
+                    {linkedInvoice.invoiceNumber}
                   </span>
                   <span className="ml-2 text-sm" style={{ color: "var(--text-muted)" }}>
-                    ${workOrder.invoice.total.toString()}
+                    ${linkedInvoice.total.toString()}
                   </span>
+                  {workOrder.combinedInto && (
+                    <span className="ml-2 text-[10px]" style={{ color: "var(--text-muted)" }}>
+                      combined with other equipment
+                    </span>
+                  )}
                 </div>
                 <span className={`dt-badge dt-badge--${overdue ? "error" : INVOICE_STATUS_BADGE[invStatus]}`}>
                   <span className="dt-badge-dot" />
@@ -174,7 +181,16 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
             );
           })()
         ) : status === "readyForPickup" || status === "closed" ? (
-          <GenerateInvoiceButton workOrderId={workOrder.id} hasDiagnosticFee={!!shopProfile?.diagnosticFee} />
+          <>
+            <GenerateInvoiceButton workOrderId={workOrder.id} hasDiagnosticFee={!!shopProfile?.diagnosticFee} />
+            <p className="text-[10px] mt-2" style={{ color: "var(--text-muted)" }}>
+              Billing this customer for more than one machine at once?{" "}
+              <Link href="/invoices/new" className="font-semibold text-brand-600">
+                Combine work orders into one invoice
+              </Link>{" "}
+              instead.
+            </p>
+          </>
         ) : (
           <p className="text-xs" style={{ color: "var(--text-muted)" }}>
             Available once this work order reaches Ready for Pickup.

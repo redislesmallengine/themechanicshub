@@ -11,6 +11,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
       lineItems: { orderBy: { sortOrder: "asc" } },
       customer: true,
       equipment: { include: { equipmentType: true } },
+      combinedWorkOrders: { include: { workOrder: { include: { equipment: { include: { equipmentType: true } } } } } },
       organization: { include: { shopProfile: true } },
     },
   });
@@ -95,17 +96,34 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
                 <p style={{ color: "var(--text-muted)" }}>No Customer Info</p>
               )}
             </div>
-            {equipmentLabel && (
+            {invoice.combinedWorkOrders.length > 0 ? (
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
-                  Machine Details
+                  Machines
                 </div>
-                <p className="font-bold" style={{ color: "var(--text-primary)" }}>
-                  {equipmentLabel}
-                </p>
-                {invoice.equipment?.serialNumber && <p style={{ color: "var(--text-secondary)" }}>S/N {invoice.equipment.serialNumber}</p>}
-                {invoice.equipment?.engineType && <p style={{ color: "var(--text-secondary)" }}>{invoice.equipment.engineType}</p>}
+                {invoice.combinedWorkOrders.map((cwo) => {
+                  const eq = cwo.workOrder.equipment;
+                  const label = [eq.make, eq.model].filter(Boolean).join(" / ") || eq.equipmentType?.name || "Equipment";
+                  return (
+                    <p key={cwo.id} className="font-bold" style={{ color: "var(--text-primary)" }}>
+                      {label}
+                    </p>
+                  );
+                })}
               </div>
+            ) : (
+              equipmentLabel && (
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
+                    Machine Details
+                  </div>
+                  <p className="font-bold" style={{ color: "var(--text-primary)" }}>
+                    {equipmentLabel}
+                  </p>
+                  {invoice.equipment?.serialNumber && <p style={{ color: "var(--text-secondary)" }}>S/N {invoice.equipment.serialNumber}</p>}
+                  {invoice.equipment?.engineType && <p style={{ color: "var(--text-secondary)" }}>{invoice.equipment.engineType}</p>}
+                </div>
+              )
             )}
           </div>
 
@@ -121,22 +139,30 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
                   </tr>
                 </thead>
                 <tbody>
-                  {invoice.lineItems.map((line) => (
-                    <tr key={line.id} className="dt-row">
-                      <td className="dt-td text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                        {line.description}
-                      </td>
-                      <td className="dt-td num text-sm" style={{ color: "var(--text-secondary)" }}>
-                        {line.quantity.toString()}
-                      </td>
-                      <td className="dt-td num text-sm" style={{ color: "var(--text-secondary)" }}>
-                        ${line.unitPrice.toString()}
-                      </td>
-                      <td className="dt-td num text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                        ${line.lineTotal.toString()}
-                      </td>
-                    </tr>
-                  ))}
+                  {invoice.lineItems.map((line) =>
+                    line.type === "header" ? (
+                      <tr key={line.id} className="dt-row">
+                        <td colSpan={4} className="dt-td text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)", background: "var(--bg-surface-subtle)" }}>
+                          {line.description}
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={line.id} className="dt-row">
+                        <td className="dt-td text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                          {line.description}
+                        </td>
+                        <td className="dt-td num text-sm" style={{ color: "var(--text-secondary)" }}>
+                          {line.quantity.toString()}
+                        </td>
+                        <td className="dt-td num text-sm" style={{ color: "var(--text-secondary)" }}>
+                          ${line.unitPrice.toString()}
+                        </td>
+                        <td className="dt-td num text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+                          ${line.lineTotal.toString()}
+                        </td>
+                      </tr>
+                    )
+                  )}
                 </tbody>
               </table>
             </div>

@@ -26,23 +26,26 @@ async function requireCanManageInvoices(action: "create" | "update" | "void" | "
 }
 
 async function loadOwnInvoice(invoiceId: string, organizationId: string) {
-  const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId }, include: { lineItems: true } });
+  const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId }, include: { lineItems: true, combinedWorkOrders: true } });
   if (!invoice || invoice.organizationId !== organizationId) return null;
   return invoice;
 }
 
 /** Recomputes and persists subtotal/taxAmount/total (and invoiceType — adding/removing a line can flip Repair Service into Combined) from the invoice's current line items — called after any line item change. */
 async function recalcTotals(invoiceId: string, organizationId: string) {
-  const [invoice, lineItems, shopProfile] = await Promise.all([
+  const [invoice, lineItems, shopProfile, combinedWorkOrderCount] = await Promise.all([
     prisma.invoice.findUnique({ where: { id: invoiceId }, select: { equipmentId: true, adHocEquipmentLabel: true, workOrderId: true } }),
     prisma.invoiceLineItem.findMany({ where: { invoiceId } }),
     prisma.shopProfile.findUnique({ where: { organizationId } }),
+    prisma.invoiceWorkOrder.count({ where: { invoiceId } }),
   ]);
-  const inputs: LineItemInput[] = lineItems.map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), taxable: l.taxable }));
+  // Non-header lines only -- a header's own quantity/price are always 0, but
+  // filtering keeps this correct even if that ever changes.
+  const inputs: LineItemInput[] = lineItems.filter((l) => l.type !== "header").map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), taxable: l.taxable }));
   const totals = computeTotals(inputs, Number(shopProfile?.taxRate ?? 0));
   const invoiceType = classifyInvoiceType({
-    hasEquipment: !!invoice?.equipmentId || !!invoice?.adHocEquipmentLabel,
-    hasWorkOrder: !!invoice?.workOrderId,
+    hasEquipment: !!invoice?.equipmentId || !!invoice?.adHocEquipmentLabel || combinedWorkOrderCount > 0,
+    hasWorkOrder: !!invoice?.workOrderId || combinedWorkOrderCount > 0,
     lineItems: lineItems.map((l) => ({ type: l.type, partId: l.partId })),
   });
   await prisma.invoice.update({ where: { id: invoiceId }, data: { ...totals, invoiceType } });
@@ -53,13 +56,13 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
 
   const workOrder = await prisma.workOrder.findUnique({
     where: { id: workOrderId },
-    include: { parts: true, invoice: true },
+    include: { parts: true, invoice: true, combinedInto: true },
   });
   if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
   if (workOrder.status !== "readyForPickup" && workOrder.status !== "closed") {
     return { error: "This work order isn't ready to invoice yet — mark it Ready for Pickup first." };
   }
-  if (workOrder.invoice) return { error: "This work order already has an invoice." };
+  if (workOrder.invoice || workOrder.combinedInto) return { error: "This work order already has an invoice." };
 
   const shopProfile = await prisma.shopProfile.findUnique({ where: { organizationId } });
   const includeDiagnosticFee = formData.get("includeDiagnosticFee") === "on";
@@ -133,6 +136,138 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
   });
 
   revalidatePath(`/work-orders/${workOrderId}`);
+  revalidatePath("/invoices");
+  redirect(`/invoices/${invoice.id}`);
+}
+
+/** Work orders for this customer that are ready to fold into a combined invoice — same eligibility rule as generateInvoiceFromWorkOrder, minus the "already has an invoice" case (checked here via both the direct link and the combined-invoice join table). Used by the New Invoice page to build its checklist. */
+export async function listInvoiceableWorkOrders(customerId: string) {
+  const { organizationId } = await requireCanManageInvoices("create");
+  if (!customerId) return { success: true as const, workOrders: [] };
+
+  const workOrders = await prisma.workOrder.findMany({
+    where: { organizationId, customerId, status: { in: ["readyForPickup", "closed"] }, invoice: null, combinedInto: null },
+    include: { equipment: { include: { equipmentType: true } } },
+    orderBy: { readyForPickupAt: "asc" },
+  });
+
+  return {
+    success: true as const,
+    workOrders: workOrders.map((wo) => ({
+      id: wo.id,
+      label: [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment",
+      complaint: wo.complaint,
+    })),
+  };
+}
+
+/**
+ * Folds 2+ ready-to-invoice work orders for the SAME customer into one
+ * invoice, instead of one invoice per machine — see InvoiceWorkOrder's
+ * schema comment for why this is a separate join table rather than widening
+ * Invoice.workOrderId. Each work order's labor/parts/diagnostic fee are
+ * pulled in exactly like generateInvoiceFromWorkOrder, just looped, with a
+ * non-priced "header" line item (its equipment's name) inserted before each
+ * one's lines so the invoice reads as clearly separated per-machine
+ * sections rather than one undifferentiated list.
+ */
+export async function generateCombinedInvoice(customerId: string, formData: FormData) {
+  const { organizationId } = await requireCanManageInvoices("create");
+
+  const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+  if (!customer || customer.organizationId !== organizationId) return { error: "That customer doesn't exist." };
+
+  const workOrderIds = formData.getAll("workOrderIds").map(String).filter(Boolean);
+  if (workOrderIds.length < 2) return { error: "Pick at least 2 work orders to combine into one invoice." };
+
+  const workOrders = await prisma.workOrder.findMany({
+    where: { id: { in: workOrderIds } },
+    include: { parts: true, equipment: { include: { equipmentType: true } }, invoice: true, combinedInto: true },
+  });
+  if (workOrders.length !== workOrderIds.length) return { error: "One of those work orders no longer exists." };
+  for (const wo of workOrders) {
+    if (wo.organizationId !== organizationId || wo.customerId !== customerId) return { error: "Every work order must belong to this customer." };
+    if (wo.status !== "readyForPickup" && wo.status !== "closed") return { error: "Every work order must be Ready for Pickup or Closed first." };
+    if (wo.invoice || wo.combinedInto) return { error: "One of those work orders already has an invoice." };
+  }
+
+  const shopProfile = await prisma.shopProfile.findUnique({ where: { organizationId } });
+  const includeDiagnosticFee = formData.get("includeDiagnosticFee") === "on";
+
+  const lines: { type: string; description: string; quantity: string; unitPrice: string; unitCost: string | null; taxable: boolean; lineTotal: string; sortOrder: number }[] = [];
+  let sortOrder = 0;
+
+  for (const wo of workOrders) {
+    const equipmentLabel = [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment";
+    lines.push({ type: "header", description: equipmentLabel, quantity: "0.00", unitPrice: "0.00", unitCost: null, taxable: false, lineTotal: "0.00", sortOrder: sortOrder++ });
+
+    if (wo.labourHours && shopProfile?.labourRate) {
+      const hours = Number(wo.labourHours);
+      const rate = Number(shopProfile.labourRate);
+      lines.push({
+        type: "labor",
+        description: `Labor (${hours} hrs @ $${rate.toFixed(2)}/hr)`,
+        quantity: hours.toFixed(2),
+        unitPrice: rate.toFixed(2),
+        unitCost: null,
+        taxable: true,
+        lineTotal: (hours * rate).toFixed(2),
+        sortOrder: sortOrder++,
+      });
+    }
+
+    for (const part of wo.parts) {
+      const unitPrice = Number(part.unitSellPrice ?? 0);
+      lines.push({
+        type: "part",
+        description: part.name,
+        quantity: part.quantity.toFixed(2),
+        unitPrice: unitPrice.toFixed(2),
+        unitCost: part.unitCostPrice?.toString() ?? null,
+        taxable: true,
+        lineTotal: (part.quantity * unitPrice).toFixed(2),
+        sortOrder: sortOrder++,
+      });
+    }
+
+    if (includeDiagnosticFee && shopProfile?.diagnosticFee) {
+      const fee = Number(shopProfile.diagnosticFee);
+      lines.push({
+        type: "fee",
+        description: `Diagnostic Fee — ${equipmentLabel}`,
+        quantity: "1.00",
+        unitPrice: fee.toFixed(2),
+        unitCost: null,
+        taxable: true,
+        lineTotal: fee.toFixed(2),
+        sortOrder: sortOrder++,
+      });
+    }
+  }
+
+  const totals = computeTotals(
+    lines.filter((l) => l.type !== "header").map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), taxable: l.taxable })),
+    Number(shopProfile?.taxRate ?? 0)
+  );
+
+  const invoice = await prisma.$transaction(async (tx) => {
+    const invoiceNumber = await claimInvoiceNumber(tx, organizationId);
+    const created = await tx.invoice.create({
+      data: {
+        organizationId,
+        customerId,
+        invoiceType: classifyInvoiceType({ hasEquipment: true, hasWorkOrder: true, lineItems: lines.map((l) => ({ type: l.type })) }),
+        invoiceNumber,
+        viewToken: generateViewToken(),
+        ...totals,
+        lineItems: { create: lines },
+      },
+    });
+    await tx.invoiceWorkOrder.createMany({ data: workOrders.map((wo) => ({ invoiceId: created.id, workOrderId: wo.id })) });
+    return created;
+  });
+
+  for (const wo of workOrders) revalidatePath(`/work-orders/${wo.id}`);
   revalidatePath("/invoices");
   redirect(`/invoices/${invoice.id}`);
 }
@@ -345,6 +480,7 @@ export async function updateInvoiceParty(invoiceId: string, formData: FormData) 
   if (!invoice) return { error: "That invoice doesn't exist." };
   if (!isEditable(invoice.status)) return { error: "This invoice can't be edited anymore." };
   if (invoice.workOrderId) return { error: "This invoice's customer and equipment come from its work order — edit the work order instead." };
+  if (invoice.combinedWorkOrders.length > 0) return { error: "This invoice's customer and equipment come from its combined work orders — edit those instead." };
 
   const customerId = String(formData.get("customerId") ?? "").trim() || null;
   const equipmentId = String(formData.get("equipmentId") ?? "").trim() || null;
@@ -482,6 +618,7 @@ export async function markInvoicePaid(invoiceId: string, formData: FormData) {
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
   if (invoice.workOrderId) revalidatePath(`/work-orders/${invoice.workOrderId}`);
+  for (const cwo of invoice.combinedWorkOrders) revalidatePath(`/work-orders/${cwo.workOrderId}`);
   return { success: true };
 }
 
@@ -500,6 +637,7 @@ export async function voidInvoice(invoiceId: string, formData: FormData) {
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
   if (invoice.workOrderId) revalidatePath(`/work-orders/${invoice.workOrderId}`);
+  for (const cwo of invoice.combinedWorkOrders) revalidatePath(`/work-orders/${cwo.workOrderId}`);
   return { success: true };
 }
 
@@ -532,9 +670,11 @@ export async function deleteInvoice(invoiceId: string) {
   }
 
   const workOrderId = invoice.workOrderId;
-  await prisma.invoice.delete({ where: { id: invoiceId } }); // cascades InvoiceLineItem rows
+  const combinedWorkOrderIds = invoice.combinedWorkOrders.map((cwo) => cwo.workOrderId);
+  await prisma.invoice.delete({ where: { id: invoiceId } }); // cascades InvoiceLineItem and InvoiceWorkOrder rows
 
   revalidatePath("/invoices");
   if (workOrderId) revalidatePath(`/work-orders/${workOrderId}`);
+  for (const id of combinedWorkOrderIds) revalidatePath(`/work-orders/${id}`);
   return { success: true };
 }

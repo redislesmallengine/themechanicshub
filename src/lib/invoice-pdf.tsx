@@ -22,6 +22,8 @@ const styles = StyleSheet.create({
   tableHeadRow: { flexDirection: "row", backgroundColor: "#0F294A", paddingVertical: 6, paddingHorizontal: 6 },
   tableHeadCell: { color: "#fff", fontSize: 8, fontWeight: 700, textTransform: "uppercase" },
   tableRow: { flexDirection: "row", paddingVertical: 6, paddingHorizontal: 6, borderBottom: "1px solid #F1F5F9" },
+  tableSectionRow: { flexDirection: "row", paddingVertical: 5, paddingHorizontal: 6, backgroundColor: "#F1F5F9", borderBottom: "1px solid #E2E8F0" },
+  tableSectionLabel: { fontSize: 8, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: 0.5 },
   cellDesc: { flex: 3 },
   cellQty: { flex: 1, textAlign: "right" },
   cellPrice: { flex: 1, textAlign: "right" },
@@ -68,7 +70,7 @@ export interface InvoicePdfData {
   paymentMethod: string | null;
   voidedAt: Date | null;
   voidReason: string | null;
-  lineItems: { description: string; quantity: string; unitPrice: string; lineTotal: string }[];
+  lineItems: { type: string; description: string; quantity: string; unitPrice: string; lineTotal: string }[];
 }
 
 function fmtDate(d: Date) {
@@ -133,14 +135,20 @@ function InvoiceDocument({ data }: { data: InvoicePdfData }) {
             <Text style={[styles.tableHeadCell, styles.cellPrice]}>Price</Text>
             <Text style={[styles.tableHeadCell, styles.cellTotal]}>Total</Text>
           </View>
-          {data.lineItems.map((line, i) => (
-            <View key={i} style={styles.tableRow}>
-              <Text style={styles.cellDesc}>{line.description}</Text>
-              <Text style={styles.cellQty}>{line.quantity}</Text>
-              <Text style={styles.cellPrice}>${line.unitPrice}</Text>
-              <Text style={styles.cellTotal}>${line.lineTotal}</Text>
-            </View>
-          ))}
+          {data.lineItems.map((line, i) =>
+            line.type === "header" ? (
+              <View key={i} style={styles.tableSectionRow}>
+                <Text style={styles.tableSectionLabel}>{line.description}</Text>
+              </View>
+            ) : (
+              <View key={i} style={styles.tableRow}>
+                <Text style={styles.cellDesc}>{line.description}</Text>
+                <Text style={styles.cellQty}>{line.quantity}</Text>
+                <Text style={styles.cellPrice}>${line.unitPrice}</Text>
+                <Text style={styles.cellTotal}>${line.lineTotal}</Text>
+              </View>
+            )
+          )}
         </View>
 
         <View style={styles.totals}>
@@ -265,7 +273,7 @@ export interface InvoiceWithRelationsForPdf {
       hstNumber: string | null;
     } | null;
   };
-  lineItems: { description: string; quantity: unknown; unitPrice: unknown; lineTotal: unknown }[];
+  lineItems: { type: string; description: string; quantity: unknown; unitPrice: unknown; lineTotal: unknown }[];
 }
 
 export async function renderInvoicePdfFromRecord(invoice: InvoiceWithRelationsForPdf): Promise<Buffer> {
@@ -308,6 +316,6 @@ export async function renderInvoicePdfFromRecord(invoice: InvoiceWithRelationsFo
     paymentMethod: invoice.paymentMethod,
     voidedAt: invoice.voidedAt,
     voidReason: invoice.voidReason,
-    lineItems: invoice.lineItems.map((l) => ({ description: l.description, quantity: String(l.quantity), unitPrice: String(l.unitPrice), lineTotal: String(l.lineTotal) })),
+    lineItems: invoice.lineItems.map((l) => ({ type: l.type, description: l.description, quantity: String(l.quantity), unitPrice: String(l.unitPrice), lineTotal: String(l.lineTotal) })),
   });
 }

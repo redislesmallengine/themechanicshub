@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createStandaloneInvoice } from "@/app/(app)/invoices/actions";
+import { createStandaloneInvoice, generateCombinedInvoice, listInvoiceableWorkOrders } from "@/app/(app)/invoices/actions";
 import { InvoiceIcon } from "@/components/icons";
 
 const inputStyle = {
@@ -20,9 +20,56 @@ interface CustomerWithEquipment {
   equipment: { id: string; label: string }[];
 }
 
-export function NewInvoiceForm({ customers }: { customers: CustomerWithEquipment[] }) {
-  const router = useRouter();
+interface InvoiceableWorkOrder {
+  id: string;
+  label: string;
+  complaint: string;
+}
+
+export function NewInvoiceForm({ customers, hasDiagnosticFee }: { customers: CustomerWithEquipment[]; hasDiagnosticFee: boolean }) {
+  const [mode, setMode] = useState<"blank" | "combine">("blank");
   const [customerId, setCustomerId] = useState("");
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1 p-0.5 rounded-lg w-fit" style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-subtle)" }}>
+        <button
+          type="button"
+          onClick={() => setMode("blank")}
+          className="px-3.5 py-1.5 rounded-md text-xs font-bold transition-colors"
+          style={mode === "blank" ? { background: "var(--bg-surface)", color: "var(--text-primary)", boxShadow: "var(--shadow-sm)" } : { color: "var(--text-muted)" }}
+        >
+          Blank Invoice
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("combine")}
+          className="px-3.5 py-1.5 rounded-md text-xs font-bold transition-colors"
+          style={mode === "combine" ? { background: "var(--bg-surface)", color: "var(--text-primary)", boxShadow: "var(--shadow-sm)" } : { color: "var(--text-muted)" }}
+        >
+          Combine Work Orders
+        </button>
+      </div>
+
+      {mode === "blank" ? (
+        <BlankInvoiceForm customers={customers} customerId={customerId} setCustomerId={setCustomerId} />
+      ) : (
+        <CombineWorkOrdersForm customers={customers} customerId={customerId} setCustomerId={setCustomerId} hasDiagnosticFee={hasDiagnosticFee} />
+      )}
+    </div>
+  );
+}
+
+function BlankInvoiceForm({
+  customers,
+  customerId,
+  setCustomerId,
+}: {
+  customers: CustomerWithEquipment[];
+  customerId: string;
+  setCustomerId: (id: string) => void;
+}) {
+  const router = useRouter();
   const [equipmentId, setEquipmentId] = useState("");
   const [adHocEquipmentLabel, setAdHocEquipmentLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -164,6 +211,177 @@ export function NewInvoiceForm({ customers }: { customers: CustomerWithEquipment
         </button>
         <button type="submit" disabled={pending} className="px-5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold shadow-sm disabled:opacity-60">
           {pending ? "Creating…" : "Create Invoice"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function CombineWorkOrdersForm({
+  customers,
+  customerId,
+  setCustomerId,
+  hasDiagnosticFee,
+}: {
+  customers: CustomerWithEquipment[];
+  customerId: string;
+  setCustomerId: (id: string) => void;
+  hasDiagnosticFee: boolean;
+}) {
+  const router = useRouter();
+  const [workOrders, setWorkOrders] = useState<InvoiceableWorkOrder[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const [loadingWorkOrders, startWorkOrdersTransition] = useTransition();
+  // Guards against an earlier, slower request overwriting the list with a
+  // stale customer's work orders if the customer is switched again before
+  // the first fetch resolves.
+  const latestCustomerIdRef = useRef("");
+
+  function handleCustomerChange(id: string) {
+    setCustomerId(id);
+    setSelectedIds(new Set());
+    setWorkOrders([]);
+    latestCustomerIdRef.current = id;
+    if (!id) return;
+    startWorkOrdersTransition(async () => {
+      const result = await listInvoiceableWorkOrders(id).catch(() => ({ success: true as const, workOrders: [] as InvoiceableWorkOrder[] }));
+      if (latestCustomerIdRef.current === id) setWorkOrders(result.workOrders);
+    });
+  }
+
+  function toggleWorkOrder(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleSubmit(formData: FormData) {
+    setError(null);
+    startTransition(async () => {
+      const result = await generateCombinedInvoice(customerId, formData);
+      // generateCombinedInvoice redirects on success, so reaching here means it didn't
+      if (result?.error) setError(result.error);
+    });
+  }
+
+  return (
+    <form action={handleSubmit} className="rounded-xl border-2 border-brand-500/80 shadow-md p-5 space-y-4" style={{ background: "var(--bg-surface)" }}>
+      <div className="flex items-center justify-between pb-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+        <div className="flex items-center gap-2">
+          <span className="p-1 rounded-md bg-brand-50 text-brand-600">
+            <InvoiceIcon className="w-4 h-4" />
+          </span>
+          <h3 className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
+            Combine Work Orders
+          </h3>
+        </div>
+      </div>
+
+      <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+        Bill one customer for 2 or more finished machines on a single invoice — each machine&apos;s labor and parts stay in
+        their own clearly labeled section.
+      </p>
+
+      <div className="text-xs">
+        <label htmlFor="combineCustomerId" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+          Customer
+        </label>
+        <select
+          id="combineCustomerId"
+          value={customerId}
+          onChange={(e) => handleCustomerChange(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg text-xs font-semibold"
+          style={inputStyle}
+        >
+          <option value="">Pick a customer…</option>
+          {customers.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} {c.phone ? `— ${c.phone}` : c.email ? `— ${c.email}` : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {customerId && (
+        <div>
+          <div className="block font-bold mb-1.5 text-xs" style={{ color: "var(--text-secondary)" }}>
+            Ready-to-invoice work orders
+          </div>
+          {loadingWorkOrders ? (
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+              Loading…
+            </p>
+          ) : workOrders.length === 0 ? (
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+              This customer has no finished work orders (Ready for Pickup or Closed) waiting to be invoiced.
+            </p>
+          ) : workOrders.length === 1 ? (
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+              Only one work order is ready — combining needs at least 2. Invoice it directly from its work order page instead.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {workOrders.map((wo) => (
+                <label
+                  key={wo.id}
+                  className="flex items-start gap-2 p-2.5 rounded-lg text-xs cursor-pointer"
+                  style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-subtle)" }}
+                >
+                  <input
+                    type="checkbox"
+                    name="workOrderIds"
+                    value={wo.id}
+                    checked={selectedIds.has(wo.id)}
+                    onChange={() => toggleWorkOrder(wo.id)}
+                    className="mt-0.5 rounded"
+                    style={{ accentColor: "#0F52BA" }}
+                  />
+                  <span>
+                    <span className="font-bold block" style={{ color: "var(--text-primary)" }}>
+                      {wo.label}
+                    </span>
+                    <span style={{ color: "var(--text-muted)" }}>{wo.complaint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {hasDiagnosticFee && selectedIds.size > 0 && (
+        <label className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+          <input type="checkbox" name="includeDiagnosticFee" className="rounded" style={{ accentColor: "#0F52BA" }} />
+          Include a diagnostic fee for each machine
+        </label>
+      )}
+
+      {error && (
+        <p className="text-xs font-semibold" style={{ color: "var(--color-error-solid)" }}>
+          {error}
+        </p>
+      )}
+
+      <div className="pt-3 flex items-center justify-end gap-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+        <button
+          type="button"
+          onClick={() => router.push("/invoices")}
+          className="px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-slate-50"
+          style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={pending || selectedIds.size < 2}
+          className="px-5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold shadow-sm disabled:opacity-60"
+        >
+          {pending ? "Creating…" : selectedIds.size < 2 ? "Select 2+ Work Orders" : `Combine ${selectedIds.size} into One Invoice`}
         </button>
       </div>
     </form>
