@@ -132,7 +132,7 @@ export function WorkOrderIntakeForm({ customers }: { customers: CustomerWithEqui
         <p className="text-[10px] mt-1 ml-6" style={{ color: "var(--text-muted)" }}>
           {skipEstimate
             ? "This work order starts straight in In Repair — no estimate email, no waiting on approval. Untick this if the customer wants a written quote first."
-            : "This work order starts in Dropped Off — you'll send a formal estimate for the customer to approve before repair begins."}
+            : "This work order starts in Pending — you'll send a formal estimate for the customer to approve before repair begins."}
         </p>
         {skipEstimate && (
           <div className="mt-3 ml-6 max-w-xs">

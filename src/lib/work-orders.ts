@@ -9,7 +9,7 @@ export const WORK_ORDER_STATUSES = ["droppedOff", "diagnosing", "awaitingApprova
 export type WorkOrderStatus = (typeof WORK_ORDER_STATUSES)[number];
 
 export const STATUS_LABELS: Record<WorkOrderStatus, string> = {
-  droppedOff: "Dropped Off",
+  droppedOff: "Pending",
   diagnosing: "Diagnosing",
   awaitingApproval: "Awaiting Approval",
   inRepair: "In Repair",
