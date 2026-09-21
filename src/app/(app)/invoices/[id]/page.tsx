@@ -32,14 +32,16 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   });
   if (!invoice || invoice.organizationId !== organizationId) notFound();
 
-  const [canUpdate, canVoid, canDelete, canViewMargins, availableParts, sentEmails] = await Promise.all([
+  const [canUpdate, canVoid, canDelete, canViewMargins, availableParts, sentEmails, membership] = await Promise.all([
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["update"] } } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["void"] } } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["delete"] } } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["viewMargins"] } } }),
     prisma.part.findMany({ where: { organizationId, quantityOnHand: { gt: 0 } }, orderBy: { name: "asc" } }),
     prisma.sentEmail.findMany({ where: { relatedType: "invoice", relatedId: id }, orderBy: { createdAt: "desc" } }),
+    prisma.member.findFirst({ where: { organizationId, userId: session.user.id } }),
   ]);
+  const isOwner = membership?.role === "owner";
 
   const status = invoice.status as InvoiceStatus;
   const invoiceType = invoice.invoiceType as InvoiceType;
@@ -123,8 +125,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               shopName={invoice.organization.name}
               pdfUrl={pdfUrl}
             />
-            {(status === "draft" || status === "void") && canDelete.success && (
-              <DeleteInvoiceButton invoiceId={invoice.id} invoiceNumber={invoice.invoiceNumber} hasInventoryLines={hasInventoryLines} redirectTo="/invoices" />
+            {(status === "draft" || status === "void" || isOwner) && canDelete.success && (
+              <DeleteInvoiceButton invoiceId={invoice.id} invoiceNumber={invoice.invoiceNumber} status={status} hasInventoryLines={hasInventoryLines} redirectTo="/invoices" />
             )}
           </div>
         </div>

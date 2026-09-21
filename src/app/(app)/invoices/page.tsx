@@ -47,7 +47,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
       }
     : undefined;
 
-  const [invoices, total, canDelete, canUpdate] = organizationId
+  const [invoices, total, canDelete, canUpdate, membership] = organizationId
     ? await Promise.all([
         prisma.invoice.findMany({
           where,
@@ -59,8 +59,10 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
         prisma.invoice.count({ where }),
         auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["delete"] } } }),
         auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["update"] } } }),
+        prisma.member.findFirst({ where: { organizationId, userId: session!.user.id } }),
       ])
-    : [[], 0, { success: false as const }, { success: false as const }];
+    : [[], 0, { success: false as const }, { success: false as const }, null];
+  const isOwner = membership?.role === "owner";
 
   return (
     <div className="p-6">
@@ -191,8 +193,8 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                             Edit
                           </Link>
                         )}
-                        {(invStatus === "draft" || invStatus === "void") && canDelete.success && (
-                          <DeleteInvoiceButton invoiceId={inv.id} invoiceNumber={inv.invoiceNumber} hasInventoryLines={inv.lineItems.some((l) => !!l.partId)} />
+                        {(invStatus === "draft" || invStatus === "void" || isOwner) && canDelete.success && (
+                          <DeleteInvoiceButton invoiceId={inv.id} invoiceNumber={inv.invoiceNumber} status={invStatus} hasInventoryLines={inv.lineItems.some((l) => !!l.partId)} />
                         )}
                       </div>
                     </td>

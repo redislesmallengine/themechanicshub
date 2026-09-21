@@ -642,11 +642,13 @@ export async function voidInvoice(invoiceId: string, formData: FormData) {
 }
 
 /**
- * Permanently removes an invoice — only while it's Draft (never sent, so no
- * customer could have ever seen it) or already Void (the shop has already
- * decided this one doesn't count, and may want it gone rather than kept as
- * clutter). Sent/Viewed are still "live" and must be voided first; Paid can
- * never be deleted, only adjusted manually — a real payment happened.
+ * Permanently removes an invoice. Anyone with the invoice:delete permission
+ * can remove a Draft (never sent, so no customer could have ever seen it) or
+ * a Void (the shop already decided this one doesn't count). Sent/Viewed/Paid
+ * are "live" records — a customer may have seen it, or actually paid it —
+ * so deleting one of those is a hardcoded Owner-only override, deliberately
+ * not exposed as a togglable permission on Site Admin -> Roles (unlike every
+ * other check in this file), so no other role can ever be granted it.
  * Restores stock for every inventory-linked line first (mirrors
  * removeLineItem), since InvoiceLineItem cascade-deletes with the invoice
  * and would otherwise silently skip that.
@@ -655,8 +657,13 @@ export async function deleteInvoice(invoiceId: string) {
   const { organizationId, userId } = await requireCanManageInvoices("delete");
   const invoice = await loadOwnInvoice(invoiceId, organizationId);
   if (!invoice) return { error: "That invoice doesn't exist." };
-  if (invoice.status !== "draft" && invoice.status !== "void") {
-    return { error: "Only a draft or voided invoice can be deleted — void this one first." };
+
+  const alwaysDeletable = invoice.status === "draft" || invoice.status === "void";
+  if (!alwaysDeletable) {
+    const membership = await prisma.member.findFirst({ where: { organizationId, userId } });
+    if (membership?.role !== "owner") {
+      return { error: "Only the shop Owner can delete a sent, viewed, or paid invoice — void this one first, or ask the Owner." };
+    }
   }
 
   for (const line of invoice.lineItems) {

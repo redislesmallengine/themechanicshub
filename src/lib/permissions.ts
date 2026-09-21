@@ -115,7 +115,7 @@ export const PERMISSION_GROUPS: {
       { key: "create", label: "Create" },
       { key: "update", label: "Edit" },
       { key: "void", label: "Void" },
-      { key: "delete", label: "Delete (drafts only)" },
+      { key: "delete", label: "Delete (drafts & voided invoices — the Owner can delete any invoice)" },
       { key: "viewMargins", label: "View profit margins" },
     ],
   },
