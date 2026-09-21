@@ -301,7 +301,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
             Notes
           </div>
-          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+          <p className="text-sm whitespace-pre-wrap" style={{ color: "var(--text-secondary)" }}>
             {invoice.notes}
           </p>
         </div>

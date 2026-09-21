@@ -205,7 +205,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
           )}
 
           {invoice.notes && (
-            <div className="mt-4 pt-4 text-xs" style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-secondary)" }}>
+            <div className="mt-4 pt-4 text-xs whitespace-pre-wrap" style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-secondary)" }}>
               {invoice.notes}
             </div>
           )}

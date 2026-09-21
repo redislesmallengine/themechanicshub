@@ -42,7 +42,15 @@ export function InvoiceDetailsForm({ invoiceId, initialDueDate, initialNotes }: 
           <label htmlFor="notes" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
             Notes
           </label>
-          <input id="notes" name="notes" type="text" defaultValue={initialNotes} placeholder="Shown on the invoice" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+          <textarea
+            id="notes"
+            name="notes"
+            rows={4}
+            defaultValue={initialNotes}
+            placeholder="Shown on the invoice"
+            className="w-full px-3 py-2 rounded-lg text-xs font-medium resize-y"
+            style={inputStyle}
+          />
         </div>
       </div>
       <div className="flex items-center gap-3">
