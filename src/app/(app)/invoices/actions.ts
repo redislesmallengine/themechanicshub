@@ -642,19 +642,22 @@ export async function voidInvoice(invoiceId: string, formData: FormData) {
 }
 
 /**
- * Permanently removes an invoice — only while it's still Draft (never sent,
- * so no customer could have ever seen it and its number was never
- * meaningfully "issued"). Anything already sent/viewed/paid uses Void
- * instead, which keeps the record and its invoice number intact. Restores
- * stock for every inventory-linked line first (mirrors removeLineItem),
- * since InvoiceLineItem cascade-deletes with the invoice and would
- * otherwise silently skip that.
+ * Permanently removes an invoice — only while it's Draft (never sent, so no
+ * customer could have ever seen it) or already Void (the shop has already
+ * decided this one doesn't count, and may want it gone rather than kept as
+ * clutter). Sent/Viewed are still "live" and must be voided first; Paid can
+ * never be deleted, only adjusted manually — a real payment happened.
+ * Restores stock for every inventory-linked line first (mirrors
+ * removeLineItem), since InvoiceLineItem cascade-deletes with the invoice
+ * and would otherwise silently skip that.
  */
 export async function deleteInvoice(invoiceId: string) {
   const { organizationId, userId } = await requireCanManageInvoices("delete");
   const invoice = await loadOwnInvoice(invoiceId, organizationId);
   if (!invoice) return { error: "That invoice doesn't exist." };
-  if (invoice.status !== "draft") return { error: "Only a draft invoice can be deleted — void this one instead." };
+  if (invoice.status !== "draft" && invoice.status !== "void") {
+    return { error: "Only a draft or voided invoice can be deleted — void this one first." };
+  }
 
   for (const line of invoice.lineItems) {
     if (!line.partId) continue;

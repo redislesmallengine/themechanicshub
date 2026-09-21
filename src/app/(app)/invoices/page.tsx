@@ -191,7 +191,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                             Edit
                           </Link>
                         )}
-                        {invStatus === "draft" && canDelete.success && (
+                        {(invStatus === "draft" || invStatus === "void") && canDelete.success && (
                           <DeleteInvoiceButton invoiceId={inv.id} invoiceNumber={inv.invoiceNumber} hasInventoryLines={inv.lineItems.some((l) => !!l.partId)} />
                         )}
                       </div>

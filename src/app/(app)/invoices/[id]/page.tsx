@@ -123,7 +123,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               shopName={invoice.organization.name}
               pdfUrl={pdfUrl}
             />
-            {status === "draft" && canDelete.success && (
+            {(status === "draft" || status === "void") && canDelete.success && (
               <DeleteInvoiceButton invoiceId={invoice.id} invoiceNumber={invoice.invoiceNumber} hasInventoryLines={hasInventoryLines} redirectTo="/invoices" />
             )}
           </div>
