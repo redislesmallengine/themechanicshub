@@ -51,6 +51,52 @@ async function recalcTotals(invoiceId: string, organizationId: string) {
   await prisma.invoice.update({ where: { id: invoiceId }, data: { ...totals, invoiceType } });
 }
 
+interface NewLineItemData {
+  type: string;
+  partId?: string | null;
+  description: string;
+  quantity: string;
+  unitPrice: string;
+  unitCost?: string | null;
+  taxable: boolean;
+  lineTotal: string;
+}
+
+/**
+ * Adds a new line item at a specific position: right after a given
+ * equipment's header line (ahead of the next header, or the end of the
+ * invoice if it's the last section) — or at the very end when no header is
+ * given, the normal case for a regular, single-equipment invoice. Every
+ * existing line gets its sortOrder renumbered to a clean 0..N sequence
+ * around the insertion point rather than reusing old values, since
+ * removeLineItem never renumbers after a delete and can leave gaps —
+ * reusing a gapped value risks two lines silently sharing the same
+ * sortOrder.
+ */
+async function insertLineItem(invoiceId: string, afterHeaderId: string | null, data: NewLineItemData) {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.invoiceLineItem.findMany({ where: { invoiceId }, orderBy: { sortOrder: "asc" }, select: { id: true, type: true } });
+
+    let insertIndex = existing.length;
+    if (afterHeaderId) {
+      const headerIndex = existing.findIndex((l) => l.id === afterHeaderId && l.type === "header");
+      if (headerIndex !== -1) {
+        insertIndex = existing.length;
+        for (let i = headerIndex + 1; i < existing.length; i++) {
+          if (existing[i].type === "header") {
+            insertIndex = i;
+            break;
+          }
+        }
+      }
+    }
+
+    await Promise.all(existing.map((line, index) => tx.invoiceLineItem.update({ where: { id: line.id }, data: { sortOrder: index >= insertIndex ? index + 1 : index } })));
+
+    return tx.invoiceLineItem.create({ data: { invoiceId, ...data, sortOrder: insertIndex } });
+  });
+}
+
 export async function generateInvoiceFromWorkOrder(workOrderId: string, formData: FormData) {
   const { organizationId } = await requireCanManageInvoices("create");
 
@@ -341,18 +387,15 @@ export async function addCustomLineItem(invoiceId: string, formData: FormData) {
   if (!Number.isFinite(unitPrice) || unitPrice < 0) return { error: "Price needs to be a positive number." };
 
   const taxable = formData.get("taxable") === "on";
+  const afterHeaderId = String(formData.get("sectionHeaderId") ?? "").trim() || null;
 
-  await prisma.invoiceLineItem.create({
-    data: {
-      invoiceId,
-      type: "custom",
-      description,
-      quantity: quantity.toFixed(2),
-      unitPrice: unitPrice.toFixed(2),
-      taxable,
-      lineTotal: (quantity * unitPrice).toFixed(2),
-      sortOrder: invoice.lineItems.length,
-    },
+  await insertLineItem(invoiceId, afterHeaderId, {
+    type: "custom",
+    description,
+    quantity: quantity.toFixed(2),
+    unitPrice: unitPrice.toFixed(2),
+    taxable,
+    lineTotal: (quantity * unitPrice).toFixed(2),
   });
   await recalcTotals(invoiceId, organizationId);
 
@@ -387,6 +430,7 @@ export async function addInventoryLineItem(invoiceId: string, formData: FormData
 
   const taxable = formData.get("taxable") === "on";
   const unitPrice = Number(part.sellPrice ?? 0);
+  const afterHeaderId = String(formData.get("sectionHeaderId") ?? "").trim() || null;
 
   const adjustment = await applyStockAdjustment({
     organizationId,
@@ -398,19 +442,15 @@ export async function addInventoryLineItem(invoiceId: string, formData: FormData
   });
   if ("error" in adjustment) return { error: adjustment.error };
 
-  await prisma.invoiceLineItem.create({
-    data: {
-      invoiceId,
-      type: "part",
-      partId,
-      description: part.name,
-      quantity: quantity.toFixed(2),
-      unitPrice: unitPrice.toFixed(2),
-      unitCost: part.costPrice?.toString() ?? null,
-      taxable,
-      lineTotal: (quantity * unitPrice).toFixed(2),
-      sortOrder: invoice.lineItems.length,
-    },
+  await insertLineItem(invoiceId, afterHeaderId, {
+    type: "part",
+    partId,
+    description: part.name,
+    quantity: quantity.toFixed(2),
+    unitPrice: unitPrice.toFixed(2),
+    unitCost: part.costPrice?.toString() ?? null,
+    taxable,
+    lineTotal: (quantity * unitPrice).toFixed(2),
   });
   await recalcTotals(invoiceId, organizationId);
 

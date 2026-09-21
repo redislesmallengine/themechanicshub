@@ -29,7 +29,30 @@ export interface AvailablePart {
   sellPrice: string | null;
 }
 
-function AddInventoryLineForm({ invoiceId, availableParts }: { invoiceId: string; availableParts: AvailablePart[] }) {
+export interface SectionHeader {
+  id: string;
+  description: string;
+}
+
+/** Only meaningful once there are 2+ equipment sections (a combined invoice) — otherwise there's no real choice to make, so callers skip rendering this. Defaults to the last section, matching what always used to happen (a new line landed at the very end) when nobody had a way to pick. */
+function SectionPicker({ headerLines }: { headerLines: SectionHeader[] }) {
+  return (
+    <div className="w-full">
+      <label htmlFor="sectionHeaderId" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+        Add to
+      </label>
+      <select id="sectionHeaderId" name="sectionHeaderId" defaultValue={headerLines[headerLines.length - 1]?.id} className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
+        {headerLines.map((h) => (
+          <option key={h.id} value={h.id}>
+            {h.description}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function AddInventoryLineForm({ invoiceId, availableParts, headerLines }: { invoiceId: string; availableParts: AvailablePart[]; headerLines: SectionHeader[] }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -49,6 +72,7 @@ function AddInventoryLineForm({ invoiceId, availableParts }: { invoiceId: string
 
   return (
     <form action={handleSubmit} className="flex items-end gap-2 flex-wrap">
+      {headerLines.length > 1 && <SectionPicker headerLines={headerLines} />}
       <div className="flex-1 min-w-[220px]">
         <label htmlFor="partId" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
           Part
@@ -89,7 +113,7 @@ function AddInventoryLineForm({ invoiceId, availableParts }: { invoiceId: string
   );
 }
 
-function AddCustomLineForm({ invoiceId }: { invoiceId: string }) {
+function AddCustomLineForm({ invoiceId, headerLines }: { invoiceId: string; headerLines: SectionHeader[] }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -109,6 +133,7 @@ function AddCustomLineForm({ invoiceId }: { invoiceId: string }) {
 
   return (
     <form action={handleSubmit} className="flex items-end gap-2 flex-wrap">
+      {headerLines.length > 1 && <SectionPicker headerLines={headerLines} />}
       <div className="flex-1 min-w-[200px]">
         <label htmlFor="description" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
           Description
@@ -143,7 +168,7 @@ function AddCustomLineForm({ invoiceId }: { invoiceId: string }) {
   );
 }
 
-function AddLineTabs({ invoiceId, availableParts }: { invoiceId: string; availableParts: AvailablePart[] }) {
+function AddLineTabs({ invoiceId, availableParts, headerLines }: { invoiceId: string; availableParts: AvailablePart[]; headerLines: SectionHeader[] }) {
   const [tab, setTab] = useState<"inventory" | "custom">(availableParts.length > 0 ? "inventory" : "custom");
 
   return (
@@ -166,7 +191,11 @@ function AddLineTabs({ invoiceId, availableParts }: { invoiceId: string; availab
           Type it in
         </button>
       </div>
-      {tab === "inventory" ? <AddInventoryLineForm invoiceId={invoiceId} availableParts={availableParts} /> : <AddCustomLineForm invoiceId={invoiceId} />}
+      {tab === "inventory" ? (
+        <AddInventoryLineForm invoiceId={invoiceId} availableParts={availableParts} headerLines={headerLines} />
+      ) : (
+        <AddCustomLineForm invoiceId={invoiceId} headerLines={headerLines} />
+      )}
     </div>
   );
 }
@@ -257,6 +286,12 @@ export function InvoiceLineItemsPanel({
   showMargins: boolean;
   availableParts: AvailablePart[];
 }) {
+  // Present only on a combined invoice (2+ equipment sections) -- gives the
+  // "Add Line" forms below something to let staff choose between, instead
+  // of a new line always silently landing at the very end (whichever
+  // machine's section happens to be last).
+  const headerLines: SectionHeader[] = lines.filter((l) => l.type === "header").map((l) => ({ id: l.id, description: l.description }));
+
   return (
     <div className="space-y-3">
       <div className="dt-container">
@@ -287,7 +322,7 @@ export function InvoiceLineItemsPanel({
           </table>
         </div>
       </div>
-      {editable && <AddLineTabs invoiceId={invoiceId} availableParts={availableParts} />}
+      {editable && <AddLineTabs invoiceId={invoiceId} availableParts={availableParts} headerLines={headerLines} />}
     </div>
   );
 }
