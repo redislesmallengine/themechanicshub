@@ -77,6 +77,13 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           </div>
           <div className="flex items-center gap-2">
             <Link
+              href={`/work-orders/new?customerId=${customer.id}`}
+              className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-slate-50"
+              style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}
+            >
+              + New Work Order
+            </Link>
+            <Link
               href={`/customers/${customer.id}/edit`}
               className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-slate-50"
               style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}

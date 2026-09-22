@@ -20,9 +20,9 @@ interface CustomerWithEquipment {
   equipment: { id: string; label: string }[];
 }
 
-export function WorkOrderIntakeForm({ customers }: { customers: CustomerWithEquipment[] }) {
+export function WorkOrderIntakeForm({ customers, initialCustomerId }: { customers: CustomerWithEquipment[]; initialCustomerId?: string }) {
   const router = useRouter();
-  const [customerId, setCustomerId] = useState("");
+  const [customerId, setCustomerId] = useState(initialCustomerId ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   // Checked by default — most drop-offs are "just fix it," not a formal
