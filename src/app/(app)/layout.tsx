@@ -53,9 +53,10 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const canManageSettings = membership
     ? (await auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { shopSettings: ["update"] } } })).success
     : false;
+  const canViewReports = membership ? (await auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { report: ["view"] } } })).success : false;
 
   return (
-    <AppShell user={session.user} roleLabel={roleLabel} canManageSettings={canManageSettings} isSiteAdmin={session.user.isSiteAdmin ?? false}>
+    <AppShell user={session.user} roleLabel={roleLabel} canManageSettings={canManageSettings} canViewReports={canViewReports} isSiteAdmin={session.user.isSiteAdmin ?? false}>
       {children}
     </AppShell>
   );
