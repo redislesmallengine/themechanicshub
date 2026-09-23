@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createStandaloneInvoice, generateCombinedInvoice, listInvoiceableWorkOrders } from "@/app/(app)/invoices/actions";
@@ -26,9 +26,17 @@ interface InvoiceableWorkOrder {
   complaint: string;
 }
 
-export function NewInvoiceForm({ customers, hasDiagnosticFee }: { customers: CustomerWithEquipment[]; hasDiagnosticFee: boolean }) {
+export function NewInvoiceForm({
+  customers,
+  hasDiagnosticFee,
+  initialCustomerId,
+}: {
+  customers: CustomerWithEquipment[];
+  hasDiagnosticFee: boolean;
+  initialCustomerId?: string;
+}) {
   const [mode, setMode] = useState<"blank" | "combine">("blank");
-  const [customerId, setCustomerId] = useState("");
+  const [customerId, setCustomerId] = useState(initialCustomerId ?? "");
 
   return (
     <div className="space-y-4">
@@ -239,17 +247,32 @@ function CombineWorkOrdersForm({
   // the first fetch resolves.
   const latestCustomerIdRef = useRef("");
 
+  function fetchWorkOrdersFor(targetCustomerId: string) {
+    latestCustomerIdRef.current = targetCustomerId;
+    startWorkOrdersTransition(async () => {
+      const result = await listInvoiceableWorkOrders(targetCustomerId).catch(() => ({ success: true as const, workOrders: [] as InvoiceableWorkOrder[] }));
+      if (latestCustomerIdRef.current === targetCustomerId) setWorkOrders(result.workOrders);
+    });
+  }
+
   function handleCustomerChange(id: string) {
     setCustomerId(id);
     setSelectedIds(new Set());
     setWorkOrders([]);
-    latestCustomerIdRef.current = id;
-    if (!id) return;
-    startWorkOrdersTransition(async () => {
-      const result = await listInvoiceableWorkOrders(id).catch(() => ({ success: true as const, workOrders: [] as InvoiceableWorkOrder[] }));
-      if (latestCustomerIdRef.current === id) setWorkOrders(result.workOrders);
-    });
+    if (!id) {
+      latestCustomerIdRef.current = "";
+      return;
+    }
+    fetchWorkOrdersFor(id);
   }
+
+  // Prefetch once on mount for a customer pre-selected via ?customerId= on
+  // the New Invoice page — every other fetch is driven by the picker's
+  // onChange, deliberately not this effect re-running.
+  useEffect(() => {
+    if (customerId) fetchWorkOrdersFor(customerId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function toggleWorkOrder(id: string) {
     setSelectedIds((prev) => {

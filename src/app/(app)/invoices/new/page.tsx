@@ -4,7 +4,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NewInvoiceForm } from "@/components/new-invoice-form";
 
-export default async function NewInvoicePage() {
+export default async function NewInvoicePage({ searchParams }: { searchParams: Promise<{ customerId?: string }> }) {
+  const { customerId } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   if (!session?.session.activeOrganizationId) redirect("/sign-in");
@@ -37,6 +38,7 @@ export default async function NewInvoicePage() {
       <div className="max-w-3xl">
         <NewInvoiceForm
           hasDiagnosticFee={!!shopProfile?.diagnosticFee}
+          initialCustomerId={customers.find((c) => c.id === customerId)?.id ?? ""}
           customers={customers.map((c) => ({
             id: c.id,
             name: c.name,
