@@ -25,10 +25,16 @@ export const PAYMENT_METHODS = ["Cash", "E-transfer", "Card", "Cheque", "Other"]
 export const INVOICE_TYPES = ["partsOnly", "repairService", "combined"] as const;
 export type InvoiceType = (typeof INVOICE_TYPES)[number];
 
+// "combined" here has always meant "a repair invoice with something extra
+// rung up directly on it" (classifyInvoiceType below) -- unrelated to
+// generateCombinedInvoice's multi-equipment invoices, which get their own
+// separate "Multi-Equipment" badge (computed live from combinedWorkOrders,
+// not this type) wherever this label renders. The two can both be true of
+// the same invoice at once.
 export const INVOICE_TYPE_LABELS: Record<InvoiceType, string> = {
   partsOnly: "Parts Only",
   repairService: "Equipment Repair Service",
-  combined: "Combined",
+  combined: "Repair + Extra",
 };
 
 export const INVOICE_TYPE_BADGE: Record<InvoiceType, "success" | "warning" | "error" | "info"> = {

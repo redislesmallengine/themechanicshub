@@ -52,7 +52,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
         prisma.invoice.findMany({
           where,
           orderBy: { createdAt: "desc" },
-          include: { customer: true, lineItems: { select: { partId: true } } },
+          include: { customer: true, lineItems: { select: { partId: true } }, _count: { select: { combinedWorkOrders: true } } },
           skip: (page - 1) * PAGE_SIZE,
           take: PAGE_SIZE,
         }),
@@ -169,10 +169,18 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                       )}
                     </td>
                     <td className="dt-td">
-                      <span className={`dt-badge dt-badge--${INVOICE_TYPE_BADGE[invType]}`}>
-                        <span className="dt-badge-dot" />
-                        {INVOICE_TYPE_LABELS[invType]}
-                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        <span className={`dt-badge dt-badge--${INVOICE_TYPE_BADGE[invType]}`}>
+                          <span className="dt-badge-dot" />
+                          {INVOICE_TYPE_LABELS[invType]}
+                        </span>
+                        {inv._count.combinedWorkOrders > 0 && (
+                          <span className="dt-badge dt-badge--info">
+                            <span className="dt-badge-dot" />
+                            Multi-Equipment
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="dt-td">
                       <span className={`dt-badge dt-badge--${overdue ? "error" : STATUS_BADGE[invStatus]}`}>

@@ -81,6 +81,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 <span className="dt-badge-dot" />
                 {INVOICE_TYPE_LABELS[invoiceType]}
               </span>
+              {invoice.combinedWorkOrders.length > 0 && (
+                <span className="dt-badge dt-badge--info">
+                  <span className="dt-badge-dot" />
+                  Multi-Equipment
+                </span>
+              )}
             </div>
             <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
               {invoice.invoiceNumber}
