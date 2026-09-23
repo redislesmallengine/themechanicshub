@@ -27,7 +27,7 @@ export function AdjustStockPopup({
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.4)" }} onClick={() => setOpen(false)}>
           <div
-            className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-xl p-5"
+            className="w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-xl p-7"
             style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-md)" }}
             onClick={(e) => e.stopPropagation()}
           >

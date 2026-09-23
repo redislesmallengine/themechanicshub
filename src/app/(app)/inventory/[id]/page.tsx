@@ -152,7 +152,7 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
                       <td className="dt-td text-sm" style={{ color: "var(--text-secondary)" }}>
                         {adj.reason}
                       </td>
-                      <td className="dt-td text-sm" style={{ color: "var(--text-secondary)" }}>
+                      <td className="dt-td text-sm whitespace-pre-wrap" style={{ color: "var(--text-secondary)" }}>
                         {adj.note ?? "—"}
                       </td>
                       <td className="dt-td text-sm" style={{ color: "var(--text-muted)" }}>

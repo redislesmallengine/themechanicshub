@@ -52,7 +52,7 @@ export function AdjustStockForm({
 
   return (
     <form ref={formRef} action={handleSubmit} className="space-y-3">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
         <div>
           <label htmlFor="delta" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
             Change ({currentQuantity} on hand)
@@ -82,12 +82,13 @@ export function AdjustStockForm({
             ))}
           </select>
         </div>
-        <div>
-          <label htmlFor="note" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-            Note
-          </label>
-          <input id="note" name="note" type="text" placeholder="Optional" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
-        </div>
+      </div>
+
+      <div>
+        <label htmlFor="note" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+          Note
+        </label>
+        <textarea id="note" name="note" rows={4} placeholder="Optional — e.g. supplier, invoice #, what happened" className="w-full px-3 py-2 rounded-lg text-xs font-medium resize-y" style={inputStyle} />
       </div>
 
       {reason === "Restock" && (
