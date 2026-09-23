@@ -193,7 +193,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           </>
         ) : (
           <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-            Available once this work order reaches Ready for Pickup.
+            Available once this work order reaches Repair Completed.
           </p>
         )}
       </div>

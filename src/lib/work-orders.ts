@@ -13,7 +13,7 @@ export const STATUS_LABELS: Record<WorkOrderStatus, string> = {
   diagnosing: "Diagnosing",
   awaitingApproval: "Awaiting Approval",
   inRepair: "In Repair",
-  readyForPickup: "Ready for Pickup",
+  readyForPickup: "Repair Completed",
   closed: "Picked Up / Closed",
   declined: "Declined",
 };

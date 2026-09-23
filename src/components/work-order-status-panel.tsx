@@ -323,7 +323,7 @@ export function WorkOrderStatusPanel({
         </div>
       );
     case "inRepair":
-      return <SimpleAction label="Mark Ready for Pickup" action={() => markReadyForPickup(workOrderId)} />;
+      return <SimpleAction label="Mark Repair Completed" action={() => markReadyForPickup(workOrderId)} />;
     case "readyForPickup":
       return <SimpleAction label="Mark Picked Up / Close" action={() => closeWorkOrder(workOrderId)} />;
     case "closed":

@@ -329,7 +329,7 @@ export function ShopProfileForm({
           </div>
         </div>
         <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-          Flags equipment still sitting in &ldquo;Ready for Pickup&rdquo; past this many days, on the Work Orders board and dashboard.
+          Flags equipment still sitting in &ldquo;Repair Completed&rdquo; past this many days, on the Work Orders board and dashboard.
         </p>
       </div>
 

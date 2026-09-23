@@ -106,7 +106,7 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
   });
   if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
   if (workOrder.status !== "readyForPickup" && workOrder.status !== "closed") {
-    return { error: "This work order isn't ready to invoice yet — mark it Ready for Pickup first." };
+    return { error: "This work order isn't ready to invoice yet — mark it Repair Completed first." };
   }
   if (workOrder.invoice || workOrder.combinedInto) return { error: "This work order already has an invoice." };
 
@@ -233,7 +233,7 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
   if (workOrders.length !== workOrderIds.length) return { error: "One of those work orders no longer exists." };
   for (const wo of workOrders) {
     if (wo.organizationId !== organizationId || wo.customerId !== customerId) return { error: "Every work order must belong to this customer." };
-    if (wo.status !== "readyForPickup" && wo.status !== "closed") return { error: "Every work order must be Ready for Pickup or Closed first." };
+    if (wo.status !== "readyForPickup" && wo.status !== "closed") return { error: "Every work order must be Repair Completed or Closed first." };
     if (wo.invoice || wo.combinedInto) return { error: "One of those work orders already has an invoice." };
   }
 

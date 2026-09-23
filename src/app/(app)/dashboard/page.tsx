@@ -50,7 +50,7 @@ export default async function DashboardPage() {
       warn: awaitingApproval2Days > 0,
     },
     {
-      label: "Ready for Pickup",
+      label: "Repair Completed",
       value: readyForPickup.length.toString(),
       sub: readyOverAging > 0 ? `${readyOverAging} over ${agingDays} days` : "all within range",
       warn: readyOverAging > 0,
