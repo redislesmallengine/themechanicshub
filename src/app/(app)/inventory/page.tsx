@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { InventoryIcon, SearchIcon } from "@/components/icons";
 import { DeletePartButton } from "@/components/delete-part-button";
+import { AdjustStockPopup } from "@/components/adjust-stock-popup";
 import { Pagination } from "@/components/pagination";
 import { SavedViewsBar, type SavedViewItem } from "@/components/saved-views-bar";
 
@@ -27,6 +28,7 @@ interface PartRow {
   quantityOnHand: number;
   reorderPoint: number;
   sellPrice: string | null;
+  costPrice: string | null;
   categoryName: string | null;
 }
 
@@ -91,7 +93,7 @@ export default async function InventoryPage({
     const [partRows, totalRows, countRows] = await Promise.all([
       prisma.$queryRaw<PartRow[]>(Prisma.sql`
         SELECT p.id, p.name, p.sku, p."quantityOnHand"::int AS "quantityOnHand", p."reorderPoint"::int AS "reorderPoint",
-          p."sellPrice"::text AS "sellPrice", pc.name AS "categoryName"
+          p."sellPrice"::text AS "sellPrice", p."costPrice"::text AS "costPrice", pc.name AS "categoryName"
         FROM "Part" p
         LEFT JOIN "PartCategory" pc ON pc.id = p."categoryId"
         WHERE ${listWhere}
@@ -290,6 +292,7 @@ export default async function InventoryPage({
                           Edit
                         </Link>
                         <DeletePartButton partId={p.id} name={p.name} />
+                        <AdjustStockPopup partId={p.id} partName={p.name} currentQuantity={p.quantityOnHand} currentCostPrice={p.costPrice} currentSellPrice={p.sellPrice} />
                       </div>
                     </td>
                   </tr>

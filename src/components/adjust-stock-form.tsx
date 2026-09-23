@@ -17,11 +17,14 @@ export function AdjustStockForm({
   currentQuantity,
   currentCostPrice,
   currentSellPrice,
+  onSuccess,
 }: {
   partId: string;
   currentQuantity: number;
   currentCostPrice: string | null;
   currentSellPrice: string | null;
+  /** Only set by callers that render this inside something dismissible, e.g. AdjustStockPopup — the part detail page just leaves it unset and relies on router.refresh() alone. */
+  onSuccess?: () => void;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
@@ -43,6 +46,7 @@ export function AdjustStockForm({
       formRef.current?.reset();
       setReason("");
       router.refresh();
+      onSuccess?.();
     });
   }
 
