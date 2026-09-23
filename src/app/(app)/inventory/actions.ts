@@ -147,8 +147,27 @@ export async function adjustStock(partId: string, formData: FormData) {
 
   const note = String(formData.get("note") ?? "").trim();
 
+  // Optional -- only the "Did the price change?" fields shown alongside a
+  // Restock adjustment set these. Blank means "no change" (not "clear the
+  // price"), unlike parsePartFields' use of the same helper on the full
+  // Edit Part form.
+  const newCostPrice = parseDecimal(formData.get("newCostPrice"), "Cost price");
+  if ("error" in newCostPrice) return { error: newCostPrice.error };
+  const newSellPrice = parseDecimal(formData.get("newSellPrice"), "Sell price");
+  if ("error" in newSellPrice) return { error: newSellPrice.error };
+
   const result = await applyStockAdjustment({ organizationId, partId, delta, reason: reason as AdjustmentReason, note, createdByUserId: userId });
   if ("error" in result) return { error: result.error };
+
+  if (newCostPrice.value !== null || newSellPrice.value !== null) {
+    await prisma.part.update({
+      where: { id: partId },
+      data: {
+        ...(newCostPrice.value !== null ? { costPrice: newCostPrice.value } : {}),
+        ...(newSellPrice.value !== null ? { sellPrice: newSellPrice.value } : {}),
+      },
+    });
+  }
 
   revalidatePath(`/inventory/${partId}`);
   revalidatePath("/inventory");

@@ -111,7 +111,12 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
         <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
           Adjust Stock
         </h2>
-        <AdjustStockForm partId={part.id} currentQuantity={part.quantityOnHand} />
+        <AdjustStockForm
+          partId={part.id}
+          currentQuantity={part.quantityOnHand}
+          currentCostPrice={part.costPrice?.toString() ?? null}
+          currentSellPrice={part.sellPrice?.toString() ?? null}
+        />
       </div>
 
       <div>

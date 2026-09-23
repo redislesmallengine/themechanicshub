@@ -12,11 +12,24 @@ const inputStyle = {
 
 const REASONS = ["Restock", "Correction", "Damaged/Lost", "Return to Supplier", "Other"];
 
-export function AdjustStockForm({ partId, currentQuantity }: { partId: string; currentQuantity: number }) {
+export function AdjustStockForm({
+  partId,
+  currentQuantity,
+  currentCostPrice,
+  currentSellPrice,
+}: {
+  partId: string;
+  currentQuantity: number;
+  currentCostPrice: string | null;
+  currentSellPrice: string | null;
+}) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // Controlled only so the price fields below can show/hide themselves —
+  // everything else about this form stays as plain uncontrolled inputs.
+  const [reason, setReason] = useState("");
   const boundAdjust = adjustStock.bind(null, partId);
 
   function handleSubmit(formData: FormData) {
@@ -28,6 +41,7 @@ export function AdjustStockForm({ partId, currentQuantity }: { partId: string; c
         return;
       }
       formRef.current?.reset();
+      setReason("");
       router.refresh();
     });
   }
@@ -45,7 +59,15 @@ export function AdjustStockForm({ partId, currentQuantity }: { partId: string; c
           <label htmlFor="reason" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
             Reason
           </label>
-          <select id="reason" name="reason" required defaultValue="" className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
+          <select
+            id="reason"
+            name="reason"
+            required
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg text-xs font-semibold"
+            style={inputStyle}
+          >
             <option value="" disabled>
               Select…
             </option>
@@ -63,6 +85,51 @@ export function AdjustStockForm({ partId, currentQuantity }: { partId: string; c
           <input id="note" name="note" type="text" placeholder="Optional" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
         </div>
       </div>
+
+      {reason === "Restock" && (
+        <div className="rounded-lg p-3" style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-subtle)" }}>
+          <p className="text-xs font-bold mb-2" style={{ color: "var(--text-primary)" }}>
+            Did the price change with this restock? — optional
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="newCostPrice" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+                New Cost Price ($)
+              </label>
+              <input
+                id="newCostPrice"
+                name="newCostPrice"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder={currentCostPrice ? `Currently $${currentCostPrice}` : "Not set"}
+                className="w-full px-3 py-2 rounded-lg text-xs font-mono"
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label htmlFor="newSellPrice" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+                New Sell Price ($)
+              </label>
+              <input
+                id="newSellPrice"
+                name="newSellPrice"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder={currentSellPrice ? `Currently $${currentSellPrice}` : "Not set"}
+                className="w-full px-3 py-2 rounded-lg text-xs font-mono"
+                style={inputStyle}
+              />
+            </div>
+          </div>
+          <p className="text-[10px] mt-2" style={{ color: "var(--text-muted)" }}>
+            Leave either blank to keep it as-is. Updating a price here only applies going forward — any work order or
+            invoice line that already used this part keeps the price it had at the time.
+          </p>
+        </div>
+      )}
+
       {error && (
         <p className="text-xs font-semibold" style={{ color: "var(--color-error-solid)" }}>
           {error}
