@@ -13,11 +13,11 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 24 },
   logo: { width: 56, height: 56, objectFit: "contain", marginBottom: 6 },
   shopName: { fontSize: 14, fontWeight: 700 },
-  muted: { color: "#64748B", fontSize: 9 },
+  muted: { color: "#475569", fontSize: 9 },
   invoiceTitle: { fontSize: 20, fontWeight: 700, textAlign: "right", color: "#0F52BA" },
   metaRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 4 },
   section: { marginBottom: 20 },
-  sectionLabel: { fontSize: 8, fontWeight: 700, color: "#64748B", textTransform: "uppercase", marginBottom: 4, letterSpacing: 0.5 },
+  sectionLabel: { fontSize: 8, fontWeight: 700, color: "#475569", textTransform: "uppercase", marginBottom: 4, letterSpacing: 0.5 },
   table: { borderTop: "1px solid #E2E8F0", borderBottom: "1px solid #E2E8F0" },
   tableHeadRow: { flexDirection: "row", backgroundColor: "#0F294A", paddingVertical: 6, paddingHorizontal: 6 },
   tableHeadCell: { color: "#fff", fontSize: 8, fontWeight: 700, textTransform: "uppercase" },
@@ -30,7 +30,7 @@ const styles = StyleSheet.create({
   cellTotal: { flex: 1, textAlign: "right" },
   totals: { alignSelf: "flex-end", width: 220, marginTop: 12 },
   totalRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 3 },
-  totalLabel: { color: "#64748B" },
+  totalLabel: { color: "#475569" },
   grandTotalRow: { flexDirection: "row", justifyContent: "space-between", paddingTop: 6, marginTop: 4, borderTop: "1px solid #0F172A" },
   grandTotalLabel: { fontSize: 12, fontWeight: 700 },
   grandTotalValue: { fontSize: 12, fontWeight: 700 },
@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
   footerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   footerLink: { fontSize: 9, color: "#0F52BA", textDecoration: "none" },
   reviewButton: { backgroundColor: "#0F52BA", color: "#fff", fontSize: 9, fontWeight: 700, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 4, textDecoration: "none" },
-  taxNumber: { fontSize: 8, color: "#94A3B8", marginTop: 10, textAlign: "center" },
+  taxNumber: { fontSize: 9, fontWeight: 700, color: "#0F172A", marginTop: 10, textAlign: "center" },
 });
 
 export interface InvoicePdfData {
