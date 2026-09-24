@@ -17,6 +17,8 @@ import {
   InventoryValueCard,
   TechnicianWorkloadCard,
   LowStockCard,
+  OPEN_WORK_ORDERS_PAGE_SIZES,
+  OPEN_WORK_ORDERS_DEFAULT_PAGE_SIZE,
 } from "@/components/dashboard/sections";
 import { TileRowSkeleton, ChartSkeleton, ListSkeleton, TableSkeleton, Spinner } from "@/components/dashboard/skeletons";
 
@@ -36,7 +38,11 @@ function SectionHead({ icon: Icon, label, note }: { icon: ComponentType<{ classN
   );
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ page?: string; woSize?: string }> }) {
+  const { page: woPageRaw, woSize: woSizeRaw } = await searchParams;
+  const woPage = Math.max(1, Number.parseInt(woPageRaw ?? "1", 10) || 1);
+  const woPageSize = (OPEN_WORK_ORDERS_PAGE_SIZES as readonly number[]).includes(Number(woSizeRaw)) ? Number(woSizeRaw) : OPEN_WORK_ORDERS_DEFAULT_PAGE_SIZE;
+
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
@@ -87,7 +93,7 @@ export default async function DashboardPage() {
           </h2>
         </div>
         <Suspense fallback={<TableSkeleton />}>
-          <OpenWorkOrdersTable organizationId={organizationId} agingDays={agingDays} />
+          <OpenWorkOrdersTable organizationId={organizationId} agingDays={agingDays} page={woPage} pageSize={woPageSize} />
         </Suspense>
       </div>
 

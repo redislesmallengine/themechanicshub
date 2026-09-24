@@ -55,10 +55,11 @@ export async function getShopFloorCounts(organizationId: string, agingDays: numb
 }
 
 /** The same 15 rows the old dashboard fetched via findMany, but now separate from the tile counts above -- a busy shop with 50 open work orders no longer means the tile numbers wait on 50 rows' worth of customer/equipment joins. */
-export async function getOpenWorkOrders(organizationId: string, limit = 15) {
+export async function getOpenWorkOrders(organizationId: string, limit = 15, offset = 0) {
   return prisma.workOrder.findMany({
     where: { organizationId, status: { notIn: ["closed", "declined"] } },
     orderBy: { updatedAt: "desc" },
+    skip: offset,
     take: limit,
     include: { customer: true, equipment: { include: { equipmentType: true } } },
   });
