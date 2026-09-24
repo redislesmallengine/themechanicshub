@@ -70,7 +70,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
               <h1 className="text-2xl font-extrabold" style={{ color: "var(--text-primary)" }}>
                 Invoice {invoice.invoiceNumber}
               </h1>
-              <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+              <p className="text-xs mt-0.5 font-medium" style={{ color: "var(--text-secondary)" }}>
                 Issued {invoice.issueDate.toLocaleDateString()} · Due {invoice.dueDate.toLocaleDateString()}
               </p>
             </div>
@@ -82,7 +82,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
 
           <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
+              <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-secondary)" }}>
                 Bill To
               </div>
               {invoice.customer ? (
@@ -93,12 +93,12 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
                   {invoice.customer.address && <p style={{ color: "var(--text-secondary)" }}>{invoice.customer.address}</p>}
                 </>
               ) : (
-                <p style={{ color: "var(--text-muted)" }}>No Customer Info</p>
+                <p style={{ color: "var(--text-secondary)" }}>No Customer Info</p>
               )}
             </div>
             {invoice.combinedWorkOrders.length > 0 ? (
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
+                <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-secondary)" }}>
                   Machines
                 </div>
                 {invoice.combinedWorkOrders.map((cwo) => {
@@ -114,7 +114,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
             ) : (
               equipmentLabel && (
                 <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
+                  <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-secondary)" }}>
                     Machine Details
                   </div>
                   <p className="font-bold" style={{ color: "var(--text-primary)" }}>
@@ -142,7 +142,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
                   {invoice.lineItems.map((line) =>
                     line.type === "header" ? (
                       <tr key={line.id} className="dt-row">
-                        <td colSpan={4} className="dt-td text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)", background: "var(--bg-surface-subtle)" }}>
+                        <td colSpan={4} className="dt-td text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--text-secondary)", background: "var(--bg-surface-subtle)" }}>
                           {line.description}
                         </td>
                       </tr>
@@ -171,13 +171,13 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
           <div className="flex justify-end">
             <div className="w-56 text-sm">
               <div className="flex justify-between py-1">
-                <span style={{ color: "var(--text-muted)" }}>Subtotal</span>
+                <span style={{ color: "var(--text-secondary)" }}>Subtotal</span>
                 <span className="num" style={{ color: "var(--text-secondary)" }}>
                   ${invoice.subtotal.toString()}
                 </span>
               </div>
               <div className="flex justify-between py-1">
-                <span style={{ color: "var(--text-muted)" }}>
+                <span style={{ color: "var(--text-secondary)" }}>
                   {shopProfile?.taxLabel ?? "Tax"} ({shopProfile?.taxRate?.toString() ?? "0"}%)
                 </span>
                 <span className="num" style={{ color: "var(--text-secondary)" }}>
@@ -238,7 +238,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
           </div>
 
           {shopProfile?.hstNumber && (
-            <p className="mt-4 text-center text-[10px]" style={{ color: "var(--text-muted)" }}>
+            <p className="mt-4 text-center text-xs font-bold" style={{ color: "var(--text-primary)" }}>
               HST/GST #{shopProfile.hstNumber}
             </p>
           )}
