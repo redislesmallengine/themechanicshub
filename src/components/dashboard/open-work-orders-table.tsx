@@ -3,8 +3,23 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { STATUS_LABELS as WO_STATUS_LABELS, STATUS_BADGE as WO_STATUS_BADGE, now as getNow, type WorkOrderStatus } from "@/lib/work-orders";
-import { fetchOpenWorkOrdersPage, type OpenWorkOrderRow } from "@/app/(app)/dashboard/actions";
+import type { OpenWorkOrderRow } from "@/app/api/dashboard/open-work-orders/route";
 import { Spinner } from "@/components/dashboard/skeletons";
+
+async function fetchOpenWorkOrdersPage(page: number, pageSize: number): Promise<{ workOrders: OpenWorkOrderRow[]; total: number }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch(`/api/dashboard/open-work-orders?page=${page}&pageSize=${pageSize}`, {
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error(`Failed to load work orders (${res.status})`);
+    return (await res.json()) as { workOrders: OpenWorkOrderRow[]; total: number };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 const PAGE_SIZES = [5, 10, 15, 25, 50] as const;
 
@@ -39,17 +54,23 @@ export function OpenWorkOrdersTable({
   const [total, setTotal] = useState(initialTotal);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(5);
+  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const now = getNow();
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   function goTo(nextPage: number, nextPageSize: number) {
     startTransition(async () => {
-      const result = await fetchOpenWorkOrdersPage(nextPage, nextPageSize);
-      setWorkOrders(result.workOrders);
-      setTotal(result.total);
-      setPage(nextPage);
-      setPageSize(nextPageSize);
+      try {
+        const result = await fetchOpenWorkOrdersPage(nextPage, nextPageSize);
+        setWorkOrders(result.workOrders);
+        setTotal(result.total);
+        setPage(nextPage);
+        setPageSize(nextPageSize);
+        setError(null);
+      } catch {
+        setError("Couldn't load that page. Try again.");
+      }
     });
   }
 
@@ -76,6 +97,11 @@ export function OpenWorkOrdersTable({
           </button>
         ))}
         {pending && <Spinner className="w-3.5 h-3.5 ml-1" />}
+        {error && !pending && (
+          <span className="font-semibold" style={{ color: "var(--color-error-600, #dc2626)" }}>
+            {error}
+          </span>
+        )}
       </div>
 
       <div className="dt-container" style={{ opacity: pending ? 0.6 : 1, transition: "opacity 120ms" }}>

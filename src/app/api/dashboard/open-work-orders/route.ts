@@ -1,5 +1,4 @@
-"use server";
-
+import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { getOpenWorkOrders, getOpenWorkOrderCount } from "@/lib/dashboard";
@@ -21,12 +20,16 @@ export interface OpenWorkOrderRow {
  * section's skeleton, just to change this one table. organizationId always
  * comes from the session here, never a client-supplied value.
  */
-export async function fetchOpenWorkOrdersPage(page: number, pageSize: number): Promise<{ workOrders: OpenWorkOrderRow[]; total: number }> {
+export async function GET(request: NextRequest) {
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
-  if (!organizationId) return { workOrders: [], total: 0 };
+  if (!organizationId) {
+    return NextResponse.json({ workOrders: [], total: 0 }, { status: 401 });
+  }
 
+  const page = Number(request.nextUrl.searchParams.get("page"));
+  const pageSize = Number(request.nextUrl.searchParams.get("pageSize"));
   const safePage = Math.max(1, Math.floor(page) || 1);
   const safePageSize = Math.min(100, Math.max(1, Math.floor(pageSize) || 5));
 
@@ -35,7 +38,7 @@ export async function fetchOpenWorkOrdersPage(page: number, pageSize: number): P
     getOpenWorkOrderCount(organizationId),
   ]);
 
-  return {
+  const body: { workOrders: OpenWorkOrderRow[]; total: number } = {
     total,
     workOrders: workOrders.map((wo) => ({
       id: wo.id,
@@ -47,4 +50,6 @@ export async function fetchOpenWorkOrdersPage(page: number, pageSize: number): P
       equipmentLabel: [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment",
     })),
   };
+
+  return NextResponse.json(body);
 }
