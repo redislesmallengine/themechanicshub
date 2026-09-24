@@ -10,7 +10,6 @@ import { InvoiceDetailsForm } from "@/components/invoice-details-form";
 import { InvoicePartyForm } from "@/components/invoice-party-form";
 import { DeleteInvoiceButton } from "@/components/delete-invoice-button";
 import { SendWhatsAppButton } from "@/components/send-whatsapp-button";
-import { CopyLinkButton } from "@/components/copy-link-button";
 import { SentEmailsPanel } from "@/components/sent-emails-panel";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -133,9 +132,8 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-slate-50"
               style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}
             >
-              View Customer Page
+              View Invoice
             </a>
-            <CopyLinkButton url={publicInvoiceUrl} />
             <SendWhatsAppButton
               initialPhone={invoice.customer?.phone ?? null}
               customerName={invoice.customer?.name ?? null}
