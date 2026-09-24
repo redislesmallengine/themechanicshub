@@ -337,6 +337,7 @@ model Customer {
   @@index([organizationId])
   @@index([organizationId, phone])
   @@index([organizationId, email])
+  @@index([organizationId, createdAt])
 }
 
 // Registration/identification data only — no diagnosis, repair status, or
@@ -513,6 +514,9 @@ model WorkOrder {
   @@index([organizationId, status])
   @@index([customerId])
   @@index([equipmentId])
+  @@index([organizationId, assignedToUserId])
+  @@index([organizationId, createdAt])
+  @@index([organizationId, closedAt])
 }
 
 // Adding a line here immediately creates a real PartStockAdjustment (reason
@@ -538,6 +542,7 @@ model WorkOrderPart {
   part      Part?     @relation(fields: [partId], references: [id], onDelete: SetNull)
 
   @@index([workOrderId])
+  @@index([partId])
 }
 
 // =============================================================================
@@ -592,6 +597,7 @@ model Invoice {
   @@index([organizationId, status])
   @@index([customerId])
   @@index([equipmentId])
+  @@index([organizationId, paidAt])
 }
 
 // Folds 2+ work orders (same customer, each ready to invoice) into ONE
