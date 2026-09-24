@@ -15,23 +15,9 @@ import {
   getInventoryValue,
   getCustomerStats,
 } from "@/lib/dashboard";
-import { STATUS_LABELS as WO_STATUS_LABELS, STATUS_BADGE as WO_STATUS_BADGE, now as getNow, type WorkOrderStatus } from "@/lib/work-orders";
 import { StatTile } from "@/components/dashboard/stat-tile";
 import { RevenueTrendChartSvg, WorkOrdersByStatusChartSvg, OpenedVsClosedChartSvg, RevenueByTypeDonutSvg } from "@/components/dashboard/charts";
-import { Pagination } from "@/components/pagination";
-
-export const OPEN_WORK_ORDERS_PAGE_SIZES = [5, 10, 15, 25, 50] as const;
-export const OPEN_WORK_ORDERS_DEFAULT_PAGE_SIZE = 5;
-
-function timeAgo(date: Date): string {
-  const ms = Date.now() - date.getTime();
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
+import { OpenWorkOrdersTable as OpenWorkOrdersClientTable } from "@/components/dashboard/open-work-orders-table";
 
 function fmtMoney(n: number): string {
   return `$${n.toFixed(2)}`;
@@ -101,101 +87,26 @@ export async function ShopFloorTiles({ organizationId, agingDays }: { organizati
   );
 }
 
-export async function OpenWorkOrdersTable({
-  organizationId,
-  agingDays,
-  page,
-  pageSize,
-}: {
-  organizationId: string;
-  agingDays: number;
-  page: number;
-  pageSize: number;
-}) {
-  const [workOrders, total] = await Promise.all([
-    getOpenWorkOrders(organizationId, pageSize, (page - 1) * pageSize),
-    getOpenWorkOrderCount(organizationId),
-  ]);
-  const now = getNow();
+/**
+ * Fetches just page 1 at the default page size for the first paint (inside
+ * this section's own Suspense boundary, like every other section) and
+ * hands off to the client component for every click after that -- so
+ * paging/resizing this one table never re-navigates /dashboard and never
+ * re-runs any other section's query.
+ */
+export async function OpenWorkOrdersSection({ organizationId, agingDays }: { organizationId: string; agingDays: number }) {
+  const [workOrders, total] = await Promise.all([getOpenWorkOrders(organizationId, 5, 0), getOpenWorkOrderCount(organizationId)]);
+  const initialWorkOrders = workOrders.map((wo) => ({
+    id: wo.id,
+    status: wo.status,
+    updatedAt: wo.updatedAt.toISOString(),
+    readyForPickupAt: wo.readyForPickupAt ? wo.readyForPickupAt.toISOString() : null,
+    customerName: wo.customer.name,
+    customerContact: wo.customer.phone ?? wo.customer.email ?? "",
+    equipmentLabel: [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment",
+  }));
 
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-end gap-1.5 text-[11px]">
-        <span className="font-semibold" style={{ color: "var(--text-muted)" }}>
-          Per page:
-        </span>
-        {OPEN_WORK_ORDERS_PAGE_SIZES.map((size) => (
-          <Link
-            key={size}
-            href={size === OPEN_WORK_ORDERS_DEFAULT_PAGE_SIZE ? "/dashboard" : `/dashboard?woSize=${size}`}
-            className="px-2 py-0.5 rounded-md font-bold"
-            style={
-              size === pageSize
-                ? { background: "var(--color-brand-600)", color: "#fff" }
-                : { background: "var(--bg-surface-subtle)", color: "var(--text-secondary)", border: "1px solid var(--border-subtle)" }
-            }
-          >
-            {size}
-          </Link>
-        ))}
-      </div>
-
-      <div className="dt-container">
-        <div className="dt-scroll">
-          <table className="dt-table" style={{ minWidth: 640 }}>
-            <thead className="dt-head">
-              <tr>
-                <th className="dt-th text-left">Customer</th>
-                <th className="dt-th text-left">Equipment</th>
-                <th className="dt-th text-left">Status</th>
-                <th className="dt-th text-right">Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {workOrders.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
-                    Nothing open —{" "}
-                    <Link href="/work-orders/new" className="font-semibold text-brand-600">
-                      create a work order
-                    </Link>
-                    .
-                  </td>
-                </tr>
-              )}
-              {workOrders.map((wo) => {
-                const status = wo.status as WorkOrderStatus;
-                const isAging = status === "readyForPickup" && wo.readyForPickupAt && (now - wo.readyForPickupAt.getTime()) / 86400000 > agingDays;
-                const equipmentLabel = [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment";
-                return (
-                  <tr key={wo.id} className="dt-row">
-                    <td className="dt-td">
-                      <Link href={`/work-orders/${wo.id}`} className="font-bold text-sm hover:underline" style={{ color: "var(--text-primary)" }}>
-                        {wo.customer.name}
-                      </Link>
-                      <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                        {wo.customer.phone ?? wo.customer.email ?? ""}
-                      </div>
-                    </td>
-                    <td className="dt-td text-sm">{equipmentLabel}</td>
-                    <td className="dt-td">
-                      <span className={`dt-badge dt-badge--${isAging ? "error" : WO_STATUS_BADGE[status]}`}>
-                        <span className="dt-badge-dot" />
-                        {isAging ? `Ready · ${Math.floor((now - wo.readyForPickupAt!.getTime()) / 86400000)}d` : WO_STATUS_LABELS[status]}
-                      </span>
-                    </td>
-                    <td className="dt-td num text-sm text-right">{timeAgo(wo.updatedAt)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <Pagination page={page} pageSize={pageSize} total={total} basePath="/dashboard" params={{ woSize: pageSize !== OPEN_WORK_ORDERS_DEFAULT_PAGE_SIZE ? String(pageSize) : undefined }} />
-    </div>
-  );
+  return <OpenWorkOrdersClientTable initialWorkOrders={initialWorkOrders} initialTotal={total} agingDays={agingDays} />;
 }
 
 // ---------------------------------------------------------------------------
