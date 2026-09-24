@@ -10,6 +10,7 @@ import { InvoiceDetailsForm } from "@/components/invoice-details-form";
 import { InvoicePartyForm } from "@/components/invoice-party-form";
 import { DeleteInvoiceButton } from "@/components/delete-invoice-button";
 import { SendWhatsAppButton } from "@/components/send-whatsapp-button";
+import { CopyLinkButton } from "@/components/copy-link-button";
 import { SentEmailsPanel } from "@/components/sent-emails-panel";
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -53,6 +54,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   const hasInventoryLines = invoice.lineItems.some((l) => !!l.partId);
   const canEditParty = editable && !invoice.workOrderId && invoice.combinedWorkOrders.length === 0;
   const pdfUrl = `${process.env.BETTER_AUTH_URL}/api/invoice/${invoice.viewToken}/pdf`;
+  const publicInvoiceUrl = `${process.env.BETTER_AUTH_URL}/invoice/${invoice.viewToken}`;
 
   const partyCustomers = canEditParty
     ? await prisma.customer.findMany({
@@ -124,6 +126,16 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             >
               Download PDF
             </a>
+            <a
+              href={publicInvoiceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-slate-50"
+              style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}
+            >
+              View Customer Page
+            </a>
+            <CopyLinkButton url={publicInvoiceUrl} />
             <SendWhatsAppButton
               initialPhone={invoice.customer?.phone ?? null}
               customerName={invoice.customer?.name ?? null}
