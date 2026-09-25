@@ -65,7 +65,7 @@ function SendForm({ invoiceId, hasCustomer, hasCustomerEmail, isResend, isPaid }
       {preview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.4)" }} onClick={() => setPreview(null)}>
           <div
-            className="w-full max-w-lg max-h-[85vh] flex flex-col rounded-xl overflow-hidden"
+            className="w-full max-w-5xl h-[90vh] flex flex-col rounded-xl overflow-hidden"
             style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-md)" }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -90,7 +90,7 @@ function SendForm({ invoiceId, hasCustomer, hasCustomerEmail, isResend, isPaid }
                 </p>
               )}
             </div>
-            <iframe title="Invoice email preview" srcDoc={preview.html} sandbox="" className="flex-1 w-full bg-white" />
+            <iframe title="Invoice email preview" srcDoc={preview.html} sandbox="" className="flex-1 min-h-0 w-full bg-white" />
             <div className="p-4 flex items-center justify-end gap-2" style={{ borderTop: "1px solid var(--border-subtle)" }}>
               <button
                 type="button"
