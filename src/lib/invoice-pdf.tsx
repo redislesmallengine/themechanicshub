@@ -54,6 +54,8 @@ export interface InvoicePdfData {
     name: string;
     address: string | null;
     phone: string | null;
+    email: string | null;
+    website: string | null;
     logoDataUri: string | null;
     facebookUrl: string | null;
     googleReviewUrl: string | null;
@@ -78,8 +80,10 @@ function fmtDate(d: Date) {
 }
 
 function InvoiceDocument({ data }: { data: InvoicePdfData }) {
+  // A paid invoice doubles as the customer's receipt — same document, headed and totalled as one.
+  const isPaid = data.status === "paid";
   return (
-    <Document title={`Invoice ${data.invoiceNumber}`}>
+    <Document title={`${isPaid ? "Receipt" : "Invoice"} ${data.invoiceNumber}`}>
       <Page size="LETTER" style={styles.page}>
         <View style={styles.headerRow}>
           <View>
@@ -88,18 +92,29 @@ function InvoiceDocument({ data }: { data: InvoicePdfData }) {
             <Text style={styles.shopName}>{data.shop.name}</Text>
             {data.shop.address && <Text style={styles.muted}>{data.shop.address}</Text>}
             {data.shop.phone && <Text style={styles.muted}>{data.shop.phone}</Text>}
+            {data.shop.email && <Text style={styles.muted}>{data.shop.email}</Text>}
+            {data.shop.website && <Text style={styles.muted}>{data.shop.website.replace(/^https?:\/\//i, "")}</Text>}
           </View>
           <View>
-            <Text style={styles.invoiceTitle}>INVOICE</Text>
+            <Text style={styles.invoiceTitle}>{isPaid ? "RECEIPT" : "INVOICE"}</Text>
             <Text style={[styles.muted, { textAlign: "right", marginTop: 4 }]}>{data.invoiceNumber}</Text>
             <View style={styles.metaRow}>
               <Text style={styles.muted}>Issued</Text>
               <Text style={{ marginLeft: 8 }}>{fmtDate(data.issueDate)}</Text>
             </View>
-            <View style={styles.metaRow}>
-              <Text style={styles.muted}>Due</Text>
-              <Text style={{ marginLeft: 8 }}>{fmtDate(data.dueDate)}</Text>
-            </View>
+            {isPaid ? (
+              data.paidAt && (
+                <View style={styles.metaRow}>
+                  <Text style={styles.muted}>Paid</Text>
+                  <Text style={{ marginLeft: 8 }}>{fmtDate(data.paidAt)}</Text>
+                </View>
+              )
+            ) : (
+              <View style={styles.metaRow}>
+                <Text style={styles.muted}>Due</Text>
+                <Text style={{ marginLeft: 8 }}>{fmtDate(data.dueDate)}</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -166,6 +181,18 @@ function InvoiceDocument({ data }: { data: InvoicePdfData }) {
             <Text style={styles.grandTotalLabel}>Total</Text>
             <Text style={styles.grandTotalValue}>${data.total}</Text>
           </View>
+          {isPaid && (
+            <>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Paid{data.paymentMethod ? ` — ${data.paymentMethod}` : ""}</Text>
+                <Text>${data.total}</Text>
+              </View>
+              <View style={styles.grandTotalRow}>
+                <Text style={styles.grandTotalLabel}>Balance Due</Text>
+                <Text style={styles.grandTotalValue}>$0.00</Text>
+              </View>
+            </>
+          )}
         </View>
 
         {data.status === "paid" && (
@@ -185,6 +212,8 @@ function InvoiceDocument({ data }: { data: InvoicePdfData }) {
             <Text style={[styles.statusBannerText, { color: "#92400E" }]}>Amount Due: ${data.total} by {fmtDate(data.dueDate)}</Text>
           </View>
         )}
+
+        {isPaid && <Text style={[styles.muted, { marginTop: 16, textAlign: "center" }]}>Thank you for your business.</Text>}
 
         {data.notes && (
           <View style={styles.notes}>
@@ -265,6 +294,9 @@ export interface InvoiceWithRelationsForPdf {
     shopProfile: {
       address: string | null;
       phone: string | null;
+      email: string | null;
+      website: string | null;
+      invoiceReplyToEmail: string | null;
       logoKey: string | null;
       taxLabel: string | null;
       taxRate: unknown;
@@ -300,6 +332,8 @@ export async function renderInvoicePdfFromRecord(invoice: InvoiceWithRelationsFo
       name: invoice.organization.name,
       address: shopProfile?.address ?? null,
       phone: shopProfile?.phone ?? null,
+      email: shopProfile?.email ?? shopProfile?.invoiceReplyToEmail ?? null,
+      website: shopProfile?.website ?? null,
       logoKey: shopProfile?.logoKey ?? null,
       facebookUrl: shopProfile?.facebookUrl ?? null,
       googleReviewUrl: shopProfile?.googleReviewUrl ?? null,

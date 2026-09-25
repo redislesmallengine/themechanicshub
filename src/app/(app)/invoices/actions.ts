@@ -551,17 +551,37 @@ export async function updateInvoiceParty(invoiceId: string, formData: FormData) 
   return { success: true };
 }
 
-/** Shared by sendInvoice (real send) and previewInvoiceEmail (preview only) so the two can never drift apart. */
-async function buildInvoiceEmail(organizationId: string, params: { customerName: string; invoiceNumber: string; shopName: string; total: string; url: string }) {
-  const template = await loadEmailTemplate(organizationId, "invoice");
+type InvoiceForEmail = {
+  invoiceNumber: string;
+  status: string;
+  total: { toString(): string };
+  paidAt: Date | null;
+  paymentMethod: string | null;
+  viewToken: string;
+  customer: { name: string } | null;
+  organization: { name: string; shopProfile: { phone: string | null; email: string | null; website: string | null; invoiceReplyToEmail: string | null } | null };
+};
+
+/**
+ * Shared by sendInvoice (real send) and previewInvoiceEmail (preview only) so the two can never drift apart.
+ * A paid invoice goes out as a receipt ("thank you for your payment") rather than the Invoice email's "total due" wording.
+ */
+async function buildInvoiceEmail(organizationId: string, invoice: InvoiceForEmail) {
+  const isReceipt = invoice.status === "paid";
+  const template = await loadEmailTemplate(organizationId, isReceipt ? "receipt" : "invoice");
+  const profile = invoice.organization.shopProfile;
+  const shopEmail = profile?.email ?? profile?.invoiceReplyToEmail ?? null;
   const data = {
-    customer_name: params.customerName,
-    shop_name: params.shopName,
-    invoice_number: params.invoiceNumber,
-    total: `$${params.total}`,
-    invoice_link: params.url,
+    customer_name: invoice.customer?.name ?? "there",
+    shop_name: invoice.organization.name,
+    invoice_number: invoice.invoiceNumber,
+    total: `$${invoice.total.toString()}`,
+    paid_date: invoice.paidAt ? invoice.paidAt.toLocaleDateString("en-CA", { year: "numeric", month: "short", day: "numeric" }) : "",
+    payment_method: invoice.paymentMethod ?? "payment on file",
+    shop_contact: [profile?.phone, shopEmail, profile?.website?.replace(/^https?:\/\//i, "")].filter(Boolean).join(" · "),
+    invoice_link: `${process.env.BETTER_AUTH_URL}/invoice/${invoice.viewToken}`,
   };
-  return { subject: renderTemplate(template.subject, data), html: renderTemplate(template.html, data) };
+  return { subject: renderTemplate(template.subject, data), html: renderTemplate(template.html, data), isReceipt };
 }
 
 /** Returns the exact email sendInvoice would send, without sending it. Unlike the estimate's approval link, an invoice's viewToken already exists (set at creation), so this shows the real, final link — not a placeholder. */
@@ -573,16 +593,9 @@ export async function previewInvoiceEmail(invoiceId: string) {
   });
   if (!invoice || invoice.organizationId !== organizationId) return { error: "That invoice doesn't exist." };
 
-  const url = `${process.env.BETTER_AUTH_URL}/invoice/${invoice.viewToken}`;
-  const { subject, html } = await buildInvoiceEmail(organizationId, {
-    customerName: invoice.customer?.name ?? "there",
-    invoiceNumber: invoice.invoiceNumber,
-    shopName: invoice.organization.name,
-    total: invoice.total.toString(),
-    url,
-  });
+  const { subject, html, isReceipt } = await buildInvoiceEmail(organizationId, invoice);
 
-  return { success: true, subject, html, to: invoice.customer?.email ?? null, replyTo: invoice.organization.shopProfile?.invoiceReplyToEmail ?? null };
+  return { success: true, subject, html, isReceipt, to: invoice.customer?.email ?? null, replyTo: invoice.organization.shopProfile?.invoiceReplyToEmail ?? null };
 }
 
 /**
@@ -611,14 +624,7 @@ export async function sendInvoice(invoiceId: string) {
 
   const pdfBuffer = await renderInvoicePdfFromRecord(invoice);
 
-  const url = `${process.env.BETTER_AUTH_URL}/invoice/${invoice.viewToken}`;
-  const { subject, html } = await buildInvoiceEmail(organizationId, {
-    customerName: invoice.customer.name,
-    invoiceNumber: invoice.invoiceNumber,
-    shopName: invoice.organization.name,
-    total: invoice.total.toString(),
-    url,
-  });
+  const { subject, html } = await buildInvoiceEmail(organizationId, invoice);
   await sendMail({
     to: invoice.customer.email,
     subject,

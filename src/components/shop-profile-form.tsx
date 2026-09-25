@@ -17,6 +17,8 @@ export function ShopProfileForm({
   initialName,
   initialAddress,
   initialPhone,
+  initialEmail,
+  initialWebsite,
   initialLabourRate,
   initialDiagnosticFee,
   initialTaxRate,
@@ -33,6 +35,8 @@ export function ShopProfileForm({
   initialName: string;
   initialAddress: string;
   initialPhone: string;
+  initialEmail: string;
+  initialWebsite: string;
   initialLabourRate: string;
   initialDiagnosticFee: string;
   initialTaxRate: string;
@@ -131,6 +135,40 @@ export function ShopProfileForm({
             className="w-full px-3 py-2 rounded-lg text-xs font-medium"
             style={inputStyle}
           />
+        </div>
+        <div>
+          <label htmlFor="email" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+            Shop Email
+          </label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            defaultValue={initialEmail}
+            placeholder="info@yourshop.com"
+            className="w-full px-3 py-2 rounded-lg text-xs font-medium"
+            style={inputStyle}
+          />
+          <span className="text-[10px] mt-0.5 block" style={{ color: "var(--text-muted)" }}>
+            Optional — printed with your address and phone on invoices and receipts.
+          </span>
+        </div>
+        <div>
+          <label htmlFor="website" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+            Website
+          </label>
+          <input
+            id="website"
+            name="website"
+            type="text"
+            defaultValue={initialWebsite}
+            placeholder="www.yourshop.com"
+            className="w-full px-3 py-2 rounded-lg text-xs font-medium"
+            style={inputStyle}
+          />
+          <span className="text-[10px] mt-0.5 block" style={{ color: "var(--text-muted)" }}>
+            Optional — printed with your address and phone on invoices and receipts.
+          </span>
         </div>
         <div>
           <label htmlFor="facebookUrl" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>

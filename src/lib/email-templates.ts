@@ -16,7 +16,7 @@ import { prisma } from "@/lib/prisma";
  * from the defaults below, byte-for-byte what it always sent before this
  * feature existed.
  */
-export const EMAIL_TEMPLATE_KEYS = ["estimate", "invoice", "lowStock", "staffInvite", "passwordReset", "testEmail"] as const;
+export const EMAIL_TEMPLATE_KEYS = ["estimate", "invoice", "receipt", "lowStock", "staffInvite", "passwordReset", "testEmail"] as const;
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATE_KEYS)[number];
 
 export interface EmailTemplateToken {
@@ -81,6 +81,37 @@ export const EMAIL_TEMPLATE_META: Record<EmailTemplateKey, EmailTemplateMeta> = 
       customer_name: "Jordan Smith",
       invoice_number: "INV-1009",
       total: "$312.40",
+      invoice_link: "https://example.com/invoice/sample-link",
+    },
+  },
+  receipt: {
+    label: "Paid Receipt",
+    description: "Sent instead of the Invoice email when staff send (or resend) an invoice that's already been paid.",
+    tokens: [
+      { token: "customer_name", description: "Customer's name" },
+      { token: "shop_name", description: "Your shop's name" },
+      { token: "invoice_number", description: "Invoice number, e.g. INV-1009" },
+      { token: "total", description: "Amount paid, e.g. $312.40" },
+      { token: "paid_date", description: "Date the invoice was paid" },
+      { token: "payment_method", description: "How it was paid, e.g. Cash" },
+      { token: "shop_contact", description: "Your shop's phone, email, and website (whichever are set in Shop Profile)" },
+      { token: "invoice_link", description: "Link for the customer to view the receipt — required" },
+    ],
+    requiredTokens: ["invoice_link"],
+    defaultSubject: "Receipt for invoice {{invoice_number}} from {{shop_name}}",
+    defaultHtml: `<p>Hi {{customer_name}},</p>
+<p>Thank you for your payment. Your receipt for invoice {{invoice_number}} is attached.</p>
+<p><b>Paid in full: {{total}}</b> on {{paid_date}} via {{payment_method}}. Balance due: $0.00.</p>
+<p><a href="{{invoice_link}}">View your receipt</a></p>
+<p>If we can help with anything, just get in touch. We look forward to seeing you again.</p>
+<p>{{shop_name}}<br>{{shop_contact}}</p>`,
+    sampleData: {
+      customer_name: "Jordan Smith",
+      invoice_number: "INV-1009",
+      total: "$312.40",
+      paid_date: "Sep 25, 2026",
+      payment_method: "Cash",
+      shop_contact: "(902) 555-0100 · info@yourshop.com · www.yourshop.com",
       invoice_link: "https://example.com/invoice/sample-link",
     },
   },

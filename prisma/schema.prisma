@@ -216,7 +216,7 @@ model SentEmail {
 model EmailTemplate {
   id             String   @id @default(cuid())
   organizationId String
-  key            String // "estimate" | "invoice" | "lowStock" | "staffInvite" | "passwordReset" | "testEmail"
+  key            String // "estimate" | "invoice" | "receipt" | "lowStock" | "staffInvite" | "passwordReset" | "testEmail"
   subject        String
   html           String
   updatedAt      DateTime @updatedAt
@@ -241,6 +241,8 @@ model ShopProfile {
   logoKey             String? // object key in the Garage/S3 bucket (src/lib/storage.ts) — not a public URL, served via /api/shop-logo/[organizationId]
   address             String?
   phone               String?
+  email               String? // public contact email printed on the invoice/receipt (PDF + public page) and in the receipt email
+  website             String? // shop website, printed alongside email
   labourRate          Decimal? @db.Decimal(10, 2) // per hour
   diagnosticFee       Decimal? @db.Decimal(10, 2) // flat fee
   taxRate             Decimal? @db.Decimal(5, 2) // percentage, e.g. 15.00

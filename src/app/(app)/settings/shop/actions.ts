@@ -81,6 +81,10 @@ export async function saveShopProfile(formData: FormData) {
   const facebookUrl = normalizeUrl(formData.get("facebookUrl"));
   const googleReviewUrl = normalizeUrl(formData.get("googleReviewUrl"));
   const hstNumber = String(formData.get("hstNumber") ?? "").trim();
+  const website = normalizeUrl(formData.get("website"));
+
+  const shopEmail = parseOptionalEmail(formData.get("email"), "Shop email");
+  if ("error" in shopEmail) return { error: shopEmail.error };
 
   const invoiceReplyToEmail = parseOptionalEmail(formData.get("invoiceReplyToEmail"), "Reply-To Email Address for Invoice");
   if ("error" in invoiceReplyToEmail) return { error: invoiceReplyToEmail.error };
@@ -107,6 +111,8 @@ export async function saveShopProfile(formData: FormData) {
       organizationId,
       address: address || null,
       phone: phone || null,
+      email: shopEmail.value,
+      website,
       labourRate: labourRate.value,
       diagnosticFee: diagnosticFee.value,
       taxRate: taxRate.value,
@@ -131,6 +137,8 @@ export async function saveShopProfile(formData: FormData) {
       googleReviewUrl,
       hstNumber: hstNumber || null,
       invoiceReplyToEmail: invoiceReplyToEmail.value,
+      email: shopEmail.value,
+      website,
     },
   });
 

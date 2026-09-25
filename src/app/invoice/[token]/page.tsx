@@ -46,6 +46,10 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
   const equipmentLabel = invoice.equipment
     ? [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" / ") || invoice.equipment.equipmentType?.name || "Equipment"
     : invoice.adHocEquipmentLabel;
+  // A paid invoice doubles as the customer's receipt — headed and totalled as one.
+  const isPaid = status === "paid";
+  const shopEmail = shopProfile?.email ?? shopProfile?.invoiceReplyToEmail ?? null;
+  const shopContact = [shopProfile?.address, shopProfile?.phone, shopEmail, shopProfile?.website?.replace(/^https?:\/\//i, "")].filter(Boolean);
 
   return (
     <div className="min-h-screen p-4 md:p-10 flex justify-center" style={{ background: "var(--bg-app)" }}>
@@ -59,19 +63,27 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
               <WrenchIcon className="w-4.5 h-4.5 text-white" />
             </span>
           )}
-          <span className="font-bold text-base" style={{ color: "var(--text-primary)" }}>
-            {invoice.organization.name}
-          </span>
+          <div>
+            <span className="font-bold text-base" style={{ color: "var(--text-primary)" }}>
+              {invoice.organization.name}
+            </span>
+            {shopContact.length > 0 && (
+              <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                {shopContact.join(" · ")}
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="rounded-xl p-6 md:p-8" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-md)" }}>
           <div className="flex items-start justify-between mb-6">
             <div>
               <h1 className="text-2xl font-extrabold" style={{ color: "var(--text-primary)" }}>
-                Invoice {invoice.invoiceNumber}
+                {isPaid ? "Receipt" : "Invoice"} {invoice.invoiceNumber}
               </h1>
               <p className="text-xs mt-0.5 font-medium" style={{ color: "var(--text-secondary)" }}>
-                Issued {invoice.issueDate.toLocaleDateString()} · Due {invoice.dueDate.toLocaleDateString()}
+                Issued {invoice.issueDate.toLocaleDateString()} ·{" "}
+                {isPaid ? (invoice.paidAt ? `Paid ${invoice.paidAt.toLocaleDateString()}` : "Paid") : `Due ${invoice.dueDate.toLocaleDateString()}`}
               </p>
             </div>
             <span className={`dt-badge dt-badge--${overdue ? "error" : STATUS_BADGE[status]}`}>
@@ -190,12 +202,28 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
                   ${invoice.total.toString()}
                 </span>
               </div>
+              {isPaid && (
+                <>
+                  <div className="flex justify-between py-1">
+                    <span style={{ color: "var(--text-secondary)" }}>Paid{invoice.paymentMethod ? ` — ${invoice.paymentMethod}` : ""}</span>
+                    <span className="num" style={{ color: "var(--text-secondary)" }}>
+                      ${invoice.total.toString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-2 mt-1 font-extrabold text-base" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                    <span style={{ color: "var(--text-primary)" }}>Balance Due</span>
+                    <span className="num" style={{ color: "var(--text-primary)" }}>
+                      $0.00
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
           {status === "paid" && (
             <div className="mt-4 p-3 rounded-lg text-xs font-semibold" style={{ background: "var(--color-success-subtle)", border: "1px solid var(--color-success-border)", color: "var(--color-success-text)" }}>
-              Paid {invoice.paidAt ? `on ${invoice.paidAt.toLocaleDateString()}` : ""} {invoice.paymentMethod ? `via ${invoice.paymentMethod}` : ""}
+              Paid {invoice.paidAt ? `on ${invoice.paidAt.toLocaleDateString()}` : ""} {invoice.paymentMethod ? `via ${invoice.paymentMethod}` : ""} — thank you for your business.
             </div>
           )}
           {status === "void" && (

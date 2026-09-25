@@ -13,7 +13,7 @@ const inputStyle = {
 
 type ActionResult = { success?: boolean; error?: string } | undefined;
 
-function SendForm({ invoiceId, hasCustomer, hasCustomerEmail, isResend }: { invoiceId: string; hasCustomer: boolean; hasCustomerEmail: boolean; isResend: boolean }) {
+function SendForm({ invoiceId, hasCustomer, hasCustomerEmail, isResend, isPaid }: { invoiceId: string; hasCustomer: boolean; hasCustomerEmail: boolean; isResend: boolean; isPaid: boolean }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ subject: string; html: string; replyTo: string | null } | null>(null);
@@ -54,7 +54,7 @@ function SendForm({ invoiceId, hasCustomer, hasCustomerEmail, isResend }: { invo
         </p>
       )}
       <button onClick={handlePreview} disabled={pendingPreview || !hasCustomerEmail} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-        {pendingPreview ? "Loading Preview…" : isResend ? "Preview & Resend" : "Preview Email"}
+        {pendingPreview ? "Loading Preview…" : isPaid ? "Preview & Send Receipt" : isResend ? "Preview & Resend" : "Preview Email"}
       </button>
       {error && (
         <p className="text-xs font-semibold mt-2" style={{ color: "var(--color-error-solid)" }}>
@@ -74,7 +74,9 @@ function SendForm({ invoiceId, hasCustomer, hasCustomerEmail, isResend }: { invo
                 {preview.subject}
               </h3>
               <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-                Exactly what will be sent, PDF attached — this is the real view/pay link the customer will use.
+                {isPaid
+                  ? "Exactly what will be sent — a paid receipt, PDF attached. This is the real link the customer will use to view it."
+                  : "Exactly what will be sent, PDF attached — this is the real view/pay link the customer will use."}
                 {preview.replyTo && (
                   <>
                     {" "}
@@ -82,7 +84,7 @@ function SendForm({ invoiceId, hasCustomer, hasCustomerEmail, isResend }: { invo
                   </>
                 )}
               </p>
-              {isResend && (
+              {isResend && !isPaid && (
                 <p className="text-[10px] mt-1 font-semibold" style={{ color: "var(--color-warning-solid)" }}>
                   This invoice was already sent — this will send it again.
                 </p>
@@ -99,7 +101,7 @@ function SendForm({ invoiceId, hasCustomer, hasCustomerEmail, isResend }: { invo
                 Cancel
               </button>
               <button type="button" onClick={handleConfirmSend} disabled={pendingSend} className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-                {pendingSend ? "Sending…" : isResend ? "Confirm & Resend" : "Confirm & Send"}
+                {pendingSend ? "Sending…" : isPaid ? "Send Receipt" : isResend ? "Confirm & Resend" : "Confirm & Send"}
               </button>
             </div>
           </div>
@@ -219,7 +221,7 @@ export function InvoiceStatusPanel({
   return (
     <div className="space-y-3">
       {/* Sendable at any status except Void — including Paid, so a shop can hand over a fresh copy after the fact (lost the email, wants it for their records). sendInvoice itself only ever advances status forward from Draft, never backward on a resend. */}
-      {status !== "void" && <SendForm invoiceId={invoiceId} hasCustomer={hasCustomer} hasCustomerEmail={hasCustomerEmail} isResend={status !== "draft"} />}
+      {status !== "void" && <SendForm invoiceId={invoiceId} hasCustomer={hasCustomer} hasCustomerEmail={hasCustomerEmail} isResend={status !== "draft"} isPaid={status === "paid"} />}
       {/* Draft is included here too, not just Sent/Viewed — a walk-in cash sale with no customer to email needs a way to close out that doesn't go through Send Invoice at all. */}
       {(status === "draft" || status === "sent" || status === "viewed") && (
         <>
