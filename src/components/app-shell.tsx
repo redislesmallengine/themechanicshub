@@ -151,7 +151,17 @@ function ChevronDownIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-function Header({ user, roleLabel, onMenuClick }: { user: { name: string; email: string }; roleLabel?: string; onMenuClick: () => void }) {
+function Header({
+  user,
+  roleLabel,
+  canViewReports,
+  onMenuClick,
+}: {
+  user: { name: string; email: string };
+  roleLabel?: string;
+  canViewReports?: boolean;
+  onMenuClick: () => void;
+}) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -212,6 +222,16 @@ function Header({ user, roleLabel, onMenuClick }: { user: { name: string; email:
       </form>
 
       <div className="flex items-center gap-3 shrink-0">
+        {canViewReports && (
+          <Link
+            href="/reports/customer-360"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold text-white transition hover:brightness-110"
+            style={{ background: "linear-gradient(135deg, var(--color-brand-500), var(--color-brand-600))", boxShadow: "var(--shadow-sm)" }}
+          >
+            <CustomersIcon className="w-3.5 h-3.5" />
+            Customer 360
+          </Link>
+        )}
         <button
           className="relative p-2 rounded-lg hover:bg-slate-100 transition"
           style={{ color: "var(--text-secondary)" }}
@@ -398,7 +418,7 @@ export function AppShell({
 
   return (
     <div className="flex flex-col min-h-screen">
-      <Header user={user} roleLabel={roleLabel} onMenuClick={() => setMobileOpen(true)} />
+      <Header user={user} roleLabel={roleLabel} canViewReports={canViewReports} onMenuClick={() => setMobileOpen(true)} />
 
       <div className="flex flex-1 overflow-hidden relative">
         {mobileOpen && <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={closeMobileMenu} />}
