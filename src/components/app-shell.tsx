@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode, type ComponentType, type SVGProps } from "react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import {
@@ -143,6 +143,29 @@ function MenuIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/**
+ * Fixed-size, always-rendered (opacity-toggled) so it never shifts layout --
+ * per Next.js's own useLinkStatus guidance. Must be a descendant of the
+ * <Link> it reports on; `pending` is true only until history updates, so
+ * this naturally disappears once the target route takes over (its own
+ * loading.tsx fallback, if any, picks up from there).
+ */
+function NavPendingSpinner({ collapsed }: { collapsed: boolean }) {
+  const { pending } = useLinkStatus();
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      fill="none"
+      className={`w-3 h-3 shrink-0 ml-auto animate-spin transition-opacity ${pending ? "opacity-100" : "opacity-0"} ${collapsed ? "md:hidden" : ""}`}
+      style={{ color: "currentColor" }}
+    >
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.3" />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function ChevronDownIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -230,6 +253,7 @@ function Header({
           >
             <CustomersIcon className="w-3.5 h-3.5" />
             Customer 360
+            <NavPendingSpinner collapsed={false} />
           </Link>
         )}
         <button
@@ -316,6 +340,7 @@ function NavLink({
     >
       <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? "text-white" : color}`} />
       {collapsed ? <span className="md:hidden">{label}</span> : label}
+      <NavPendingSpinner collapsed={collapsed} />
     </Link>
   );
 }
