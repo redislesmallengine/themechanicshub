@@ -551,16 +551,62 @@ export async function updateInvoiceParty(invoiceId: string, formData: FormData) 
   return { success: true };
 }
 
+/**
+ * Who this invoice bills -- the equipment owner (default) or a warranty
+ * provider for a warranty-covered repair. Deliberately separate from
+ * updateInvoiceParty above: the customer/equipment link always stays the
+ * equipment owner for service history, this only changes who's billed and
+ * where the claim correspondence goes, so it works even when the invoice
+ * came from a work order (unlike updateInvoiceParty, which that case
+ * blocks).
+ */
+export async function setInvoicePayer(invoiceId: string, formData: FormData) {
+  const { organizationId } = await requireCanManageInvoices("update");
+  const invoice = await loadOwnInvoice(invoiceId, organizationId);
+  if (!invoice) return { error: "That invoice doesn't exist." };
+  if (!isEditable(invoice.status)) return { error: "This invoice can't be edited anymore." };
+
+  const payerType = String(formData.get("payerType") ?? "customer").trim();
+  if (payerType !== "customer" && payerType !== "warranty") return { error: "Invalid payer type." };
+
+  if (payerType === "customer") {
+    await prisma.invoice.update({ where: { id: invoiceId }, data: { payerType: "customer", warrantyProviderId: null, claimNumber: null } });
+    revalidatePath(`/invoices/${invoiceId}`);
+    return { success: true };
+  }
+
+  const warrantyProviderId = String(formData.get("warrantyProviderId") ?? "").trim();
+  if (!warrantyProviderId) return { error: "Choose a warranty provider." };
+  const provider = await prisma.warrantyProvider.findUnique({ where: { id: warrantyProviderId } });
+  if (!provider || provider.organizationId !== organizationId) return { error: "That warranty provider doesn't exist." };
+
+  const claimNumber = String(formData.get("claimNumber") ?? "").trim() || null;
+
+  await prisma.invoice.update({ where: { id: invoiceId }, data: { payerType: "warranty", warrantyProviderId, claimNumber } });
+  revalidatePath(`/invoices/${invoiceId}`);
+  return { success: true };
+}
+
 type InvoiceForEmail = {
   invoiceNumber: string;
   status: string;
+  payerType: string;
   total: { toString(): string };
   paidAt: Date | null;
   paymentMethod: string | null;
   viewToken: string;
-  customer: { name: string } | null;
+  customer: { name: string; email: string | null } | null;
+  warrantyProvider: { name: string; billingEmail: string | null } | null;
   organization: { name: string; shopProfile: { phone: string | null; email: string | null; website: string | null; invoiceReplyToEmail: string | null } | null };
 };
+
+/** Who this invoice actually goes to -- the equipment owner, or the warranty company when payerType is "warranty". Used for both the email's "Dear ..." name and, separately, the actual send-to address. */
+function resolveInvoiceRecipient(invoice: Pick<InvoiceForEmail, "payerType" | "customer" | "warrantyProvider">) {
+  if (invoice.payerType === "warranty") {
+    return { name: invoice.warrantyProvider?.name ?? "there", email: invoice.warrantyProvider?.billingEmail ?? null, hasParty: !!invoice.warrantyProvider };
+  }
+  return { name: invoice.customer?.name ?? "there", email: invoice.customer?.email ?? null, hasParty: !!invoice.customer };
+}
 
 /**
  * Shared by sendInvoice (real send) and previewInvoiceEmail (preview only) so the two can never drift apart.
@@ -571,8 +617,9 @@ async function buildInvoiceEmail(organizationId: string, invoice: InvoiceForEmai
   const template = await loadEmailTemplate(organizationId, isReceipt ? "receipt" : "invoice");
   const profile = invoice.organization.shopProfile;
   const shopEmail = profile?.email ?? profile?.invoiceReplyToEmail ?? null;
+  const recipient = resolveInvoiceRecipient(invoice);
   const data = {
-    customer_name: invoice.customer?.name ?? "there",
+    customer_name: recipient.name,
     shop_name: invoice.organization.name,
     invoice_number: invoice.invoiceNumber,
     total: `$${invoice.total.toString()}`,
@@ -589,13 +636,13 @@ export async function previewInvoiceEmail(invoiceId: string) {
   const { organizationId } = await requireCanManageInvoices("update");
   const invoice = await prisma.invoice.findUnique({
     where: { id: invoiceId },
-    include: { customer: true, organization: { include: { shopProfile: true } } },
+    include: { customer: true, warrantyProvider: true, organization: { include: { shopProfile: true } } },
   });
   if (!invoice || invoice.organizationId !== organizationId) return { error: "That invoice doesn't exist." };
 
   const { subject, html, isReceipt } = await buildInvoiceEmail(organizationId, invoice);
 
-  return { success: true, subject, html, isReceipt, to: invoice.customer?.email ?? null, replyTo: invoice.organization.shopProfile?.invoiceReplyToEmail ?? null };
+  return { success: true, subject, html, isReceipt, to: resolveInvoiceRecipient(invoice).email, replyTo: invoice.organization.shopProfile?.invoiceReplyToEmail ?? null };
 }
 
 /**
@@ -612,6 +659,7 @@ export async function sendInvoice(invoiceId: string) {
     include: {
       lineItems: { orderBy: { sortOrder: "asc" } },
       customer: true,
+      warrantyProvider: true,
       equipment: { include: { equipmentType: true } },
       organization: { include: { shopProfile: true } },
     },
@@ -619,14 +667,29 @@ export async function sendInvoice(invoiceId: string) {
   if (!invoice || invoice.organizationId !== organizationId) return { error: "That invoice doesn't exist." };
   if (invoice.status === "void") return { error: "This invoice has been voided — nothing to send." };
   if (invoice.lineItems.length === 0) return { error: "Add at least one line item before sending." };
-  if (!invoice.customer) return { error: "This invoice has no customer attached — nothing to send it to. Download the PDF instead." };
-  if (!invoice.customer.email) return { error: "This customer has no email on file — add one before sending an invoice." };
+  const recipient = resolveInvoiceRecipient(invoice);
+  if (!recipient.hasParty) {
+    return {
+      error:
+        invoice.payerType === "warranty"
+          ? "This invoice has no warranty provider attached — nothing to send it to. Download the PDF instead."
+          : "This invoice has no customer attached — nothing to send it to. Download the PDF instead.",
+    };
+  }
+  if (!recipient.email) {
+    return {
+      error:
+        invoice.payerType === "warranty"
+          ? "This warranty provider has no billing email on file — add one before sending this claim."
+          : "This customer has no email on file — add one before sending an invoice.",
+    };
+  }
 
   const pdfBuffer = await renderInvoicePdfFromRecord(invoice);
 
   const { subject, html } = await buildInvoiceEmail(organizationId, invoice);
   await sendMail({
-    to: invoice.customer.email,
+    to: recipient.email,
     subject,
     html,
     organizationId,

@@ -8,6 +8,7 @@ import { InvoiceLineItemsPanel } from "@/components/invoice-line-items-panel";
 import { InvoiceStatusPanel } from "@/components/invoice-status-panel";
 import { InvoiceDetailsForm } from "@/components/invoice-details-form";
 import { InvoicePartyForm } from "@/components/invoice-party-form";
+import { InvoicePayerForm } from "@/components/invoice-payer-form";
 import { DeleteInvoiceButton } from "@/components/delete-invoice-button";
 import { SendWhatsAppButton } from "@/components/send-whatsapp-button";
 import { SentEmailsPanel } from "@/components/sent-emails-panel";
@@ -27,12 +28,13 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       equipment: { include: { equipmentType: true } },
       workOrder: true,
       combinedWorkOrders: { include: { workOrder: { include: { equipment: { include: { equipmentType: true } } } } } },
+      warrantyProvider: true,
       organization: { select: { name: true } },
     },
   });
   if (!invoice || invoice.organizationId !== organizationId) notFound();
 
-  const [canUpdate, canVoid, canDelete, canViewMargins, availableParts, sentEmails, membership] = await Promise.all([
+  const [canUpdate, canVoid, canDelete, canViewMargins, availableParts, sentEmails, membership, warrantyProviders] = await Promise.all([
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["update"] } } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["void"] } } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["delete"] } } }),
@@ -40,6 +42,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     prisma.part.findMany({ where: { organizationId, quantityOnHand: { gt: 0 } }, orderBy: { name: "asc" } }),
     prisma.sentEmail.findMany({ where: { relatedType: "invoice", relatedId: id }, orderBy: { createdAt: "desc" } }),
     prisma.member.findFirst({ where: { organizationId, userId: session.user.id } }),
+    prisma.warrantyProvider.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
   ]);
   const isOwner = membership?.role === "owner";
 
@@ -86,6 +89,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 <span className="dt-badge dt-badge--info">
                   <span className="dt-badge-dot" />
                   Multi-Equipment
+                </span>
+              )}
+              {invoice.payerType === "warranty" && (
+                <span className="dt-badge dt-badge--info">
+                  <span className="dt-badge-dot" />
+                  Warranty Claim
                 </span>
               )}
             </div>
@@ -148,12 +157,54 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
+      {invoice.payerType === "warranty" && invoice.warrantyProvider && (
+        <div
+          className="rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap"
+          style={{ background: "var(--color-info-subtle)", border: "1px solid var(--color-info-border)" }}
+        >
+          <p className="text-xs font-semibold" style={{ color: "var(--color-info-text)" }}>
+            {invoice.claimNumber && (
+              <>
+                <span className="font-bold">Claim #{invoice.claimNumber}</span> ·{" "}
+              </>
+            )}
+            {invoice.warrantyProvider.name}
+          </p>
+        </div>
+      )}
+
       <div className="rounded-xl p-5 grid grid-cols-1 sm:grid-cols-2 gap-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
         <div>
           <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
             Bill To
           </div>
-          {invoice.customer ? (
+          {invoice.payerType === "warranty" && invoice.warrantyProvider ? (
+            <>
+              <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+                {invoice.warrantyProvider.name}
+              </p>
+              {invoice.warrantyProvider.billingAddress && (
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  {invoice.warrantyProvider.billingAddress}
+                </p>
+              )}
+              {invoice.warrantyProvider.billingEmail && (
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  {invoice.warrantyProvider.billingEmail}
+                </p>
+              )}
+              <p className="text-[10px] mt-1.5" style={{ color: "var(--text-muted)" }}>
+                Equipment owner:{" "}
+                {invoice.customer ? (
+                  <Link href={`/customers/${invoice.customer.id}`} className="font-semibold text-brand-600">
+                    {invoice.customer.name}
+                  </Link>
+                ) : (
+                  "No customer on file"
+                )}
+              </p>
+            </>
+          ) : invoice.customer ? (
             <>
               <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
                 {invoice.customer.name}
@@ -279,6 +330,21 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
+      {editable && (
+        <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+          <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
+            Payer
+          </h2>
+          <InvoicePayerForm
+            invoiceId={invoice.id}
+            warrantyProviders={warrantyProviders.map((p) => ({ id: p.id, name: p.name }))}
+            initialPayerType={invoice.payerType}
+            initialWarrantyProviderId={invoice.warrantyProviderId ?? ""}
+            initialClaimNumber={invoice.claimNumber ?? ""}
+          />
+        </div>
+      )}
+
       {canEditParty && (
         <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
           <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
@@ -327,7 +393,14 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
           Status
         </h2>
-        <InvoiceStatusPanel invoiceId={invoice.id} status={invoice.status} hasCustomer={!!invoice.customer} hasCustomerEmail={!!invoice.customer?.email} canVoid={canVoid.success} />
+        <InvoiceStatusPanel
+          invoiceId={invoice.id}
+          status={invoice.status}
+          isWarranty={invoice.payerType === "warranty"}
+          hasRecipient={invoice.payerType === "warranty" ? !!invoice.warrantyProvider : !!invoice.customer}
+          hasRecipientEmail={invoice.payerType === "warranty" ? !!invoice.warrantyProvider?.billingEmail : !!invoice.customer?.email}
+          canVoid={canVoid.success}
+        />
         {invoice.status === "paid" && invoice.paymentReference && (
           <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
             Reference: {invoice.paymentReference}

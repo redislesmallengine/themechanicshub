@@ -13,7 +13,21 @@ const inputStyle = {
 
 type ActionResult = { success?: boolean; error?: string } | undefined;
 
-function SendForm({ invoiceId, hasCustomer, hasCustomerEmail, isResend, isPaid }: { invoiceId: string; hasCustomer: boolean; hasCustomerEmail: boolean; isResend: boolean; isPaid: boolean }) {
+function SendForm({
+  invoiceId,
+  hasRecipient,
+  hasRecipientEmail,
+  isWarranty,
+  isResend,
+  isPaid,
+}: {
+  invoiceId: string;
+  hasRecipient: boolean;
+  hasRecipientEmail: boolean;
+  isWarranty: boolean;
+  isResend: boolean;
+  isPaid: boolean;
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ subject: string; html: string; replyTo: string | null } | null>(null);
@@ -46,14 +60,18 @@ function SendForm({ invoiceId, hasCustomer, hasCustomerEmail, isResend, isPaid }
 
   return (
     <div>
-      {!hasCustomerEmail && (
+      {!hasRecipientEmail && (
         <p className="text-xs font-semibold mb-2" style={{ color: "var(--color-warning-solid)" }}>
-          {hasCustomer
-            ? "This customer has no email on file — add one before you can send this invoice."
-            : "This invoice has no customer attached — nothing to email it to. Download the PDF instead, or hand it over in person."}
+          {hasRecipient
+            ? isWarranty
+              ? "This warranty provider has no billing email on file — add one before you can send this claim."
+              : "This customer has no email on file — add one before you can send this invoice."
+            : isWarranty
+              ? "This invoice has no warranty provider attached — nothing to email it to. Download the PDF instead."
+              : "This invoice has no customer attached — nothing to email it to. Download the PDF instead, or hand it over in person."}
         </p>
       )}
-      <button onClick={handlePreview} disabled={pendingPreview || !hasCustomerEmail} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
+      <button onClick={handlePreview} disabled={pendingPreview || !hasRecipientEmail} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
         {pendingPreview ? "Loading Preview…" : isPaid ? "Preview & Send Receipt" : isResend ? "Preview & Resend" : "Preview Email"}
       </button>
       {error && (
@@ -208,20 +226,24 @@ function VoidForm({ invoiceId }: { invoiceId: string }) {
 export function InvoiceStatusPanel({
   invoiceId,
   status,
-  hasCustomer,
-  hasCustomerEmail,
+  isWarranty,
+  hasRecipient,
+  hasRecipientEmail,
   canVoid,
 }: {
   invoiceId: string;
   status: string;
-  hasCustomer: boolean;
-  hasCustomerEmail: boolean;
+  isWarranty: boolean;
+  hasRecipient: boolean;
+  hasRecipientEmail: boolean;
   canVoid: boolean;
 }) {
   return (
     <div className="space-y-3">
       {/* Sendable at any status except Void — including Paid, so a shop can hand over a fresh copy after the fact (lost the email, wants it for their records). sendInvoice itself only ever advances status forward from Draft, never backward on a resend. */}
-      {status !== "void" && <SendForm invoiceId={invoiceId} hasCustomer={hasCustomer} hasCustomerEmail={hasCustomerEmail} isResend={status !== "draft"} isPaid={status === "paid"} />}
+      {status !== "void" && (
+        <SendForm invoiceId={invoiceId} hasRecipient={hasRecipient} hasRecipientEmail={hasRecipientEmail} isWarranty={isWarranty} isResend={status !== "draft"} isPaid={status === "paid"} />
+      )}
       {/* Draft is included here too, not just Sent/Viewed — a walk-in cash sale with no customer to email needs a way to close out that doesn't go through Send Invoice at all. */}
       {(status === "draft" || status === "sent" || status === "viewed") && (
         <>

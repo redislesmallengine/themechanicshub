@@ -131,6 +131,7 @@ model Organization {
   parts             Part[]
   workOrders        WorkOrder[]
   invoices          Invoice[]
+  warrantyProviders WarrantyProvider[]
   savedViews        SavedView[]
 }
 
@@ -571,6 +572,9 @@ model Invoice {
   invoiceType         String    @default("partsOnly") // "partsOnly" | "repairService" | "combined" -- see classifyInvoiceType
   invoiceNumber       String // e.g. "INV-1001" — from ShopProfile.nextInvoiceNumber
   status              String    @default("draft") // draft | sent | viewed | paid | void
+  payerType           String    @default("customer") // "customer" | "warranty" -- who this invoice bills; the customer/equipment link above always stays the equipment owner regardless
+  warrantyProviderId  String? // set only when payerType = "warranty"
+  claimNumber         String? // the warranty company's own claim/authorization # -- set only when payerType = "warranty"
   issueDate           DateTime  @default(now())
   dueDate             DateTime  @default(now())
   subtotal            Decimal   @default(0) @db.Decimal(10, 2)
@@ -592,6 +596,7 @@ model Invoice {
   workOrder          WorkOrder?         @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
   customer           Customer?          @relation(fields: [customerId], references: [id], onDelete: Cascade)
   equipment          Equipment?         @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+  warrantyProvider   WarrantyProvider?  @relation(fields: [warrantyProviderId], references: [id], onDelete: SetNull)
   lineItems          InvoiceLineItem[]
   combinedWorkOrders InvoiceWorkOrder[]
 
@@ -600,6 +605,30 @@ model Invoice {
   @@index([customerId])
   @@index([equipmentId])
   @@index([organizationId, paidAt])
+  @@index([organizationId, payerType])
+  @@index([warrantyProviderId])
+}
+
+// Who a shop bills for warranty-covered repairs -- e.g. an equipment
+// manufacturer's warranty department, or a third-party extended-warranty
+// provider. Kept separate from Customer: the equipment owner stays the
+// Invoice's customer/equipment link for service history, this is only who
+// gets billed and where the claim correspondence goes.
+model WarrantyProvider {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  billingEmail   String?
+  billingAddress String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoices     Invoice[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
 }
 
 // Folds 2+ work orders (same customer, each ready to invoice) into ONE

@@ -118,12 +118,13 @@ export async function OpenWorkOrdersSection({ organizationId, agingDays }: { org
 export async function RevenueTiles({ organizationId }: { organizationId: string }) {
   const r = await getRevenueTiles(organizationId);
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
       <StatTile label="Revenue This Month" value={fmtMoney(r.revenueThisMonth)} sub={fmtPercentChange(r.revenueThisMonth, r.revenueLastMonth)} />
       <StatTile label="Outstanding" value={fmtMoney(r.outstanding)} sub="not yet due" />
       <StatTile label="Overdue" value={fmtMoney(r.overdue)} sub={`${r.overdueCount} invoice${r.overdueCount === 1 ? "" : "s"}`} tone={r.overdue > 0 ? "error" : "neutral"} />
       <StatTile label="Avg Invoice" value={fmtMoney(r.avgInvoice30d)} sub="last 30 days" />
       <StatTile label="Parts Margin" value={r.partsMarginPercent === null ? "—" : `${r.partsMarginPercent.toFixed(0)}%`} sub="cost vs. sell, this month" />
+      <StatTile label="Warranty Claims Outstanding" value={fmtMoney(r.warrantyOutstanding)} sub={`${r.warrantyOutstandingCount} claim${r.warrantyOutstandingCount === 1 ? "" : "s"}`} />
     </div>
   );
 }

@@ -77,10 +77,12 @@ export interface RevenueTiles {
   overdueCount: number;
   avgInvoice30d: number;
   partsMarginPercent: number | null;
+  warrantyOutstanding: number;
+  warrantyOutstandingCount: number;
 }
 
 export async function getRevenueTiles(organizationId: string): Promise<RevenueTiles> {
-  const [monthRows, outstandingRows, avgRows, marginRows] = await Promise.all([
+  const [monthRows, outstandingRows, avgRows, marginRows, warrantyRows] = await Promise.all([
     prisma.$queryRaw<{ this_month: string | null; last_month: string | null }[]>(Prisma.sql`
       SELECT
         COALESCE(SUM(total) FILTER (WHERE "paidAt" >= date_trunc('month', now())), 0)::text AS this_month,
@@ -107,6 +109,11 @@ export async function getRevenueTiles(organizationId: string): Promise<RevenueTi
       JOIN "Invoice" i ON i.id = li."invoiceId"
       WHERE i."organizationId" = ${organizationId} AND i.status = 'paid' AND i."paidAt" >= date_trunc('month', now()) AND li.type = 'part'
     `),
+    prisma.$queryRaw<{ total: string | null; count: bigint }[]>(Prisma.sql`
+      SELECT COALESCE(SUM(total), 0)::text AS total, count(*) AS count
+      FROM "Invoice"
+      WHERE "organizationId" = ${organizationId} AND status IN ('sent', 'viewed') AND "payerType" = 'warranty'
+    `),
   ]);
 
   const revenue = Number(marginRows[0]?.revenue ?? 0);
@@ -120,6 +127,8 @@ export async function getRevenueTiles(organizationId: string): Promise<RevenueTi
     overdueCount: Number(outstandingRows[0]?.overdue_count ?? 0),
     avgInvoice30d: Number(avgRows[0]?.avg ?? 0),
     partsMarginPercent: revenue > 0 ? ((revenue - cost) / revenue) * 100 : null,
+    warrantyOutstanding: Number(warrantyRows[0]?.total ?? 0),
+    warrantyOutstandingCount: Number(warrantyRows[0]?.count ?? 0),
   };
 }
 

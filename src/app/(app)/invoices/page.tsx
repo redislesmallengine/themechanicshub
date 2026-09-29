@@ -52,7 +52,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
         prisma.invoice.findMany({
           where,
           orderBy: { createdAt: "desc" },
-          include: { customer: true, lineItems: { select: { partId: true } }, _count: { select: { combinedWorkOrders: true } } },
+          include: { customer: true, warrantyProvider: true, lineItems: { select: { partId: true } }, _count: { select: { combinedWorkOrders: true } } },
           skip: (page - 1) * PAGE_SIZE,
           take: PAGE_SIZE,
         }),
@@ -167,6 +167,11 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                           No Customer Info
                         </span>
                       )}
+                      {inv.payerType === "warranty" && inv.warrantyProvider && (
+                        <div className="text-[10px] font-semibold" style={{ color: "var(--text-muted)" }}>
+                          Billed to {inv.warrantyProvider.name}
+                        </div>
+                      )}
                     </td>
                     <td className="dt-td">
                       <div className="flex flex-wrap gap-1">
@@ -178,6 +183,12 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                           <span className="dt-badge dt-badge--info">
                             <span className="dt-badge-dot" />
                             Multi-Equipment
+                          </span>
+                        )}
+                        {inv.payerType === "warranty" && (
+                          <span className="dt-badge dt-badge--info">
+                            <span className="dt-badge-dot" />
+                            Warranty
                           </span>
                         )}
                       </div>

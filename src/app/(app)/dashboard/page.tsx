@@ -96,7 +96,7 @@ export default async function DashboardPage() {
         <>
           <div>
             <SectionHead icon={InvoiceIcon} label="Revenue" note="OWNER / MANAGER VIEW" />
-            <Suspense fallback={<TileRowSkeleton count={5} />}>
+            <Suspense fallback={<TileRowSkeleton count={6} />}>
               <RevenueTiles organizationId={organizationId} />
             </Suspense>
           </div>

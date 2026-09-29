@@ -12,6 +12,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
       customer: true,
       equipment: { include: { equipmentType: true } },
       combinedWorkOrders: { include: { workOrder: { include: { equipment: { include: { equipmentType: true } } } } } },
+      warrantyProvider: true,
       organization: { include: { shopProfile: true } },
     },
   });
@@ -86,18 +87,42 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
                 {isPaid ? (invoice.paidAt ? `Paid ${invoice.paidAt.toLocaleDateString()}` : "Paid") : `Due ${invoice.dueDate.toLocaleDateString()}`}
               </p>
             </div>
-            <span className={`dt-badge dt-badge--${overdue ? "error" : STATUS_BADGE[status]}`}>
-              <span className="dt-badge-dot" />
-              {overdue ? "Overdue" : STATUS_LABELS[status]}
-            </span>
+            <div className="flex flex-col items-end gap-1.5">
+              <span className={`dt-badge dt-badge--${overdue ? "error" : STATUS_BADGE[status]}`}>
+                <span className="dt-badge-dot" />
+                {overdue ? "Overdue" : STATUS_LABELS[status]}
+              </span>
+              {invoice.payerType === "warranty" && (
+                <span className="dt-badge dt-badge--info">
+                  <span className="dt-badge-dot" />
+                  Warranty Claim
+                </span>
+              )}
+            </div>
           </div>
+
+          {invoice.payerType === "warranty" && invoice.warrantyProvider && invoice.claimNumber && (
+            <div className="mb-4 px-3.5 py-2 rounded-lg text-xs font-semibold" style={{ background: "var(--color-info-subtle)", border: "1px solid var(--color-info-border)", color: "var(--color-info-text)" }}>
+              <span className="font-bold">Claim #{invoice.claimNumber}</span> · {invoice.warrantyProvider.name}
+            </div>
+          )}
 
           <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div>
               <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-secondary)" }}>
                 Bill To
               </div>
-              {invoice.customer ? (
+              {invoice.payerType === "warranty" && invoice.warrantyProvider ? (
+                <>
+                  <p className="font-bold" style={{ color: "var(--text-primary)" }}>
+                    {invoice.warrantyProvider.name}
+                  </p>
+                  {invoice.warrantyProvider.billingAddress && <p style={{ color: "var(--text-secondary)" }}>{invoice.warrantyProvider.billingAddress}</p>}
+                  <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
+                    Equipment owner: {invoice.customer?.name ?? "—"}
+                  </p>
+                </>
+              ) : invoice.customer ? (
                 <>
                   <p className="font-bold" style={{ color: "var(--text-primary)" }}>
                     {invoice.customer.name}

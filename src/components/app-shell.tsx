@@ -107,6 +107,7 @@ const CONFIG_NAV: NavItem[] = [
   { href: "/settings/equipment-makes", label: "Equipment Makes", icon: EquipmentIcon, color: "text-violet-400" },
   { href: "/settings/engine-types", label: "Engine Types", icon: EquipmentIcon, color: "text-violet-400" },
   { href: "/settings/part-categories", label: "Part Categories", icon: InventoryIcon, color: "text-indigo-400" },
+  { href: "/settings/warranty-providers", label: "Warranty Providers", icon: InvoiceIcon, color: "text-sky-400" },
 ];
 
 // One entry today (a customer's full history — equipment, work orders,

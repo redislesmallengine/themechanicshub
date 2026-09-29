@@ -22,6 +22,9 @@ export const STATUS_BADGE: Record<InvoiceStatus, "success" | "warning" | "error"
 
 export const PAYMENT_METHODS = ["Cash", "E-transfer", "Card", "Cheque", "Other"] as const;
 
+export const PAYER_TYPES = ["customer", "warranty"] as const;
+export type PayerType = (typeof PAYER_TYPES)[number];
+
 export const INVOICE_TYPES = ["partsOnly", "repairService", "combined"] as const;
 export type InvoiceType = (typeof INVOICE_TYPES)[number];
 

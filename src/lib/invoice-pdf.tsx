@@ -36,6 +36,9 @@ const styles = StyleSheet.create({
   grandTotalValue: { fontSize: 12, fontWeight: 700 },
   statusBanner: { marginTop: 24, padding: 10, borderRadius: 4 },
   statusBannerText: { fontSize: 10, fontWeight: 700 },
+  claimBanner: { marginBottom: 16, padding: 8, borderRadius: 4, backgroundColor: "#F0F9FF" },
+  claimBannerText: { fontSize: 9, fontWeight: 700, color: "#075985" },
+  warrantyTag: { fontSize: 8, fontWeight: 700, color: "#0284C7", textAlign: "right", marginTop: 4 },
   notes: { marginTop: 20, fontSize: 9, color: "#475569" },
   footer: { marginTop: 28, paddingTop: 12, borderTop: "1px solid #E2E8F0" },
   footerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
@@ -63,6 +66,9 @@ export interface InvoicePdfData {
   };
   customer: { name: string; phone: string | null; email: string | null; address: string | null } | null;
   equipment: { label: string; make: string | null; model: string | null; serialNumber: string | null; year: number | null; engineType: string | null } | null;
+  payerType: string;
+  claimNumber: string | null;
+  warrantyProvider: { name: string; billingEmail: string | null; billingAddress: string | null } | null;
   taxLabel: string;
   taxRate: string;
   subtotal: string;
@@ -98,6 +104,7 @@ function InvoiceDocument({ data }: { data: InvoicePdfData }) {
           <View>
             <Text style={styles.invoiceTitle}>{isPaid ? "RECEIPT" : "INVOICE"}</Text>
             <Text style={[styles.muted, { textAlign: "right", marginTop: 4 }]}>{data.invoiceNumber}</Text>
+            {data.payerType === "warranty" && <Text style={styles.warrantyTag}>WARRANTY CLAIM</Text>}
             <View style={styles.metaRow}>
               <Text style={styles.muted}>Issued</Text>
               <Text style={{ marginLeft: 8 }}>{fmtDate(data.issueDate)}</Text>
@@ -118,10 +125,25 @@ function InvoiceDocument({ data }: { data: InvoicePdfData }) {
           </View>
         </View>
 
+        {data.payerType === "warranty" && data.warrantyProvider && data.claimNumber && (
+          <View style={styles.claimBanner}>
+            <Text style={styles.claimBannerText}>
+              Claim #{data.claimNumber} · {data.warrantyProvider.name}
+            </Text>
+          </View>
+        )}
+
         <View style={[styles.headerRow, { marginBottom: 20, alignItems: "flex-start" }]}>
           <View style={{ flex: 1 }}>
             <Text style={styles.sectionLabel}>Bill To</Text>
-            {data.customer ? (
+            {data.payerType === "warranty" && data.warrantyProvider ? (
+              <>
+                <Text style={{ fontWeight: 700 }}>{data.warrantyProvider.name}</Text>
+                {data.warrantyProvider.billingAddress && <Text style={styles.muted}>{data.warrantyProvider.billingAddress}</Text>}
+                {data.warrantyProvider.billingEmail && <Text style={styles.muted}>{data.warrantyProvider.billingEmail}</Text>}
+                <Text style={[styles.muted, { marginTop: 4 }]}>Equipment owner: {data.customer?.name ?? "—"}</Text>
+              </>
+            ) : data.customer ? (
               <>
                 <Text style={{ fontWeight: 700 }}>{data.customer.name}</Text>
                 {data.customer.address && <Text style={styles.muted}>{data.customer.address}</Text>}
@@ -289,6 +311,9 @@ export interface InvoiceWithRelationsForPdf {
   customer: { name: string; phone: string | null; email: string | null; address: string | null } | null;
   equipment: { make: string | null; model: string | null; serialNumber: string | null; engineType: string | null; year: number | null; equipmentType: { name: string } | null } | null;
   adHocEquipmentLabel: string | null;
+  payerType: string;
+  claimNumber: string | null;
+  warrantyProvider: { name: string; billingEmail: string | null; billingAddress: string | null } | null;
   organization: {
     name: string;
     shopProfile: {
@@ -341,6 +366,9 @@ export async function renderInvoicePdfFromRecord(invoice: InvoiceWithRelationsFo
     },
     customer: invoice.customer,
     equipment,
+    payerType: invoice.payerType,
+    claimNumber: invoice.claimNumber,
+    warrantyProvider: invoice.warrantyProvider,
     taxLabel: shopProfile?.taxLabel ?? "Tax",
     taxRate: shopProfile?.taxRate?.toString() ?? "0",
     subtotal: String(invoice.subtotal),
