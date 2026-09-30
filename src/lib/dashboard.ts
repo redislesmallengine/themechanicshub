@@ -109,10 +109,16 @@ export async function getRevenueTiles(organizationId: string): Promise<RevenueTi
       JOIN "Invoice" i ON i.id = li."invoiceId"
       WHERE i."organizationId" = ${organizationId} AND i.status = 'paid' AND i."paidAt" >= date_trunc('month', now()) AND li.type = 'part'
     `),
+    // Draft is included here (unlike the Outstanding/Overdue tiles above) --
+    // a warranty claim is usually submitted straight to the provider's own
+    // claims portal as a downloaded PDF, not "sent" through the app's own
+    // email flow, so most real claims sit in Draft the whole time they're
+    // actually outstanding. "Unpaid, not void" is what "outstanding" means
+    // for a warranty claim.
     prisma.$queryRaw<{ total: string | null; count: bigint }[]>(Prisma.sql`
       SELECT COALESCE(SUM(total), 0)::text AS total, count(*) AS count
       FROM "Invoice"
-      WHERE "organizationId" = ${organizationId} AND status IN ('sent', 'viewed') AND "payerType" = 'warranty'
+      WHERE "organizationId" = ${organizationId} AND status IN ('draft', 'sent', 'viewed') AND "payerType" = 'warranty'
     `),
   ]);
 
