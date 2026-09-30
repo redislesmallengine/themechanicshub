@@ -9,9 +9,11 @@ import { STATUS_LABELS as WO_STATUS_LABELS, STATUS_BADGE as WO_STATUS_BADGE, typ
 import { STATUS_LABELS as INV_STATUS_LABELS, STATUS_BADGE as INV_STATUS_BADGE, isOverdue, type InvoiceStatus } from "@/lib/invoices";
 import { buildCustomerActivity } from "@/lib/customer-activity";
 import { CustomerActivityTimeline } from "@/components/customer-activity-timeline";
+import { NextStepPrompt } from "@/components/next-step-prompt";
 
-export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CustomerDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ created?: string }> }) {
   const { id } = await params;
+  const { created } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   if (!session?.session.activeOrganizationId) redirect("/sign-in");
@@ -52,6 +54,13 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
   return (
     <div className="p-6 space-y-6">
+      <NextStepPrompt
+        show={created === "1"}
+        title={`${customer.name} added`}
+        message="Next, register the equipment they're bringing in — you'll need it to open a work order."
+        ctaHref={`/customers/${customer.id}/equipment/new`}
+        ctaLabel="+ Add Equipment"
+      />
       <div>
         <p className="text-xs mb-1">
           <Link href="/customers" className="font-semibold text-brand-600">

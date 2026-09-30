@@ -86,7 +86,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
           Status
         </h2>
-        <WorkOrderStatusPanel workOrderId={workOrder.id} status={status} hasCustomerEmail={!!workOrder.customer.email} />
+        <WorkOrderStatusPanel workOrderId={workOrder.id} status={status} hasCustomerEmail={!!workOrder.customer.email} hasDiagnosticFee={!!shopProfile?.diagnosticFee} />
         {workOrder.status === "awaitingApproval" && workOrder.estimateAmount && (
           <div className="mt-3 pt-3 text-xs" style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-muted)" }}>
             Estimate sent: <b style={{ color: "var(--text-secondary)" }}>${workOrder.estimateAmount.toString()}</b> — {workOrder.estimateNotes}

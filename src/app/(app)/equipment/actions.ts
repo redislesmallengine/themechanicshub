@@ -84,7 +84,7 @@ export async function createEquipment(customerId: string, formData: FormData) {
   }
 
   revalidatePath(`/customers/${customerId}`);
-  redirect(`/equipment/${equipment.id}`);
+  redirect(`/equipment/${equipment.id}?created=1`);
 }
 
 export async function updateEquipment(equipmentId: string, formData: FormData) {

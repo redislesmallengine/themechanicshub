@@ -4,8 +4,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { WorkOrderIntakeForm } from "@/components/work-order-intake-form";
 
-export default async function NewWorkOrderPage({ searchParams }: { searchParams: Promise<{ customerId?: string }> }) {
-  const { customerId } = await searchParams;
+export default async function NewWorkOrderPage({ searchParams }: { searchParams: Promise<{ customerId?: string; equipmentId?: string }> }) {
+  const { customerId, equipmentId } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   if (!session?.session.activeOrganizationId) redirect("/sign-in");
@@ -29,6 +29,7 @@ export default async function NewWorkOrderPage({ searchParams }: { searchParams:
       <div className="max-w-3xl">
         <WorkOrderIntakeForm
           initialCustomerId={customers.find((c) => c.id === customerId)?.id ?? ""}
+          initialEquipmentId={equipmentId ?? ""}
           customers={customers.map((c) => ({
             id: c.id,
             name: c.name,

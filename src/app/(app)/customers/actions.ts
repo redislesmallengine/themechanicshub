@@ -38,7 +38,7 @@ export async function createCustomer(formData: FormData) {
   });
 
   revalidatePath("/customers");
-  redirect(`/customers/${customer.id}`);
+  redirect(`/customers/${customer.id}?created=1`);
 }
 
 export async function updateCustomer(customerId: string, formData: FormData) {

@@ -20,9 +20,18 @@ interface CustomerWithEquipment {
   equipment: { id: string; label: string }[];
 }
 
-export function WorkOrderIntakeForm({ customers, initialCustomerId }: { customers: CustomerWithEquipment[]; initialCustomerId?: string }) {
+export function WorkOrderIntakeForm({
+  customers,
+  initialCustomerId,
+  initialEquipmentId,
+}: {
+  customers: CustomerWithEquipment[];
+  initialCustomerId?: string;
+  initialEquipmentId?: string;
+}) {
   const router = useRouter();
   const [customerId, setCustomerId] = useState(initialCustomerId ?? "");
+  const [equipmentId, setEquipmentId] = useState(initialEquipmentId ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   // Checked by default — most drop-offs are "just fix it," not a formal
@@ -64,7 +73,10 @@ export function WorkOrderIntakeForm({ customers, initialCustomerId }: { customer
             name="customerId"
             required
             value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
+            onChange={(e) => {
+              setCustomerId(e.target.value);
+              setEquipmentId("");
+            }}
             className="w-full px-3 py-2 rounded-lg text-xs font-semibold"
             style={inputStyle}
           >
@@ -88,7 +100,16 @@ export function WorkOrderIntakeForm({ customers, initialCustomerId }: { customer
           <label htmlFor="equipmentId" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
             Equipment <span style={{ color: "var(--color-error-solid)" }}>*</span>
           </label>
-          <select id="equipmentId" name="equipmentId" required disabled={!selectedCustomer} className="w-full px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-60" style={inputStyle}>
+          <select
+            id="equipmentId"
+            name="equipmentId"
+            required
+            disabled={!selectedCustomer}
+            value={equipmentId}
+            onChange={(e) => setEquipmentId(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-60"
+            style={inputStyle}
+          >
             <option value="">{selectedCustomer ? "Select…" : "Pick a customer first"}</option>
             {selectedCustomer?.equipment.map((eq) => (
               <option key={eq.id} value={eq.id}>

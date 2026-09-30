@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { EquipmentIcon } from "@/components/icons";
 import { DeleteEquipmentButton } from "@/components/delete-equipment-button";
+import { NextStepPrompt } from "@/components/next-step-prompt";
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
   return (
@@ -19,8 +20,9 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   );
 }
 
-export default async function EquipmentDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EquipmentDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ created?: string }> }) {
   const { id } = await params;
+  const { created } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   if (!session?.session.activeOrganizationId) redirect("/sign-in");
@@ -32,8 +34,17 @@ export default async function EquipmentDetailPage({ params }: { params: Promise<
   });
   if (!equipment || equipment.organizationId !== organizationId) notFound();
 
+  const workOrderHref = `/work-orders/new?customerId=${equipment.customer.id}&equipmentId=${equipment.id}`;
+
   return (
     <div className="p-6 space-y-6">
+      <NextStepPrompt
+        show={created === "1"}
+        title="Equipment registered"
+        message="Next, open a work order for it — that's how the repair gets tracked from intake through pickup."
+        ctaHref={workOrderHref}
+        ctaLabel="+ New Work Order"
+      />
       <div>
         <p className="text-xs mb-1">
           <Link href="/customers" className="font-semibold text-brand-600">
@@ -55,6 +66,9 @@ export default async function EquipmentDetailPage({ params }: { params: Promise<
               style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}
             >
               Edit
+            </Link>
+            <Link href={workOrderHref} className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition">
+              + New Work Order
             </Link>
             <DeleteEquipmentButton
               equipmentId={equipment.id}
