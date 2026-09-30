@@ -18,6 +18,7 @@ import {
   SearchIcon,
   EquipmentIcon,
   ReportIcon,
+  ExternalLinkIcon,
 } from "@/components/icons";
 
 const SIDEBAR_COLLAPSED_KEY = "mechanicshophub:sidebar-collapsed";
@@ -88,6 +89,8 @@ interface NavItem {
   color: string;
   /** Set when a broader item's href would otherwise also match this one's prefix (e.g. "Email" vs "Email Templates"). */
   exact?: boolean;
+  /** Opens in a new tab instead of client-side routing -- for links to sites outside the app (parts lookup, etc.). */
+  external?: boolean;
 }
 
 function isNavItemActive(item: NavItem, pathname: string) {
@@ -114,6 +117,16 @@ const CONFIG_NAV: NavItem[] = [
 // invoices, activity, all in one place) but its own top-level menu since
 // more reports land here later, same as Configuration.
 const REPORTS_NAV: NavItem[] = [{ href: "/reports/customer-360", label: "Customer 360", icon: CustomersIcon, color: "text-emerald-400" }];
+
+// Parts-lookup sites technicians use to find diagrams/order parts for a
+// specific machine — open in a new tab so the shop's own data stays put.
+// Not gated behind any permission: this is a day-to-day bench tool, same
+// audience as Work Orders, not a settings/reporting page.
+const EXTERNAL_LINKS_NAV: NavItem[] = [
+  { href: "https://www.partstree.com/", label: "PartsTree", icon: ExternalLinkIcon, color: "text-sky-400", external: true },
+  { href: "https://www.jackssmallengines.com/", label: "Jack's Small Engines", icon: ExternalLinkIcon, color: "text-sky-400", external: true },
+  { href: "https://www.partsbay.ca/sears-parts-diagrams.html", label: "PartsBay — Sears Diagrams", icon: ExternalLinkIcon, color: "text-sky-400", external: true },
+];
 
 function initials(name: string) {
   return name
@@ -318,6 +331,7 @@ function NavLink({
   active,
   collapsed,
   onNavigate,
+  external,
 }: {
   href: string;
   label: string;
@@ -326,6 +340,7 @@ function NavLink({
   active: boolean;
   collapsed: boolean;
   onNavigate?: () => void;
+  external?: boolean;
 }) {
   // `collapsed` (the desktop icon-rail preference) only takes visual effect
   // at md+ — the mobile drawer always shows full icon+label regardless of
@@ -336,12 +351,14 @@ function NavLink({
       href={href}
       onClick={onNavigate}
       title={collapsed ? label : undefined}
+      target={external ? "_blank" : undefined}
+      rel={external ? "noopener noreferrer" : undefined}
       className={`flex items-center gap-2.5 py-2 rounded-lg text-xs transition px-2.5 ${collapsed ? "md:justify-center md:px-2" : ""}`}
       style={active ? { background: "rgba(15,82,186,.9)", color: "#fff" } : { color: "#CBD5E1" }}
     >
       <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? "text-white" : color}`} />
       {collapsed ? <span className="md:hidden">{label}</span> : label}
-      <NavPendingSpinner collapsed={collapsed} />
+      {!external && <NavPendingSpinner collapsed={collapsed} />}
     </Link>
   );
 }
@@ -402,6 +419,7 @@ function NavGroup({
               collapsed={collapsed}
               onNavigate={onNavigate}
               active={isNavItemActive(item, pathname)}
+              external={item.external}
             />
           ))}
         </nav>
@@ -473,6 +491,8 @@ export function AppShell({
           <nav className="space-y-0.5 mb-4">
             <NavLink href="/staff" label="Staff &amp; Roles" icon={StaffIcon} color="text-brand-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname.startsWith("/staff")} />
           </nav>
+
+          <NavGroup label="External Links" icon={ExternalLinkIcon} iconColor="text-sky-400" items={EXTERNAL_LINKS_NAV} collapsed={collapsed} pathname={pathname} onNavigate={closeMobileMenu} />
 
           {canViewReports && (
             <NavGroup label="Reports" icon={ReportIcon} iconColor="text-orange-400" items={REPORTS_NAV} collapsed={collapsed} pathname={pathname} onNavigate={closeMobileMenu} />
