@@ -10,6 +10,7 @@ import { WorkOrderDiagnosisForm } from "@/components/work-order-diagnosis-form";
 import { WorkOrderPartsPanel } from "@/components/work-order-parts-panel";
 import { GenerateInvoiceButton } from "@/components/generate-invoice-button";
 import { SentEmailsPanel } from "@/components/sent-emails-panel";
+import { DeleteWorkOrderButton } from "@/components/delete-work-order-button";
 
 export default async function WorkOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -31,12 +32,15 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   });
   if (!workOrder || workOrder.organizationId !== organizationId) notFound();
 
-  const [{ members }, availableParts, shopProfile, sentEmails] = await Promise.all([
+  const [{ members }, availableParts, shopProfile, sentEmails, canDelete, membership] = await Promise.all([
     auth.api.listMembers({ headers: reqHeaders }),
     prisma.part.findMany({ where: { organizationId, quantityOnHand: { gt: 0 } }, orderBy: { name: "asc" } }),
     prisma.shopProfile.findUnique({ where: { organizationId } }),
     prisma.sentEmail.findMany({ where: { relatedType: "estimate", relatedId: workOrder.id }, orderBy: { createdAt: "desc" } }),
+    auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { workOrder: ["delete"] } } }),
+    prisma.member.findFirst({ where: { organizationId, userId: session.user.id } }),
   ]);
+  const isOwner = membership?.role === "owner";
 
   const status = workOrder.status as WorkOrderStatus;
   const equipmentLabel = [workOrder.equipment.make, workOrder.equipment.model].filter(Boolean).join(" / ") || workOrder.equipment.equipmentType?.name || "Equipment";
@@ -83,6 +87,15 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
               </Link>
             </p>
           </div>
+          {(status === "droppedOff" || status === "declined" || isOwner) && !workOrder.invoice && !workOrder.combinedInto && canDelete.success && (
+            <DeleteWorkOrderButton
+              workOrderId={workOrder.id}
+              equipmentLabel={equipmentLabel}
+              status={status}
+              hasInventoryLines={workOrder.parts.length > 0}
+              redirectTo="/work-orders"
+            />
+          )}
         </div>
       </div>
 

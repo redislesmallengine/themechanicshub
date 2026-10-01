@@ -320,6 +320,57 @@ export async function closeWorkOrder(workOrderId: string) {
   return { success: true };
 }
 
+/**
+ * Permanently removes a work order. Blocked entirely once it has an
+ * invoice (direct or folded into a combined one) -- that means real money
+ * changed hands or is in flight, never safe to cascade-delete, not even
+ * for the Owner; void/delete the invoice first if that's genuinely
+ * needed. Anyone with the delete permission can remove one still in
+ * Dropped Off or Declined (nothing real has happened yet); anything
+ * further along the bench is an Owner-only override, same pattern as
+ * deleteInvoice. Restores stock for every part pulled onto it first,
+ * since WorkOrderPart cascade-deletes with the work order and would
+ * otherwise silently skip that.
+ */
+export async function deleteWorkOrder(workOrderId: string) {
+  const { organizationId, userId } = await requireCanManageWorkOrders("delete");
+  const workOrder = await prisma.workOrder.findUnique({
+    where: { id: workOrderId },
+    include: { parts: true, invoice: true, combinedInto: true },
+  });
+  if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
+
+  if (workOrder.invoice || workOrder.combinedInto) {
+    return { error: "This work order has already been invoiced — delete or void that invoice first." };
+  }
+
+  const alwaysDeletable = workOrder.status === "droppedOff" || workOrder.status === "declined";
+  if (!alwaysDeletable) {
+    const membership = await prisma.member.findFirst({ where: { organizationId, userId } });
+    if (membership?.role !== "owner") {
+      return { error: "Only the shop Owner can delete a work order that's already past intake — decline it first, or ask the Owner." };
+    }
+  }
+
+  for (const part of workOrder.parts) {
+    if (!part.partId) continue;
+    const restore = await applyStockAdjustment({
+      organizationId,
+      partId: part.partId,
+      delta: part.quantity,
+      reason: "Correction",
+      note: `Work order ${workOrderId} deleted`,
+      createdByUserId: userId,
+    });
+    if ("error" in restore) return { error: restore.error };
+  }
+
+  await prisma.workOrder.delete({ where: { id: workOrderId } }); // cascades WorkOrderPart rows
+
+  revalidatePath("/work-orders");
+  return { success: true };
+}
+
 /** Adding a line here immediately decrements real stock (reason "Used on Work Order") — see src/lib/inventory.ts. */
 export async function addWorkOrderPart(workOrderId: string, formData: FormData) {
   const { organizationId, userId } = await requireCanManageWorkOrders("update");
