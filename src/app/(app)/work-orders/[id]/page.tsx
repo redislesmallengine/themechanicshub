@@ -40,8 +40,13 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
 
   const status = workOrder.status as WorkOrderStatus;
   const equipmentLabel = [workOrder.equipment.make, workOrder.equipment.model].filter(Boolean).join(" / ") || workOrder.equipment.equipmentType?.name || "Equipment";
-  // Pre-fills the Generate Invoice amount, but it's editable there -- distance varies job to job.
-  const defaultDeliveryFee = shopProfile?.deliveryFee && workOrder.dropOffMethod === "pickupDelivery" ? shopProfile.deliveryFee.toString() : null;
+  // The option shows whenever this work order was marked Shop
+  // Pickup/Delivery at intake -- independent of whether Shop Profile has a
+  // default amount, so a shop that hasn't set one yet still gets prompted
+  // and can just type the amount in. The default only controls what the
+  // field starts pre-filled with.
+  const showDeliveryFee = workOrder.dropOffMethod === "pickupDelivery";
+  const deliveryFeeDefault = shopProfile?.deliveryFee?.toString() ?? "";
 
   return (
     <div className="p-6 space-y-6">
@@ -99,7 +104,8 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           status={status}
           hasCustomerEmail={!!workOrder.customer.email}
           hasDiagnosticFee={!!shopProfile?.diagnosticFee}
-          defaultDeliveryFee={defaultDeliveryFee}
+          showDeliveryFee={showDeliveryFee}
+          deliveryFeeDefault={deliveryFeeDefault}
         />
         {workOrder.status === "awaitingApproval" && workOrder.estimateAmount && (
           <div className="mt-3 pt-3 text-xs" style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-muted)" }}>
@@ -196,7 +202,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           })()
         ) : status === "readyForPickup" || status === "closed" ? (
           <>
-            <GenerateInvoiceButton workOrderId={workOrder.id} hasDiagnosticFee={!!shopProfile?.diagnosticFee} defaultDeliveryFee={defaultDeliveryFee} />
+            <GenerateInvoiceButton workOrderId={workOrder.id} hasDiagnosticFee={!!shopProfile?.diagnosticFee} showDeliveryFee={showDeliveryFee} deliveryFeeDefault={deliveryFeeDefault} />
             <p className="text-[10px] mt-2" style={{ color: "var(--text-muted)" }}>
               Billing this customer for more than one machine at once?{" "}
               <Link href="/invoices/new" className="font-semibold text-brand-600">

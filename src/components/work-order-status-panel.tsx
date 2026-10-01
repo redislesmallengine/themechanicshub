@@ -62,7 +62,17 @@ function SimpleAction({ label, action }: { label: string; action: () => Promise<
  * on the readyForPickup view below) rather than a link, since generating an
  * invoice needs the diagnostic-fee checkbox submitted, not just a click.
  */
-function MarkCompleteAction({ workOrderId, hasDiagnosticFee, defaultDeliveryFee }: { workOrderId: string; hasDiagnosticFee: boolean; defaultDeliveryFee: string | null }) {
+function MarkCompleteAction({
+  workOrderId,
+  hasDiagnosticFee,
+  showDeliveryFee,
+  deliveryFeeDefault,
+}: {
+  workOrderId: string;
+  hasDiagnosticFee: boolean;
+  showDeliveryFee: boolean;
+  deliveryFeeDefault: string;
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -114,7 +124,7 @@ function MarkCompleteAction({ workOrderId, hasDiagnosticFee, defaultDeliveryFee 
             <p className="text-sm mb-5" style={{ color: "var(--text-secondary)" }}>
               Ready to bill this out?
             </p>
-            <GenerateInvoiceButton workOrderId={workOrderId} hasDiagnosticFee={hasDiagnosticFee} defaultDeliveryFee={defaultDeliveryFee} />
+            <GenerateInvoiceButton workOrderId={workOrderId} hasDiagnosticFee={hasDiagnosticFee} showDeliveryFee={showDeliveryFee} deliveryFeeDefault={deliveryFeeDefault} />
             <button type="button" onClick={dismiss} className="mt-3 text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
               Skip for now
             </button>
@@ -350,13 +360,15 @@ export function WorkOrderStatusPanel({
   status,
   hasCustomerEmail,
   hasDiagnosticFee,
-  defaultDeliveryFee,
+  showDeliveryFee,
+  deliveryFeeDefault,
 }: {
   workOrderId: string;
   status: WorkOrderStatus;
   hasCustomerEmail: boolean;
   hasDiagnosticFee: boolean;
-  defaultDeliveryFee: string | null;
+  showDeliveryFee: boolean;
+  deliveryFeeDefault: string;
 }) {
   switch (status) {
     case "droppedOff":
@@ -400,7 +412,7 @@ export function WorkOrderStatusPanel({
         </div>
       );
     case "inRepair":
-      return <MarkCompleteAction workOrderId={workOrderId} hasDiagnosticFee={hasDiagnosticFee} defaultDeliveryFee={defaultDeliveryFee} />;
+      return <MarkCompleteAction workOrderId={workOrderId} hasDiagnosticFee={hasDiagnosticFee} showDeliveryFee={showDeliveryFee} deliveryFeeDefault={deliveryFeeDefault} />;
     case "readyForPickup":
       return <SimpleAction label="Mark Picked Up / Close" action={() => closeWorkOrder(workOrderId)} />;
     case "closed":

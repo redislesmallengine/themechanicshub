@@ -6,14 +6,18 @@ import { generateInvoiceFromWorkOrder } from "@/app/(app)/invoices/actions";
 export function GenerateInvoiceButton({
   workOrderId,
   hasDiagnosticFee,
-  defaultDeliveryFee,
+  showDeliveryFee,
+  deliveryFeeDefault,
 }: {
   workOrderId: string;
   hasDiagnosticFee: boolean;
-  defaultDeliveryFee: string | null;
+  /** Driven by the work order's own dropOffMethod, not by whether Shop Profile has a default -- the option still belongs here even with nothing to pre-fill, so staff can type an amount in themselves. */
+  showDeliveryFee: boolean;
+  /** Empty string when Shop Profile has no delivery fee set -- the field just starts blank instead. */
+  deliveryFeeDefault: string;
 }) {
   const [error, setError] = useState<string | null>(null);
-  const [includeDelivery, setIncludeDelivery] = useState(defaultDeliveryFee !== null);
+  const [includeDelivery, setIncludeDelivery] = useState(showDeliveryFee);
   const [pending, startTransition] = useTransition();
   const bound = generateInvoiceFromWorkOrder.bind(null, workOrderId);
 
@@ -34,7 +38,7 @@ export function GenerateInvoiceButton({
           Include diagnostic fee
         </label>
       )}
-      {defaultDeliveryFee !== null && (
+      {showDeliveryFee && (
         <div>
           <label className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
             <input
@@ -57,12 +61,14 @@ export function GenerateInvoiceButton({
                 name="deliveryFeeAmount"
                 step="0.01"
                 min="0"
-                defaultValue={defaultDeliveryFee}
+                required
+                defaultValue={deliveryFeeDefault}
+                placeholder="0.00"
                 className="w-24 px-2 py-1 rounded-lg text-xs font-mono"
                 style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)", color: "var(--text-primary)" }}
               />
               <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                adjust for distance
+                {deliveryFeeDefault ? "adjust for distance" : "no shop default set — enter the amount"}
               </span>
             </div>
           )}

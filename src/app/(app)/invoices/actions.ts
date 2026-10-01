@@ -165,8 +165,9 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
     // varies job to job (a 2km drop vs. a 20km one), so the amount is
     // editable on the Generate Invoice form, pre-filled from
     // shopProfile.deliveryFee but overridable there, not locked to it.
-    const fee = Number(formData.get("deliveryFeeAmount"));
-    if (!Number.isFinite(fee) || fee < 0) return { error: "Delivery fee needs to be a positive number." };
+    const deliveryFeeRaw = String(formData.get("deliveryFeeAmount") ?? "").trim();
+    const fee = Number(deliveryFeeRaw);
+    if (!deliveryFeeRaw || !Number.isFinite(fee) || fee < 0) return { error: "Enter a delivery fee amount." };
     lines.push({
       type: "fee",
       description: "Pickup/Delivery Fee",
