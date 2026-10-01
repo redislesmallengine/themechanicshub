@@ -18,6 +18,14 @@ export const STATUS_LABELS: Record<WorkOrderStatus, string> = {
   declined: "Declined",
 };
 
+export const DROP_OFF_METHODS = ["customerDropOff", "pickupDelivery"] as const;
+export type DropOffMethod = (typeof DROP_OFF_METHODS)[number];
+
+export const DROP_OFF_METHOD_LABELS: Record<DropOffMethod, string> = {
+  customerDropOff: "Customer Drop-off",
+  pickupDelivery: "Shop Pickup / Delivery",
+};
+
 /** Board columns, in bench-workflow order — closed/declined are intentionally excluded (shown behind a toggle instead, see /work-orders). */
 export const BOARD_STATUSES: WorkOrderStatus[] = ["droppedOff", "diagnosing", "awaitingApproval", "inRepair", "readyForPickup"];
 

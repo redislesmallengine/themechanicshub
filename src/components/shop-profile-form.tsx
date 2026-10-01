@@ -21,6 +21,7 @@ export function ShopProfileForm({
   initialWebsite,
   initialLabourRate,
   initialDiagnosticFee,
+  initialDeliveryFee,
   initialTaxRate,
   initialTaxLabel,
   initialProvince,
@@ -39,6 +40,7 @@ export function ShopProfileForm({
   initialWebsite: string;
   initialLabourRate: string;
   initialDiagnosticFee: string;
+  initialDeliveryFee: string;
   initialTaxRate: string;
   initialTaxLabel: string;
   initialProvince: string;
@@ -210,7 +212,7 @@ export function ShopProfileForm({
         <div className="font-bold text-xs mb-2" style={{ color: "var(--text-secondary)" }}>
           Billing Defaults
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
           <div>
             <label htmlFor="labourRate" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
               Labour Rate ($/hr) <span style={{ color: "var(--color-error-solid)" }}>*</span>
@@ -245,9 +247,25 @@ export function ShopProfileForm({
               style={inputStyle}
             />
           </div>
+          <div>
+            <label htmlFor="deliveryFee" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+              Pickup / Delivery Fee ($)
+            </label>
+            <input
+              id="deliveryFee"
+              name="deliveryFee"
+              type="number"
+              step="0.01"
+              min="0"
+              defaultValue={initialDeliveryFee}
+              placeholder="Optional"
+              className="w-full px-3 py-2 rounded-lg text-xs font-mono"
+              style={inputStyle}
+            />
+          </div>
         </div>
         <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-          Pulled onto every invoice automatically once invoicing (Phase 6) lands.
+          Pulled onto every invoice automatically. Delivery fee is optional — leave blank if you don&apos;t offer pickup/delivery; once set, Generate Invoice will suggest it on any work order marked Shop Pickup/Delivery.
         </p>
         <div className="mt-3">
           <label htmlFor="invoiceReplyToEmail" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>

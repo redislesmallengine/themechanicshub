@@ -36,6 +36,8 @@ export async function createWorkOrder(formData: FormData) {
   const customerId = String(formData.get("customerId") ?? "").trim();
   const equipmentId = String(formData.get("equipmentId") ?? "").trim();
   const complaint = String(formData.get("complaint") ?? "").trim();
+  const dropOffMethodRaw = String(formData.get("dropOffMethod") ?? "customerDropOff").trim();
+  const dropOffMethod = dropOffMethodRaw === "pickupDelivery" ? "pickupDelivery" : "customerDropOff";
 
   if (!customerId || !equipmentId) return { error: "Pick a customer and a piece of their equipment." };
   if (!complaint) return { error: "What's the complaint? A line or two is fine." };
@@ -72,13 +74,14 @@ export async function createWorkOrder(formData: FormData) {
           customerId,
           equipmentId,
           complaint,
+          dropOffMethod,
           status: "inRepair",
           approvalMethod: "in-person",
           decidedByName: customer.name,
           decidedAt: new Date(),
           notToExceedAmount,
         }
-      : { organizationId, customerId, equipmentId, complaint },
+      : { organizationId, customerId, equipmentId, complaint, dropOffMethod },
   });
 
   revalidatePath("/work-orders");

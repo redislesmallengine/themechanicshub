@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { STATUS_LABELS, STATUS_BADGE, type WorkOrderStatus } from "@/lib/work-orders";
+import { STATUS_LABELS, STATUS_BADGE, DROP_OFF_METHOD_LABELS, type WorkOrderStatus } from "@/lib/work-orders";
 import { STATUS_LABELS as INVOICE_STATUS_LABELS, STATUS_BADGE as INVOICE_STATUS_BADGE, isOverdue, type InvoiceStatus } from "@/lib/invoices";
 import { WorkOrderStatusPanel } from "@/components/work-order-status-panel";
 import { WorkOrderDiagnosisForm } from "@/components/work-order-diagnosis-form";
@@ -56,6 +56,12 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
                 <span className="dt-badge-dot" />
                 {STATUS_LABELS[status]}
               </span>
+              {workOrder.dropOffMethod === "pickupDelivery" && (
+                <span className="dt-badge dt-badge--info">
+                  <span className="dt-badge-dot" />
+                  {DROP_OFF_METHOD_LABELS.pickupDelivery}
+                </span>
+              )}
             </div>
             <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
               {equipmentLabel}
@@ -86,7 +92,13 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
           Status
         </h2>
-        <WorkOrderStatusPanel workOrderId={workOrder.id} status={status} hasCustomerEmail={!!workOrder.customer.email} hasDiagnosticFee={!!shopProfile?.diagnosticFee} />
+        <WorkOrderStatusPanel
+          workOrderId={workOrder.id}
+          status={status}
+          hasCustomerEmail={!!workOrder.customer.email}
+          hasDiagnosticFee={!!shopProfile?.diagnosticFee}
+          hasDeliveryFee={!!shopProfile?.deliveryFee && workOrder.dropOffMethod === "pickupDelivery"}
+        />
         {workOrder.status === "awaitingApproval" && workOrder.estimateAmount && (
           <div className="mt-3 pt-3 text-xs" style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-muted)" }}>
             Estimate sent: <b style={{ color: "var(--text-secondary)" }}>${workOrder.estimateAmount.toString()}</b> — {workOrder.estimateNotes}
@@ -182,7 +194,11 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           })()
         ) : status === "readyForPickup" || status === "closed" ? (
           <>
-            <GenerateInvoiceButton workOrderId={workOrder.id} hasDiagnosticFee={!!shopProfile?.diagnosticFee} />
+            <GenerateInvoiceButton
+              workOrderId={workOrder.id}
+              hasDiagnosticFee={!!shopProfile?.diagnosticFee}
+              hasDeliveryFee={!!shopProfile?.deliveryFee && workOrder.dropOffMethod === "pickupDelivery"}
+            />
             <p className="text-[10px] mt-2" style={{ color: "var(--text-muted)" }}>
               Billing this customer for more than one machine at once?{" "}
               <Link href="/invoices/new" className="font-semibold text-brand-600">

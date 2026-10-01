@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createWorkOrder } from "@/app/(app)/work-orders/actions";
 import { WorkOrderIcon } from "@/components/icons";
+import { DROP_OFF_METHOD_LABELS, type DropOffMethod } from "@/lib/work-orders";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -18,6 +19,24 @@ interface CustomerWithEquipment {
   phone: string | null;
   email: string | null;
   equipment: { id: string; label: string }[];
+}
+
+function SegmentedToggle<T extends string>({ options, value, onChange }: { options: { value: T; label: string }[]; value: T; onChange: (v: T) => void }) {
+  return (
+    <div className="inline-flex rounded-lg overflow-hidden" style={{ border: "1px solid var(--border-strong)" }}>
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className="px-4 py-2 text-xs font-bold transition"
+          style={opt.value === value ? { background: "var(--color-brand-600)", color: "#fff" } : { background: "var(--bg-surface)", color: "var(--text-secondary)" }}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function WorkOrderIntakeForm({
@@ -34,9 +53,10 @@ export function WorkOrderIntakeForm({
   const [equipmentId, setEquipmentId] = useState(initialEquipmentId ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  // Checked by default — most drop-offs are "just fix it," not a formal
-  // quote request. Staff untick it for the minority of jobs where the
-  // customer wants a written estimate before anything starts.
+  const [dropOffMethod, setDropOffMethod] = useState<DropOffMethod>("customerDropOff");
+  // true ("No pre-approval needed") is the common case — most drop-offs are
+  // "just fix it," not a formal quote request. Staff flip to "Yes" for the
+  // minority of jobs where the customer wants a written estimate first.
   const [skipEstimate, setSkipEstimate] = useState(true);
 
   const selectedCustomer = useMemo(() => customers.find((c) => c.id === customerId), [customers, customerId]);
@@ -51,7 +71,7 @@ export function WorkOrderIntakeForm({
   }
 
   return (
-    <form action={handleSubmit} className="rounded-xl border-2 border-brand-500/80 shadow-md p-5 space-y-4" style={{ background: "var(--bg-surface)" }}>
+    <form action={handleSubmit} className="rounded-xl border-2 border-brand-500/80 shadow-md p-5 space-y-5" style={{ background: "var(--bg-surface)" }}>
       <div className="flex items-center justify-between pb-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
         <div className="flex items-center gap-2">
           <span className="p-1 rounded-md bg-brand-50 text-brand-600">
@@ -63,7 +83,69 @@ export function WorkOrderIntakeForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+      {/* The two questions that decide everything else about this work order — answered first, before any of the lookup fields below. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <div className="text-xs font-bold mb-1.5" style={{ color: "var(--text-secondary)" }}>
+            How&apos;s this coming in?
+          </div>
+          <input type="hidden" name="dropOffMethod" value={dropOffMethod} />
+          <SegmentedToggle
+            value={dropOffMethod}
+            onChange={setDropOffMethod}
+            options={[
+              { value: "customerDropOff", label: DROP_OFF_METHOD_LABELS.customerDropOff },
+              { value: "pickupDelivery", label: DROP_OFF_METHOD_LABELS.pickupDelivery },
+            ]}
+          />
+          {dropOffMethod === "pickupDelivery" && (
+            <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+              Generate Invoice will suggest your delivery fee for this one.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <div className="text-xs font-bold mb-1.5" style={{ color: "var(--text-secondary)" }}>
+            Need pre-approval with a written estimate first?
+          </div>
+          {skipEstimate && <input type="hidden" name="skipEstimate" value="on" />}
+          <SegmentedToggle
+            value={skipEstimate ? "no" : "yes"}
+            onChange={(v) => setSkipEstimate(v === "no")}
+            options={[
+              { value: "no", label: "No" },
+              { value: "yes", label: "Yes" },
+            ]}
+          />
+          <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+            {skipEstimate ? "Straight to In Repair — no estimate email, no waiting on approval." : "Starts in Pending — you'll send a formal estimate to approve before repair begins."}
+          </p>
+        </div>
+      </div>
+
+      {skipEstimate && (
+        <div className="max-w-xs">
+          <label htmlFor="notToExceedAmount" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+            Not-to-exceed amount ($) — optional
+          </label>
+          <input
+            id="notToExceedAmount"
+            name="notToExceedAmount"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="Leave blank if open-ended"
+            className="w-full px-3 py-2 rounded-lg text-xs font-mono"
+            style={inputStyle}
+          />
+          <span className="text-[10px] mt-0.5 block" style={{ color: "var(--text-muted)" }}>
+            Only fill this in if the customer set a verbal price cap, e.g. &ldquo;call me if it&apos;s over $300.&rdquo;
+          </span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-1" style={{ borderTop: "1px solid var(--border-subtle)" }}>
         <div>
           <label htmlFor="customerId" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
             Customer <span style={{ color: "var(--color-error-solid)" }}>*</span>
@@ -134,47 +216,6 @@ export function WorkOrderIntakeForm({
           </label>
           <textarea id="complaint" name="complaint" required rows={3} placeholder="What the customer says is wrong" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
         </div>
-      </div>
-
-      <div className="rounded-lg p-3" style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-subtle)" }}>
-        <label className="flex items-start gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            name="skipEstimate"
-            checked={skipEstimate}
-            onChange={(e) => setSkipEstimate(e.target.checked)}
-            className="mt-0.5 rounded"
-            style={{ accentColor: "#0F52BA" }}
-          />
-          <span className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>
-            Customer authorized the repair at drop-off (skip formal estimate)
-          </span>
-        </label>
-        <p className="text-[10px] mt-1 ml-6" style={{ color: "var(--text-muted)" }}>
-          {skipEstimate
-            ? "This work order starts straight in In Repair — no estimate email, no waiting on approval. Untick this if the customer wants a written quote first."
-            : "This work order starts in Pending — you'll send a formal estimate for the customer to approve before repair begins."}
-        </p>
-        {skipEstimate && (
-          <div className="mt-3 ml-6 max-w-xs">
-            <label htmlFor="notToExceedAmount" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
-              Not-to-exceed amount ($) — optional
-            </label>
-            <input
-              id="notToExceedAmount"
-              name="notToExceedAmount"
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="Leave blank if open-ended"
-              className="w-full px-3 py-2 rounded-lg text-xs font-mono"
-              style={inputStyle}
-            />
-            <span className="text-[10px] mt-0.5 block" style={{ color: "var(--text-muted)" }}>
-              Only fill this in if the customer set a verbal price cap, e.g. &ldquo;call me if it&apos;s over $300.&rdquo;
-            </span>
-          </div>
-        )}
       </div>
 
       {error && (

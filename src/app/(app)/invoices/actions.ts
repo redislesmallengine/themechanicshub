@@ -112,6 +112,7 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
 
   const shopProfile = await prisma.shopProfile.findUnique({ where: { organizationId } });
   const includeDiagnosticFee = formData.get("includeDiagnosticFee") === "on";
+  const includeDeliveryFee = formData.get("includeDeliveryFee") === "on";
 
   const lines: { type: string; description: string; quantity: string; unitPrice: string; unitCost: string | null; taxable: boolean; lineTotal: string; sortOrder: number }[] = [];
   let sortOrder = 0;
@@ -150,6 +151,20 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
     lines.push({
       type: "fee",
       description: "Diagnostic Fee",
+      quantity: "1.00",
+      unitPrice: fee.toFixed(2),
+      unitCost: null,
+      taxable: true,
+      lineTotal: fee.toFixed(2),
+      sortOrder: sortOrder++,
+    });
+  }
+
+  if (includeDeliveryFee && shopProfile?.deliveryFee) {
+    const fee = Number(shopProfile.deliveryFee);
+    lines.push({
+      type: "fee",
+      description: "Pickup/Delivery Fee",
       quantity: "1.00",
       unitPrice: fee.toFixed(2),
       unitCost: null,
@@ -281,6 +296,24 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
       lines.push({
         type: "fee",
         description: `Diagnostic Fee — ${equipmentLabel}`,
+        quantity: "1.00",
+        unitPrice: fee.toFixed(2),
+        unitCost: null,
+        taxable: true,
+        lineTotal: fee.toFixed(2),
+        sortOrder: sortOrder++,
+      });
+    }
+
+    // Per-work-order, not a checkbox like the diagnostic fee above -- a
+    // combined invoice can mix a pickup/delivery machine with a plain
+    // drop-off one, so this is driven by each work order's own
+    // dropOffMethod rather than one toggle applied to all of them.
+    if (wo.dropOffMethod === "pickupDelivery" && shopProfile?.deliveryFee) {
+      const fee = Number(shopProfile.deliveryFee);
+      lines.push({
+        type: "fee",
+        description: `Pickup/Delivery Fee — ${equipmentLabel}`,
         quantity: "1.00",
         unitPrice: fee.toFixed(2),
         unitCost: null,

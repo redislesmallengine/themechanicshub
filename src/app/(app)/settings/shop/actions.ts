@@ -71,6 +71,8 @@ export async function saveShopProfile(formData: FormData) {
   if ("error" in labourRate) return { error: labourRate.error };
   const diagnosticFee = parseDecimal(formData.get("diagnosticFee"), "Diagnostic fee", true);
   if ("error" in diagnosticFee) return { error: diagnosticFee.error };
+  const deliveryFee = parseDecimal(formData.get("deliveryFee"), "Delivery fee", false);
+  if ("error" in deliveryFee) return { error: deliveryFee.error };
   const taxRate = parseDecimal(formData.get("taxRate"), "Tax rate", true);
   if ("error" in taxRate) return { error: taxRate.error };
 
@@ -115,6 +117,7 @@ export async function saveShopProfile(formData: FormData) {
       website,
       labourRate: labourRate.value,
       diagnosticFee: diagnosticFee.value,
+      deliveryFee: deliveryFee.value,
       taxRate: taxRate.value,
       taxLabel: taxLabel || null,
       province: province || null,
@@ -129,6 +132,7 @@ export async function saveShopProfile(formData: FormData) {
       phone: phone || null,
       labourRate: labourRate.value,
       diagnosticFee: diagnosticFee.value,
+      deliveryFee: deliveryFee.value,
       taxRate: taxRate.value,
       taxLabel: taxLabel || null,
       province: province || null,

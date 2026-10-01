@@ -42,6 +42,7 @@ export default async function ShopProfilePage() {
           initialWebsite={profile?.website ?? ""}
           initialLabourRate={profile?.labourRate?.toString() ?? ""}
           initialDiagnosticFee={profile?.diagnosticFee?.toString() ?? ""}
+          initialDeliveryFee={profile?.deliveryFee?.toString() ?? ""}
           initialTaxRate={profile?.taxRate?.toString() ?? ""}
           initialTaxLabel={profile?.taxLabel ?? ""}
           initialProvince={profile?.province ?? ""}

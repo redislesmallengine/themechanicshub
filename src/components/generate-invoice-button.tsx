@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { generateInvoiceFromWorkOrder } from "@/app/(app)/invoices/actions";
 
-export function GenerateInvoiceButton({ workOrderId, hasDiagnosticFee }: { workOrderId: string; hasDiagnosticFee: boolean }) {
+export function GenerateInvoiceButton({ workOrderId, hasDiagnosticFee, hasDeliveryFee }: { workOrderId: string; hasDiagnosticFee: boolean; hasDeliveryFee: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const bound = generateInvoiceFromWorkOrder.bind(null, workOrderId);
@@ -23,6 +23,12 @@ export function GenerateInvoiceButton({ workOrderId, hasDiagnosticFee }: { workO
         <label className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
           <input type="checkbox" name="includeDiagnosticFee" defaultChecked className="rounded" style={{ accentColor: "#0F52BA" }} />
           Include diagnostic fee
+        </label>
+      )}
+      {hasDeliveryFee && (
+        <label className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+          <input type="checkbox" name="includeDeliveryFee" defaultChecked className="rounded" style={{ accentColor: "#0F52BA" }} />
+          Include pickup/delivery fee
         </label>
       )}
       <button type="submit" disabled={pending} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">

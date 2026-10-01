@@ -62,7 +62,7 @@ function SimpleAction({ label, action }: { label: string; action: () => Promise<
  * on the readyForPickup view below) rather than a link, since generating an
  * invoice needs the diagnostic-fee checkbox submitted, not just a click.
  */
-function MarkCompleteAction({ workOrderId, hasDiagnosticFee }: { workOrderId: string; hasDiagnosticFee: boolean }) {
+function MarkCompleteAction({ workOrderId, hasDiagnosticFee, hasDeliveryFee }: { workOrderId: string; hasDiagnosticFee: boolean; hasDeliveryFee: boolean }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -114,7 +114,7 @@ function MarkCompleteAction({ workOrderId, hasDiagnosticFee }: { workOrderId: st
             <p className="text-sm mb-5" style={{ color: "var(--text-secondary)" }}>
               Ready to bill this out?
             </p>
-            <GenerateInvoiceButton workOrderId={workOrderId} hasDiagnosticFee={hasDiagnosticFee} />
+            <GenerateInvoiceButton workOrderId={workOrderId} hasDiagnosticFee={hasDiagnosticFee} hasDeliveryFee={hasDeliveryFee} />
             <button type="button" onClick={dismiss} className="mt-3 text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
               Skip for now
             </button>
@@ -350,11 +350,13 @@ export function WorkOrderStatusPanel({
   status,
   hasCustomerEmail,
   hasDiagnosticFee,
+  hasDeliveryFee,
 }: {
   workOrderId: string;
   status: WorkOrderStatus;
   hasCustomerEmail: boolean;
   hasDiagnosticFee: boolean;
+  hasDeliveryFee: boolean;
 }) {
   switch (status) {
     case "droppedOff":
@@ -398,7 +400,7 @@ export function WorkOrderStatusPanel({
         </div>
       );
     case "inRepair":
-      return <MarkCompleteAction workOrderId={workOrderId} hasDiagnosticFee={hasDiagnosticFee} />;
+      return <MarkCompleteAction workOrderId={workOrderId} hasDiagnosticFee={hasDiagnosticFee} hasDeliveryFee={hasDeliveryFee} />;
     case "readyForPickup":
       return <SimpleAction label="Mark Picked Up / Close" action={() => closeWorkOrder(workOrderId)} />;
     case "closed":

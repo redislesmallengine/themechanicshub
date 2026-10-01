@@ -246,6 +246,7 @@ model ShopProfile {
   website                 String? // shop website, printed alongside email
   labourRate              Decimal? @db.Decimal(10, 2) // per hour
   diagnosticFee           Decimal? @db.Decimal(10, 2) // flat fee
+  deliveryFee             Decimal? @db.Decimal(10, 2) // flat fee, optional unlike diagnosticFee -- not every shop does pickup/delivery; Generate Invoice suggests it only when the work order's dropOffMethod was pickupDelivery
   taxRate                 Decimal? @db.Decimal(5, 2) // percentage, e.g. 15.00
   taxLabel                String? // e.g. "HST", "GST+PST"
   province                String?
@@ -490,6 +491,7 @@ model WorkOrder {
   customerId         String
   equipmentId        String
   status             String    @default("droppedOff")
+  dropOffMethod      String? // "customerDropOff" | "pickupDelivery" -- captured at intake; drives whether Generate Invoice suggests the delivery fee
   complaint          String
   diagnosisNotes     String?
   labourHours        Decimal?  @db.Decimal(6, 2)
