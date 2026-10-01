@@ -360,3 +360,27 @@ export async function getCustomerStats(organizationId: string): Promise<Customer
     owingTotal: Number(owingRows[0]?.total ?? 0),
   };
 }
+
+export interface GettingStartedProgress {
+  hasCustomer: boolean;
+  hasEquipment: boolean;
+  hasWorkOrder: boolean;
+  hasSentInvoice: boolean;
+}
+
+/** One EXISTS-per-step query for the dashboard's Getting Started checklist -- the "shop configured" and "dismissed" steps read off ShopProfile instead, which the dashboard page already fetches. */
+export async function getGettingStartedProgress(organizationId: string): Promise<GettingStartedProgress> {
+  const rows = await prisma.$queryRaw<{ has_customer: boolean; has_equipment: boolean; has_work_order: boolean; has_sent_invoice: boolean }[]>(Prisma.sql`
+    SELECT
+      EXISTS(SELECT 1 FROM "Customer" WHERE "organizationId" = ${organizationId}) AS has_customer,
+      EXISTS(SELECT 1 FROM "Equipment" WHERE "organizationId" = ${organizationId}) AS has_equipment,
+      EXISTS(SELECT 1 FROM "WorkOrder" WHERE "organizationId" = ${organizationId}) AS has_work_order,
+      EXISTS(SELECT 1 FROM "Invoice" WHERE "organizationId" = ${organizationId} AND status != 'draft') AS has_sent_invoice
+  `);
+  return {
+    hasCustomer: !!rows[0]?.has_customer,
+    hasEquipment: !!rows[0]?.has_equipment,
+    hasWorkOrder: !!rows[0]?.has_work_order,
+    hasSentInvoice: !!rows[0]?.has_sent_invoice,
+  };
+}

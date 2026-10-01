@@ -19,6 +19,8 @@ import {
   LowStockCard,
 } from "@/components/dashboard/sections";
 import { TileRowSkeleton, ChartSkeleton, ListSkeleton, TableSkeleton, Spinner } from "@/components/dashboard/skeletons";
+import { GettingStartedChecklist } from "@/components/dashboard/getting-started-checklist";
+import { getGettingStartedProgress } from "@/lib/dashboard";
 
 function SectionHead({ icon: Icon, label, note }: { icon: ComponentType<{ className?: string }>; label: string; note?: string }) {
   return (
@@ -54,12 +56,22 @@ export default async function DashboardPage() {
   // Two fast, single-row lookups the whole page needs -- not worth their
   // own Suspense boundary. Every genuinely expensive aggregate below is
   // deferred to its own section instead.
-  const [organization, shopProfile, canViewRevenue] = await Promise.all([
+  const [organization, shopProfile, canViewRevenue, gettingStarted] = await Promise.all([
     prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
-    prisma.shopProfile.findUnique({ where: { organizationId }, select: { agingAlertDays: true } }),
+    prisma.shopProfile.findUnique({ where: { organizationId }, select: { agingAlertDays: true, taxRate: true, labourRate: true, gettingStartedDismissed: true } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["viewMargins"] } } }).then((r) => r.success),
+    getGettingStartedProgress(organizationId),
   ]);
   const agingDays = shopProfile?.agingAlertDays ?? 14;
+
+  const gettingStartedItems = [
+    { label: "Set up your shop (tax rate, labor rate)", done: shopProfile?.taxRate != null && shopProfile?.labourRate != null, href: "/settings/shop", cta: "Set Up" },
+    { label: "Add your first customer", done: gettingStarted.hasCustomer, href: "/customers/new", cta: "+ Add Customer" },
+    { label: "Register their equipment", done: gettingStarted.hasEquipment, href: "/customers", cta: "+ Register Equipment" },
+    { label: "Create a work order", done: gettingStarted.hasWorkOrder, href: "/work-orders/new", cta: "+ New Work Order" },
+    { label: "Send your first invoice", done: gettingStarted.hasSentInvoice, href: "/invoices", cta: "View Invoices" },
+  ];
+  const showGettingStarted = !shopProfile?.gettingStartedDismissed && gettingStartedItems.some((i) => !i.done);
 
   return (
     <div className="p-6 space-y-8">
@@ -71,6 +83,8 @@ export default async function DashboardPage() {
           Today&apos;s shop-floor snapshot for {organization?.name ?? "your shop"}.
         </p>
       </div>
+
+      {showGettingStarted && <GettingStartedChecklist items={gettingStartedItems} />}
 
       {/* SHOP FLOOR — visible to everyone */}
       <div>
