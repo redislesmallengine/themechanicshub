@@ -40,6 +40,8 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
 
   const status = workOrder.status as WorkOrderStatus;
   const equipmentLabel = [workOrder.equipment.make, workOrder.equipment.model].filter(Boolean).join(" / ") || workOrder.equipment.equipmentType?.name || "Equipment";
+  // Pre-fills the Generate Invoice amount, but it's editable there -- distance varies job to job.
+  const defaultDeliveryFee = shopProfile?.deliveryFee && workOrder.dropOffMethod === "pickupDelivery" ? shopProfile.deliveryFee.toString() : null;
 
   return (
     <div className="p-6 space-y-6">
@@ -97,7 +99,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           status={status}
           hasCustomerEmail={!!workOrder.customer.email}
           hasDiagnosticFee={!!shopProfile?.diagnosticFee}
-          hasDeliveryFee={!!shopProfile?.deliveryFee && workOrder.dropOffMethod === "pickupDelivery"}
+          defaultDeliveryFee={defaultDeliveryFee}
         />
         {workOrder.status === "awaitingApproval" && workOrder.estimateAmount && (
           <div className="mt-3 pt-3 text-xs" style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-muted)" }}>
@@ -194,11 +196,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           })()
         ) : status === "readyForPickup" || status === "closed" ? (
           <>
-            <GenerateInvoiceButton
-              workOrderId={workOrder.id}
-              hasDiagnosticFee={!!shopProfile?.diagnosticFee}
-              hasDeliveryFee={!!shopProfile?.deliveryFee && workOrder.dropOffMethod === "pickupDelivery"}
-            />
+            <GenerateInvoiceButton workOrderId={workOrder.id} hasDiagnosticFee={!!shopProfile?.diagnosticFee} defaultDeliveryFee={defaultDeliveryFee} />
             <p className="text-[10px] mt-2" style={{ color: "var(--text-muted)" }}>
               Billing this customer for more than one machine at once?{" "}
               <Link href="/invoices/new" className="font-semibold text-brand-600">
