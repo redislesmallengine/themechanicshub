@@ -71,7 +71,11 @@ export default async function DashboardPage() {
     { label: "Create a work order", done: gettingStarted.hasWorkOrder, href: "/work-orders/new", cta: "+ New Work Order" },
     { label: "Send your first invoice", done: gettingStarted.hasSentInvoice, href: "/invoices", cta: "View Invoices" },
   ];
-  const showGettingStarted = !shopProfile?.gettingStartedDismissed && gettingStartedItems.some((i) => !i.done);
+  // Forced on for everyone right now, per explicit request, ignoring both
+  // the completion check and the dismissed flag below -- real condition
+  // kept as a comment so this is a one-line revert once it's been seen.
+  // const showGettingStarted = !shopProfile?.gettingStartedDismissed && gettingStartedItems.some((i) => !i.done);
+  const showGettingStarted = true;
 
   return (
     <div className="p-6 space-y-8">
