@@ -1,4 +1,5 @@
 import { Suspense, type ComponentType } from "react";
+import Link from "next/link";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -21,6 +22,8 @@ import {
 import { TileRowSkeleton, ChartSkeleton, ListSkeleton, TableSkeleton, Spinner } from "@/components/dashboard/skeletons";
 import { GettingStartedChecklist } from "@/components/dashboard/getting-started-checklist";
 import { getGettingStartedProgress } from "@/lib/dashboard";
+
+const quickActionClass = "flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-3.5 py-2 text-xs font-semibold shadow-sm transition";
 
 function SectionHead({ icon: Icon, label, note }: { icon: ComponentType<{ className?: string }>; label: string; note?: string }) {
   return (
@@ -56,11 +59,14 @@ export default async function DashboardPage() {
   // Two fast, single-row lookups the whole page needs -- not worth their
   // own Suspense boundary. Every genuinely expensive aggregate below is
   // deferred to its own section instead.
-  const [organization, shopProfile, canViewRevenue, gettingStarted] = await Promise.all([
+  const [organization, shopProfile, canViewRevenue, gettingStarted, canCreateCustomer, canCreateWorkOrder, canCreateInvoice] = await Promise.all([
     prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
     prisma.shopProfile.findUnique({ where: { organizationId }, select: { agingAlertDays: true, taxRate: true, labourRate: true, gettingStartedDismissed: true } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["viewMargins"] } } }).then((r) => r.success),
     getGettingStartedProgress(organizationId),
+    auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { customer: ["create"] } } }).then((r) => r.success),
+    auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { workOrder: ["create"] } } }).then((r) => r.success),
+    auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["create"] } } }).then((r) => r.success),
   ]);
   const agingDays = shopProfile?.agingAlertDays ?? 14;
 
@@ -75,13 +81,32 @@ export default async function DashboardPage() {
 
   return (
     <div className="p-6 space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
-          Dashboard
-        </h1>
-        <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-          Today&apos;s shop-floor snapshot for {organization?.name ?? "your shop"}.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
+            Dashboard
+          </h1>
+          <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+            Today&apos;s shop-floor snapshot for {organization?.name ?? "your shop"}.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {canCreateCustomer && (
+            <Link href="/customers/new" className={quickActionClass}>
+              + New Customer
+            </Link>
+          )}
+          {canCreateWorkOrder && (
+            <Link href="/work-orders/new" className={quickActionClass}>
+              + New Work Order
+            </Link>
+          )}
+          {canCreateInvoice && (
+            <Link href="/invoices/new" className={quickActionClass}>
+              + New Invoice
+            </Link>
+          )}
+        </div>
       </div>
 
       {showGettingStarted && <GettingStartedChecklist items={gettingStartedItems} />}
