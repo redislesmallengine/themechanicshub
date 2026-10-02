@@ -1,9 +1,12 @@
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { WrenchIcon } from "@/components/icons";
 import { STATUS_LABELS, STATUS_BADGE, isOverdue, type InvoiceStatus } from "@/lib/invoices";
 
 export default async function PublicInvoicePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
+  const session = await auth.api.getSession({ headers: await headers() });
 
   const invoice = await prisma.invoice.findUnique({
     where: { viewToken: token },
@@ -17,7 +20,12 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
     },
   });
 
-  if (!invoice || invoice.status === "draft") {
+  // Staff of the shop that owns this invoice can open their own drafts from
+  // the "View Invoice" button on the invoice page -- customers still can't
+  // (a draft hasn't been sent). Staff previews never change status either.
+  const isOwnShopStaff = !!invoice && session?.session.activeOrganizationId === invoice.organizationId;
+
+  if (!invoice || (invoice.status === "draft" && !isOwnShopStaff)) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "var(--bg-app)" }}>
         <div className="w-full max-w-md rounded-xl p-8 md:p-10 text-center" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-md)" }}>
@@ -36,7 +44,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
   }
 
   // First open flips Sent -> Viewed — a customer who's already Paid/Void just keeps seeing the same read-only page, no status change.
-  if (invoice.status === "sent") {
+  if (invoice.status === "sent" && !isOwnShopStaff) {
     await prisma.invoice.update({ where: { id: invoice.id }, data: { status: "viewed", viewedAt: new Date() } });
     invoice.status = "viewed";
   }
@@ -75,6 +83,12 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
             )}
           </div>
         </div>
+
+        {status === "draft" && (
+          <div className="mb-3 px-3.5 py-2 rounded-lg text-xs font-semibold" style={{ background: "var(--color-warning-subtle)", border: "1px solid var(--color-warning-border)", color: "var(--color-warning-text)" }}>
+            Draft preview — only your shop can see this. Customers can&apos;t open this link until the invoice is sent.
+          </div>
+        )}
 
         <div className="rounded-xl p-6 md:p-8" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-md)" }}>
           <div className="flex items-start justify-between mb-6">
