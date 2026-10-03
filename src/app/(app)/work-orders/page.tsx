@@ -2,121 +2,281 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { SearchIcon } from "@/components/icons";
+import { Pagination } from "@/components/pagination";
+import { DeleteWorkOrderButton } from "@/components/delete-work-order-button";
 import { BOARD_STATUSES, STATUS_LABELS, STATUS_BADGE, now as getNow, type WorkOrderStatus } from "@/lib/work-orders";
 
-function timeAgo(date: Date): string {
-  const ms = Date.now() - date.getTime();
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
+const PAGE_SIZE = 50;
+// A shop's active list is dozens of rows, not thousands -- fetch it all so
+// "needs attention first" can sort across the whole set, then page the
+// sorted result. The cap only matters for the closed/declined history view.
+const FETCH_CAP = 500;
+const DAY_MS = 86400000;
+const AWAITING_ALERT_DAYS = 2;
+const HISTORY_STATUSES = ["closed", "declined"];
+
+const FILTER_STATUSES = ["droppedOff", "diagnosing", "awaitingApproval", "inRepair", "readyForPickup"] as const;
+
+function fmtAge(ms: number): string {
+  const hours = Math.floor(ms / 3600000);
+  if (hours < 1) return "<1h";
+  if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return `${days} day${days === 1 ? "" : "s"}`;
 }
 
-export default async function WorkOrdersBoardPage({ searchParams }: { searchParams: Promise<{ all?: string }> }) {
-  const { all } = await searchParams;
-  const showAll = all === "1";
+export default async function WorkOrdersPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; page?: string }> }) {
+  const { q, status, page: pageRaw } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
 
-  const [workOrders, shopProfile] = organizationId
+  const page = Math.max(1, Number.parseInt(pageRaw ?? "1", 10) || 1);
+  const searchTerm = q?.trim();
+  const filter = status === "history" || (FILTER_STATUSES as readonly string[]).includes(status ?? "") ? status : undefined;
+
+  const statusWhere = filter === "history" ? { in: HISTORY_STATUSES } : filter ? filter : { in: BOARD_STATUSES as string[] };
+  const where = organizationId
+    ? {
+        organizationId,
+        status: statusWhere,
+        ...(searchTerm
+          ? {
+              OR: [
+                { customer: { name: { contains: searchTerm, mode: "insensitive" as const } } },
+                { customer: { phone: { contains: searchTerm, mode: "insensitive" as const } } },
+                { customer: { email: { contains: searchTerm, mode: "insensitive" as const } } },
+                { equipment: { make: { contains: searchTerm, mode: "insensitive" as const } } },
+                { equipment: { model: { contains: searchTerm, mode: "insensitive" as const } } },
+                { equipment: { serialNumber: { contains: searchTerm, mode: "insensitive" as const } } },
+              ],
+            }
+          : {}),
+      }
+    : undefined;
+
+  const [workOrders, statusCounts, shopProfile, canUpdate, canDelete, membership] = organizationId
     ? await Promise.all([
         prisma.workOrder.findMany({
-          where: showAll ? { organizationId } : { organizationId, status: { in: BOARD_STATUSES } },
+          where,
           orderBy: { updatedAt: "desc" },
-          include: { customer: true, equipment: { include: { equipmentType: true } } },
+          take: FETCH_CAP,
+          include: {
+            customer: { select: { name: true, phone: true, email: true } },
+            equipment: { select: { make: true, model: true, equipmentType: { select: { name: true } } } },
+            assignedTo: { select: { name: true } },
+            invoice: { select: { id: true } },
+            combinedInto: { select: { invoiceId: true } },
+            parts: { select: { id: true } },
+          },
         }),
-        prisma.shopProfile.findUnique({ where: { organizationId } }),
+        prisma.workOrder.groupBy({ by: ["status"], where: { organizationId }, _count: { _all: true } }),
+        prisma.shopProfile.findUnique({ where: { organizationId }, select: { agingAlertDays: true } }),
+        auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { workOrder: ["update"] } } }),
+        auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { workOrder: ["delete"] } } }),
+        prisma.member.findFirst({ where: { organizationId, userId: session!.user.id } }),
       ])
-    : [[], null];
+    : [[], [], null, { success: false as const }, { success: false as const }, null];
 
+  const isOwner = membership?.role === "owner";
   const agingDays = shopProfile?.agingAlertDays ?? 14;
-  const columns = showAll ? [...BOARD_STATUSES, "closed" as const, "declined" as const] : BOARD_STATUSES;
   const now = getNow();
+
+  const counts: Record<string, number> = {};
+  for (const row of statusCounts) counts[row.status] = row._count._all;
+  const activeCount = BOARD_STATUSES.reduce((sum, s) => sum + (counts[s] ?? 0), 0);
+
+  function isAttention(wo: (typeof workOrders)[number]): boolean {
+    if (wo.status === "readyForPickup" && wo.readyForPickupAt) return (now - wo.readyForPickupAt.getTime()) / DAY_MS > agingDays;
+    if (wo.status === "awaitingApproval" && wo.awaitingApprovalAt) return (now - wo.awaitingApprovalAt.getTime()) / DAY_MS >= AWAITING_ALERT_DAYS;
+    return false;
+  }
+
+  // The moment the job entered its current stage. Diagnosing has no
+  // dedicated timestamp, so it falls back to last-updated.
+  function stageSince(wo: (typeof workOrders)[number]): Date {
+    switch (wo.status) {
+      case "droppedOff":
+        return wo.createdAt;
+      case "awaitingApproval":
+        return wo.awaitingApprovalAt ?? wo.updatedAt;
+      case "inRepair":
+        return wo.decidedAt ?? wo.updatedAt;
+      case "readyForPickup":
+        return wo.readyForPickupAt ?? wo.updatedAt;
+      case "closed":
+        return wo.closedAt ?? wo.updatedAt;
+      default:
+        return wo.updatedAt;
+    }
+  }
+
+  // Needs-attention jobs first, then most recently touched. Array.sort is stable.
+  const sorted = [...workOrders].sort((a, b) => Number(isAttention(b)) - Number(isAttention(a)));
+  const attentionCount = sorted.filter(isAttention).length;
+  const total = sorted.length;
+  const rows = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  function chipHref(value?: string): string {
+    const params = new URLSearchParams();
+    if (value) params.set("status", value);
+    if (searchTerm) params.set("q", searchTerm);
+    const qs = params.toString();
+    return qs ? `/work-orders?${qs}` : "/work-orders";
+  }
+
+  const chips: { value?: string; label: string; count?: number; dashed?: boolean }[] = [
+    { value: undefined, label: "All active", count: activeCount },
+    ...FILTER_STATUSES.map((s) => ({ value: s as string, label: STATUS_LABELS[s], count: counts[s] ?? 0 })),
+    { value: "history", label: "Closed / Declined", dashed: true },
+  ];
 
   return (
     <div className="p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
             Work Orders
           </h1>
           <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-            The ticket board — every repair, start to finish.
+            {activeCount} active · {attentionCount > 0 ? `${attentionCount} need attention` : "nothing needs attention"}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href={showAll ? "/work-orders" : "/work-orders?all=1"}
-            className="rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-slate-50"
-            style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}
-          >
-            {showAll ? "Hide closed/declined" : "Show closed/declined"}
-          </Link>
-          <Link
-            href="/work-orders/new"
-            className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition"
-          >
+          <form method="GET" className="relative">
+            {filter && <input type="hidden" name="status" value={filter} />}
+            <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
+            <input
+              type="text"
+              name="q"
+              defaultValue={q ?? ""}
+              placeholder="Search customer, equipment…"
+              className="w-56 pl-9 pr-3 py-2 rounded-lg text-xs font-medium"
+              style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)", color: "var(--text-primary)" }}
+            />
+          </form>
+          <Link href="/work-orders/new" className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-3.5 py-2 text-xs font-semibold shadow-sm transition whitespace-nowrap">
             + New Work Order
           </Link>
         </div>
       </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-2">
-        {columns.map((status) => {
-          const items = workOrders.filter((wo) => wo.status === status);
+      <div className="flex flex-wrap gap-2 mb-4">
+        {chips.map((chip) => {
+          const on = chip.value === filter;
+          const zero = chip.count === 0 && !on;
           return (
-            <div key={status} className="flex-1 min-w-[260px]">
-              <div className="flex items-center justify-between mb-2 px-1">
-                <h2 className="text-xs font-bold uppercase tracking-wide" style={{ color: "var(--text-secondary)" }}>
-                  {STATUS_LABELS[status as WorkOrderStatus]}
-                </h2>
-                <span className="text-[11px] font-bold num" style={{ color: "var(--text-muted)" }}>
-                  {items.length}
+            <Link
+              key={chip.label}
+              href={chipHref(chip.value)}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold"
+              style={{
+                background: on ? "var(--color-brand-600)" : "var(--bg-surface)",
+                color: on ? "#fff" : "var(--text-secondary)",
+                border: `1px ${chip.dashed ? "dashed" : "solid"} ${on ? "var(--color-brand-600)" : "var(--border-strong)"}`,
+                opacity: zero ? 0.55 : 1,
+              }}
+            >
+              {chip.label}
+              {chip.count !== undefined && (
+                <span className="num text-[11px] px-1.5 rounded-full" style={{ background: on ? "rgba(255,255,255,.22)" : "var(--bg-surface-subtle)", color: on ? "#fff" : "var(--text-secondary)" }}>
+                  {chip.count}
                 </span>
-              </div>
-              <div className="space-y-2">
-                {items.length === 0 && (
-                  <div className="rounded-lg p-4 text-center text-[11px]" style={{ background: "var(--bg-surface-subtle)", border: "1px dashed var(--border-strong)", color: "var(--text-muted)" }}>
-                    Nothing here
-                  </div>
-                )}
-                {items.map((wo) => {
-                  const isAging = wo.status === "readyForPickup" && wo.readyForPickupAt && (now - wo.readyForPickupAt.getTime()) / 86400000 > agingDays;
-                  const equipmentLabel = [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment";
-                  return (
-                    <Link
-                      key={wo.id}
-                      href={`/work-orders/${wo.id}`}
-                      className="block rounded-lg p-3 hover:shadow-md transition"
-                      style={{ background: "var(--bg-surface)", border: isAging ? "1px solid var(--color-error-border)" : "1px solid var(--border-subtle)" }}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className={`dt-badge dt-badge--${isAging ? "error" : STATUS_BADGE[status as WorkOrderStatus]}`}>
-                          <span className="dt-badge-dot" />
-                          {isAging ? `Ready · ${Math.floor((now - wo.readyForPickupAt!.getTime()) / 86400000)}d` : STATUS_LABELS[status as WorkOrderStatus]}
-                        </span>
-                        <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                          {timeAgo(wo.updatedAt)}
-                        </span>
-                      </div>
-                      <div className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
-                        {wo.customer.name}
-                      </div>
-                      <div className="text-[11px]" style={{ color: "var(--text-secondary)" }}>
-                        {equipmentLabel}
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
+              )}
+            </Link>
           );
         })}
       </div>
+
+      <div className="dt-container">
+        <div className="dt-scroll">
+          <table className="dt-table">
+            <thead className="dt-head">
+              <tr>
+                <th className="dt-th text-left">Customer</th>
+                <th className="dt-th text-left">Equipment</th>
+                <th className="dt-th text-left">Status</th>
+                <th className="dt-th text-left">Technician</th>
+                <th className="dt-th text-left">In this stage</th>
+                <th className="dt-th text-left">Next step</th>
+                <th className="dt-th text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
+                    {searchTerm || filter ? "No work orders match that." : "No active work orders — create one to get started."}
+                  </td>
+                </tr>
+              )}
+              {rows.map((wo) => {
+                const woStatus = wo.status as WorkOrderStatus;
+                const attention = isAttention(wo);
+                const since = stageSince(wo);
+                const ageMs = now - since.getTime();
+                const equipmentLabel = [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment";
+                const invoiceId = wo.invoice?.id ?? wo.combinedInto?.invoiceId ?? null;
+                const aging = woStatus === "readyForPickup" && attention;
+                const nextStep =
+                  woStatus === "droppedOff"
+                    ? { label: "Start diagnosis →", href: `/work-orders/${wo.id}` }
+                    : woStatus === "awaitingApproval"
+                      ? { label: "Follow up →", href: `/work-orders/${wo.id}` }
+                      : (woStatus === "readyForPickup" || woStatus === "closed") && invoiceId
+                        ? { label: "View invoice →", href: `/invoices/${invoiceId}` }
+                        : woStatus === "readyForPickup"
+                          ? { label: "Generate invoice →", href: `/work-orders/${wo.id}` }
+                          : { label: "Open →", href: `/work-orders/${wo.id}` };
+                const showDelete = (woStatus === "droppedOff" || woStatus === "declined" || isOwner) && !invoiceId && canDelete.success;
+                return (
+                  <tr key={wo.id} className="dt-row" style={attention ? { background: "var(--color-error-subtle)" } : undefined}>
+                    <td className="dt-td">
+                      <Link href={`/work-orders/${wo.id}`} className="font-bold text-sm hover:underline" style={{ color: "var(--text-primary)" }}>
+                        {wo.customer.name}
+                      </Link>
+                      <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                        {wo.customer.phone ?? wo.customer.email ?? ""}
+                      </div>
+                    </td>
+                    <td className="dt-td text-sm">{equipmentLabel}</td>
+                    <td className="dt-td">
+                      <span className={`dt-badge dt-badge--${aging ? "error" : STATUS_BADGE[woStatus]}`}>
+                        <span className="dt-badge-dot" />
+                        {aging ? `Ready · ${Math.floor(ageMs / DAY_MS)}d` : STATUS_LABELS[woStatus]}
+                      </span>
+                    </td>
+                    <td className="dt-td text-sm" style={{ color: wo.assignedTo ? "var(--text-secondary)" : "var(--text-muted)" }}>
+                      {wo.assignedTo?.name ?? "Unassigned"}
+                    </td>
+                    <td className="dt-td num text-sm font-semibold" style={{ color: attention ? "var(--color-error-text)" : "var(--text-secondary)" }}>
+                      {fmtAge(ageMs)}
+                    </td>
+                    <td className="dt-td">
+                      <Link href={nextStep.href} className="text-xs font-bold text-brand-600 whitespace-nowrap">
+                        {nextStep.label}
+                      </Link>
+                    </td>
+                    <td className="dt-td text-right">
+                      <div className="flex justify-end items-center gap-3">
+                        {canUpdate.success && (
+                          <Link href={`/work-orders/${wo.id}`} className="text-[11px] font-bold text-brand-600">
+                            Edit
+                          </Link>
+                        )}
+                        {showDelete && <DeleteWorkOrderButton workOrderId={wo.id} equipmentLabel={equipmentLabel} status={woStatus} hasInventoryLines={wo.parts.length > 0} />}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <Pagination page={page} pageSize={PAGE_SIZE} total={total} basePath="/work-orders" params={{ q: searchTerm, status: filter }} />
     </div>
   );
 }
