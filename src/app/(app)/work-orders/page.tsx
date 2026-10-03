@@ -7,7 +7,8 @@ import { Pagination } from "@/components/pagination";
 import { DeleteWorkOrderButton } from "@/components/delete-work-order-button";
 import { BOARD_STATUSES, STATUS_LABELS, STATUS_BADGE, now as getNow, type WorkOrderStatus } from "@/lib/work-orders";
 
-const PAGE_SIZE = 50;
+const DEFAULT_PAGE_SIZE = 25;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 // A shop's active list is dozens of rows, not thousands -- fetch it all so
 // "needs attention first" can sort across the whole set, then page the
 // sorted result. The cap only matters for the closed/declined history view.
@@ -26,13 +27,15 @@ function fmtAge(ms: number): string {
   return `${days} day${days === 1 ? "" : "s"}`;
 }
 
-export default async function WorkOrdersPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; page?: string }> }) {
-  const { q, status, page: pageRaw } = await searchParams;
+export default async function WorkOrdersPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; page?: string; pageSize?: string }> }) {
+  const { q, status, page: pageRaw, pageSize: pageSizeRaw } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
 
   const page = Math.max(1, Number.parseInt(pageRaw ?? "1", 10) || 1);
+  const requestedSize = Number.parseInt(pageSizeRaw ?? "", 10);
+  const pageSize = PAGE_SIZE_OPTIONS.includes(requestedSize) ? requestedSize : DEFAULT_PAGE_SIZE;
   const searchTerm = q?.trim();
   const filter = status === "history" || (FILTER_STATUSES as readonly string[]).includes(status ?? "") ? status : undefined;
 
@@ -116,12 +119,13 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
   const sorted = [...workOrders].sort((a, b) => Number(isAttention(b)) - Number(isAttention(a)));
   const attentionCount = sorted.filter(isAttention).length;
   const total = sorted.length;
-  const rows = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const rows = sorted.slice((page - 1) * pageSize, page * pageSize);
 
   function chipHref(value?: string): string {
     const params = new URLSearchParams();
     if (value) params.set("status", value);
     if (searchTerm) params.set("q", searchTerm);
+    if (pageSize !== DEFAULT_PAGE_SIZE) params.set("pageSize", String(pageSize));
     const qs = params.toString();
     return qs ? `/work-orders?${qs}` : "/work-orders";
   }
@@ -146,6 +150,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
         <div className="flex items-center gap-2">
           <form method="GET" className="relative">
             {filter && <input type="hidden" name="status" value={filter} />}
+            {pageSize !== DEFAULT_PAGE_SIZE && <input type="hidden" name="pageSize" value={pageSize} />}
             <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
             <input
               type="text"
@@ -276,7 +281,15 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
         </div>
       </div>
 
-      <Pagination page={page} pageSize={PAGE_SIZE} total={total} basePath="/work-orders" params={{ q: searchTerm, status: filter }} />
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        basePath="/work-orders"
+        params={{ q: searchTerm, status: filter }}
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        defaultPageSize={DEFAULT_PAGE_SIZE}
+      />
     </div>
   );
 }
