@@ -585,6 +585,7 @@ model Invoice {
   total               Decimal   @default(0) @db.Decimal(10, 2)
   notes               String?
   viewToken           String    @unique // powers the public /invoice/[token] page, same pattern as WorkOrder.approvalToken
+  shortCode           String?   @unique // short random alias for viewToken (/i/[code] redirects to /invoice/[viewToken]) -- only used to keep WhatsApp messages short; filled lazily, see ensureInvoiceShortCode
   sentAt              DateTime?
   viewedAt            DateTime? // set the first time the customer opens their invoice link
   paidAt              DateTime?

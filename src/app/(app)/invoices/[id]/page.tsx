@@ -9,6 +9,7 @@ import { InvoiceStatusPanel } from "@/components/invoice-status-panel";
 import { InvoiceDetailsForm } from "@/components/invoice-details-form";
 import { InvoicePartyForm } from "@/components/invoice-party-form";
 import { InvoicePayerForm } from "@/components/invoice-payer-form";
+import { ensureInvoiceShortCode } from "@/lib/invoice-short-link";
 import { DeleteInvoiceButton } from "@/components/delete-invoice-button";
 import { SendWhatsAppButton } from "@/components/send-whatsapp-button";
 import { SentEmailsPanel } from "@/components/sent-emails-panel";
@@ -55,7 +56,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     : invoice.adHocEquipmentLabel;
   const hasInventoryLines = invoice.lineItems.some((l) => !!l.partId);
   const canEditParty = editable && !invoice.workOrderId && invoice.combinedWorkOrders.length === 0;
-  const pdfUrl = `${process.env.BETTER_AUTH_URL}/api/invoice/${invoice.viewToken}/pdf`;
+  // Short alias for the WhatsApp message; falls back to the full link if a code could not be made.
+  const shortCode = await ensureInvoiceShortCode(invoice.id);
+  const shareUrl = shortCode ? `${process.env.BETTER_AUTH_URL}/i/${shortCode}` : `${process.env.BETTER_AUTH_URL}/invoice/${invoice.viewToken}`;
   const publicInvoiceUrl = `${process.env.BETTER_AUTH_URL}/invoice/${invoice.viewToken}`;
 
   const partyCustomers = canEditParty
@@ -148,7 +151,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               customerName={invoice.customer?.name ?? null}
               invoiceNumber={invoice.invoiceNumber}
               shopName={invoice.organization.name}
-              pdfUrl={pdfUrl}
+              shareUrl={shareUrl}
             />
             {(status === "draft" || status === "void" || isOwner) && canDelete.success && (
               <DeleteInvoiceButton invoiceId={invoice.id} invoiceNumber={invoice.invoiceNumber} status={status} hasInventoryLines={hasInventoryLines} redirectTo="/invoices" />

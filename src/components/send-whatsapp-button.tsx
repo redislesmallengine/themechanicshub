@@ -33,18 +33,19 @@ export function SendWhatsAppButton({
   customerName,
   invoiceNumber,
   shopName,
-  pdfUrl,
+  shareUrl,
 }: {
   initialPhone: string | null;
   customerName: string | null;
   invoiceNumber: string;
   shopName: string;
-  pdfUrl: string;
+  /** Short link (/i/[code]) to the customer invoice page -- kept short so the WhatsApp message stays readable. */
+  shareUrl: string;
 }) {
   const [showPopup, setShowPopup] = useState(false);
   const [phone, setPhone] = useState("");
 
-  const message = `Hi${customerName ? ` ${customerName}` : ""}, here's your invoice ${invoiceNumber} from ${shopName}: ${pdfUrl}`;
+  const message = `Hi${customerName ? ` ${customerName}` : ""}, here's your invoice ${invoiceNumber} from ${shopName}: ${shareUrl}`;
 
   function handleClick() {
     if (initialPhone && initialPhone.trim()) {
