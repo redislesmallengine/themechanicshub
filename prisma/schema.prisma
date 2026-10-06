@@ -486,28 +486,30 @@ model SavedView {
 // awaitingApproval. Every forward move is a deliberate action on the detail
 // page, not a free dropdown.
 model WorkOrder {
-  id                 String    @id @default(cuid())
-  organizationId     String
-  customerId         String
-  equipmentId        String
-  status             String    @default("droppedOff")
-  dropOffMethod      String? // "customerDropOff" | "pickupDelivery" -- captured at intake; drives whether Generate Invoice suggests the delivery fee
-  complaint          String
-  diagnosisNotes     String?
-  labourHours        Decimal?  @db.Decimal(6, 2)
-  assignedToUserId   String?
-  estimateAmount     Decimal?  @db.Decimal(10, 2)
-  estimateNotes      String?
-  approvalToken      String?   @unique // powers the public /estimate/[token] page
-  approvalMethod     String? // "link" | "phone" | "in-person"
-  decidedByName      String? // typed on the approval page, staff-entered for a phone decision, or the customer's own name for an in-person/drop-off authorization
-  decidedAt          DateTime?
-  notToExceedAmount  Decimal?  @db.Decimal(10, 2) // optional verbal price ceiling captured on the "skip formal estimate" fast path — see skipEstimateApproval
-  awaitingApprovalAt DateTime? // set when status first becomes awaitingApproval — what the "waiting 2+ days" dashboard flag measures from
-  readyForPickupAt   DateTime? // set when status first becomes readyForPickup — what the aging alert measures from
-  closedAt           DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                  String    @id @default(cuid())
+  organizationId      String
+  customerId          String
+  equipmentId         String
+  status              String    @default("droppedOff")
+  dropOffMethod       String? // "customerDropOff" | "pickupDelivery" -- captured at intake; drives whether Generate Invoice suggests the delivery fee
+  preApprovalRequired Boolean? // answered at intake: true = a written estimate must be approved first, false = customer already said go ahead; null on jobs created before this existed
+  repairNotes         String? // "Work performed" -- how it was fixed; shown with the diagnosis and estimate so the whole story is on one page, and pre-filled onto the invoice notes
+  complaint           String
+  diagnosisNotes      String?
+  labourHours         Decimal?  @db.Decimal(6, 2)
+  assignedToUserId    String?
+  estimateAmount      Decimal?  @db.Decimal(10, 2)
+  estimateNotes       String?
+  approvalToken       String?   @unique // powers the public /estimate/[token] page
+  approvalMethod      String? // "link" | "phone" | "in-person"
+  decidedByName       String? // typed on the approval page, staff-entered for a phone decision, or the customer's own name for an in-person/drop-off authorization
+  decidedAt           DateTime?
+  notToExceedAmount   Decimal?  @db.Decimal(10, 2) // optional verbal price ceiling captured on the "skip formal estimate" fast path — see skipEstimateApproval
+  awaitingApprovalAt  DateTime? // set when status first becomes awaitingApproval — what the "waiting 2+ days" dashboard flag measures from
+  readyForPickupAt    DateTime? // set when status first becomes readyForPickup — what the aging alert measures from
+  closedAt            DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   customer     Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)

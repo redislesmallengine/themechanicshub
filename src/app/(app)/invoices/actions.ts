@@ -196,6 +196,8 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
         invoiceType: classifyInvoiceType({ hasEquipment: true, hasWorkOrder: true, lineItems: lines.map((l) => ({ type: l.type })) }),
         invoiceNumber,
         viewToken: generateViewToken(),
+        // What the technician wrote under "Work performed" -- editable on the invoice afterwards.
+        notes: workOrder.repairNotes?.trim() || null,
         ...totals,
         lineItems: { create: lines },
       },
@@ -335,6 +337,13 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
     Number(shopProfile?.taxRate ?? 0)
   );
 
+  // One paragraph per job that has "Work performed" written, headed by its equipment.
+  const combinedNotes =
+    workOrders
+      .filter((wo) => wo.repairNotes?.trim())
+      .map((wo) => `${[wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment"}: ${wo.repairNotes!.trim()}`)
+      .join("\n\n") || null;
+
   const invoice = await prisma.$transaction(async (tx) => {
     const invoiceNumber = await claimInvoiceNumber(tx, organizationId);
     const created = await tx.invoice.create({
@@ -344,6 +353,7 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
         invoiceType: classifyInvoiceType({ hasEquipment: true, hasWorkOrder: true, lineItems: lines.map((l) => ({ type: l.type })) }),
         invoiceNumber,
         viewToken: generateViewToken(),
+        notes: combinedNotes,
         ...totals,
         lineItems: { create: lines },
       },

@@ -6,7 +6,7 @@ import {
   startDiagnosis,
   sendEstimate,
   previewEstimateEmail,
-  skipEstimateApproval,
+  startRepair,
   recordPhoneDecision,
   markReadyForPickup,
   closeWorkOrder,
@@ -203,7 +203,15 @@ function SendEstimateForm({ workOrderId, hasCustomerEmail }: { workOrderId: stri
             <label htmlFor="estimateNotes" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
               What it covers
             </label>
-            <input id="estimateNotes" name="estimateNotes" type="text" required placeholder="Plain language — this is what the customer sees" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+            <textarea
+              id="estimateNotes"
+              name="estimateNotes"
+              required
+              rows={5}
+              placeholder="Plain language — this is what the customer sees"
+              className="w-full px-3 py-2 rounded-lg text-xs font-medium"
+              style={inputStyle}
+            />
           </div>
         </div>
         {error && (
@@ -259,56 +267,32 @@ function SendEstimateForm({ workOrderId, hasCustomerEmail }: { workOrderId: stri
   );
 }
 
-/** The fast path for the ~90% case — customer said "just fix it," no formal $ quote needed. Skips straight to In Repair. */
-function SkipEstimateForm({ workOrderId }: { workOrderId: string }) {
-  const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-  const bound = skipEstimateApproval.bind(null, workOrderId);
-
-  function handleSubmit(formData: FormData) {
-    setError(null);
-    startTransition(async () => {
-      const result = await bound(formData);
-      if (result?.error) {
-        setError(result.error);
-        return;
-      }
-      router.refresh();
-    });
-  }
-
-  return (
-    <form action={handleSubmit} className="rounded-lg p-3" style={{ background: "var(--color-success-subtle)", border: "1px solid var(--color-success-border)" }}>
-      <p className="text-xs font-bold mb-2" style={{ color: "var(--text-primary)" }}>
-        Customer already said &ldquo;just fix it&rdquo;?
-      </p>
-      <div className="flex items-end gap-3 flex-wrap">
-        <div className="max-w-[200px]">
-          <label htmlFor="notToExceedAmount" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
-            Not-to-exceed ($) — optional
-          </label>
-          <input
-            id="notToExceedAmount"
-            name="notToExceedAmount"
-            type="number"
-            step="0.01"
-            min="0"
-            placeholder="Leave blank if open-ended"
-            className="w-full px-3 py-2 rounded-lg text-xs font-mono"
-            style={inputStyle}
-          />
+/**
+ * The written-estimate form for a Pending / Diagnosing job. Always open when
+ * the intake answer was "needs pre-approval" (or unknown, on older jobs);
+ * tucked behind a link when the customer already said go ahead, since it is
+ * the exception then.
+ */
+function EstimateSection({ workOrderId, hasCustomerEmail, preApprovalRequired }: { workOrderId: string; hasCustomerEmail: boolean; preApprovalRequired: boolean | null }) {
+  if (preApprovalRequired === false) {
+    return (
+      <details className="pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+        <summary className="text-xs font-bold cursor-pointer" style={{ color: "var(--text-secondary)" }}>
+          Need a written estimate after all?
+        </summary>
+        <div className="mt-3">
+          <SendEstimateForm workOrderId={workOrderId} hasCustomerEmail={hasCustomerEmail} />
         </div>
-        <button type="submit" disabled={pending} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-          {pending ? "Starting…" : "Start Repair Now"}
-        </button>
+      </details>
+    );
+  }
+  return (
+    <div className="pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+      <div className="text-xs font-bold mb-2" style={{ color: "var(--text-secondary)" }}>
+        Send the customer an estimate
       </div>
-      {error && (
-        <p className="text-xs font-semibold mt-2" style={{ color: "var(--color-error-solid)" }}>
-          {error}
-        </p>
-      )}
-    </form>
+      <SendEstimateForm workOrderId={workOrderId} hasCustomerEmail={hasCustomerEmail} />
+    </div>
   );
 }
 
@@ -371,6 +355,7 @@ export function WorkOrderStatusPanel({
   workOrderId,
   status,
   hasCustomerEmail,
+  preApprovalRequired,
   hasDiagnosticFee,
   showDeliveryFee,
   deliveryFeeDefault,
@@ -378,6 +363,7 @@ export function WorkOrderStatusPanel({
   workOrderId: string;
   status: WorkOrderStatus;
   hasCustomerEmail: boolean;
+  preApprovalRequired: boolean | null;
   hasDiagnosticFee: boolean;
   showDeliveryFee: boolean;
   deliveryFeeDefault: string;
@@ -386,32 +372,25 @@ export function WorkOrderStatusPanel({
     case "droppedOff":
       return (
         <div className="space-y-4">
-          <SkipEstimateForm workOrderId={workOrderId} />
-          <div className="pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+          <div>
             <SimpleAction label="Start Diagnosis" action={() => startDiagnosis(workOrderId)} />
+            <p className="text-[10px] mt-1.5" style={{ color: "var(--text-muted)" }}>
+              Or just fill in the Diagnosis section and save — that moves it to Diagnosing too.
+            </p>
           </div>
-          <details className="pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-            <summary className="text-xs font-bold cursor-pointer" style={{ color: "var(--text-secondary)" }}>
-              Need a formal written estimate instead?
-            </summary>
-            <div className="mt-3">
-              <SendEstimateForm workOrderId={workOrderId} hasCustomerEmail={hasCustomerEmail} />
-            </div>
-          </details>
+          <EstimateSection workOrderId={workOrderId} hasCustomerEmail={hasCustomerEmail} preApprovalRequired={preApprovalRequired} />
         </div>
       );
     case "diagnosing":
       return (
         <div className="space-y-4">
-          <SkipEstimateForm workOrderId={workOrderId} />
-          <details className="pt-3" style={{ borderTop: "1px solid var(--border-subtle)" }}>
-            <summary className="text-xs font-bold cursor-pointer" style={{ color: "var(--text-secondary)" }}>
-              Need a formal written estimate instead?
-            </summary>
-            <div className="mt-3">
-              <SendEstimateForm workOrderId={workOrderId} hasCustomerEmail={hasCustomerEmail} />
-            </div>
-          </details>
+          <div>
+            <SimpleAction label="Start Repair" action={() => startRepair(workOrderId)} />
+            <p className="text-[10px] mt-1.5" style={{ color: "var(--text-muted)" }}>
+              Customer already gave the go-ahead? Start the repair now. Otherwise send an estimate below.
+            </p>
+          </div>
+          <EstimateSection workOrderId={workOrderId} hasCustomerEmail={hasCustomerEmail} preApprovalRequired={preApprovalRequired} />
         </div>
       );
     case "awaitingApproval":

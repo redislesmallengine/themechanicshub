@@ -54,9 +54,9 @@ export function WorkOrderIntakeForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [dropOffMethod, setDropOffMethod] = useState<DropOffMethod>("customerDropOff");
-  // true ("No pre-approval needed") is the common case — most drop-offs are
-  // "just fix it," not a formal quote request. Staff flip to "Yes" for the
-  // minority of jobs where the customer wants a written estimate first.
+  // true ("No pre-approval needed") is the common case. Either way the job is
+  // created Pending; this answer is only remembered (it preselects a button on
+  // the Diagnosis form and decides which step follows diagnosing).
   const [skipEstimate, setSkipEstimate] = useState(true);
 
   const selectedCustomer = useMemo(() => customers.find((c) => c.id === customerId), [customers, customerId]);
@@ -109,7 +109,7 @@ export function WorkOrderIntakeForm({
           <div className="text-xs font-bold mb-1.5" style={{ color: "var(--text-secondary)" }}>
             Need pre-approval with a written estimate first?
           </div>
-          {skipEstimate && <input type="hidden" name="skipEstimate" value="on" />}
+          {!skipEstimate && <input type="hidden" name="preApprovalRequired" value="on" />}
           <SegmentedToggle
             value={skipEstimate ? "no" : "yes"}
             onChange={(v) => setSkipEstimate(v === "no")}
@@ -119,7 +119,7 @@ export function WorkOrderIntakeForm({
             ]}
           />
           <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-            {skipEstimate ? "Straight to In Repair — no estimate email, no waiting on approval." : "Starts in Pending — you'll send a formal estimate to approve before repair begins."}
+            {skipEstimate ? "After diagnosing, you'll just start the repair — no estimate email, no waiting on approval." : "After diagnosing, you'll send a written estimate for the customer to approve first."}
           </p>
         </div>
       </div>
@@ -234,7 +234,7 @@ export function WorkOrderIntakeForm({
           Cancel
         </button>
         <button type="submit" disabled={pending} className="px-5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-semibold shadow-sm disabled:opacity-60">
-          {pending ? "Creating…" : skipEstimate ? "Create Work Order — Start Repair" : "Create Work Order"}
+          {pending ? "Creating…" : "Create Work Order"}
         </button>
       </div>
     </form>

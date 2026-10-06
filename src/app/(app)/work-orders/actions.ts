@@ -50,15 +50,14 @@ export async function createWorkOrder(formData: FormData) {
     return { error: "That equipment doesn't belong to this customer." };
   }
 
-  // "Customer said just fix it" fast path — the common case (checkbox
-  // defaults checked on the intake form). Creates the work order already
-  // authorized for repair, skipping the formal estimate/approval cycle
-  // entirely, while still keeping a real record of who authorized it and
-  // when — see skipEstimateApproval below for the same thing done later,
-  // mid-diagnosis, from the status panel instead of at intake.
-  const skipEstimate = formData.get("skipEstimate") === "on";
+  // Every new job starts Pending ("equipment is in, not yet diagnosed")
+  // whichever way the pre-approval question is answered -- the answer is
+  // only remembered here (it picks which save button is preselected on
+  // the Diagnosis form, and which path comes after diagnosing). The
+  // not-to-exceed amount is kept for when repair actually starts.
+  const preApprovalRequired = formData.get("preApprovalRequired") === "on";
   let notToExceedAmount: string | null = null;
-  if (skipEstimate) {
+  if (!preApprovalRequired) {
     const raw = String(formData.get("notToExceedAmount") ?? "").trim();
     if (raw) {
       const num = Number(raw);
@@ -68,20 +67,7 @@ export async function createWorkOrder(formData: FormData) {
   }
 
   const workOrder = await prisma.workOrder.create({
-    data: skipEstimate
-      ? {
-          organizationId,
-          customerId,
-          equipmentId,
-          complaint,
-          dropOffMethod,
-          status: "inRepair",
-          approvalMethod: "in-person",
-          decidedByName: customer.name,
-          decidedAt: new Date(),
-          notToExceedAmount,
-        }
-      : { organizationId, customerId, equipmentId, complaint, dropOffMethod },
+    data: { organizationId, customerId, equipmentId, complaint, dropOffMethod, preApprovalRequired, notToExceedAmount },
   });
 
   revalidatePath("/work-orders");
@@ -121,7 +107,36 @@ export async function updateDiagnosis(workOrderId: string, formData: FormData) {
     if (!member) return { error: "That staff member isn't part of this shop." };
   }
 
-  await prisma.workOrder.update({ where: { id: workOrderId }, data: { diagnosisNotes: diagnosisNotes || null, labourHours, assignedToUserId } });
+  // Which button was pressed on a Pending / Diagnosing job:
+  //   "estimate" -- diagnose only, an estimate is coming (stays as it is)
+  //   "later"    -- diagnosed, repair later (Pending -> Diagnosing)
+  //   "repair"   -- repairing as diagnosing (-> In Repair, approved in person)
+  // Saving without one (e.g. just a technician) counts as "later".
+  const outcome = String(formData.get("outcome") ?? "").trim();
+  const data: { diagnosisNotes: string | null; labourHours: string | null; assignedToUserId: string | null; status?: string; approvalMethod?: string; decidedByName?: string; decidedAt?: Date } = {
+    diagnosisNotes: diagnosisNotes || null,
+    labourHours,
+    assignedToUserId,
+  };
+  if (workOrder.status === "droppedOff" || workOrder.status === "diagnosing") {
+    if (outcome === "repair") Object.assign(data, await inPersonRepairData(workOrder.customerId));
+    else if (outcome !== "estimate" && workOrder.status === "droppedOff") data.status = "diagnosing";
+  }
+
+  await prisma.workOrder.update({ where: { id: workOrderId }, data });
+  revalidatePath(`/work-orders/${workOrderId}`);
+  revalidatePath("/work-orders");
+  return { success: true };
+}
+
+/** "Work performed" -- how it was fixed. Kept with the diagnosis and estimate so the whole story reads on one page, and pre-filled onto the invoice notes. */
+export async function updateRepairNotes(workOrderId: string, formData: FormData) {
+  const { organizationId } = await requireCanManageWorkOrders("update");
+  const workOrder = await loadOwnWorkOrder(workOrderId, organizationId);
+  if (!workOrder) return { error: "That work order doesn't exist." };
+
+  const repairNotes = String(formData.get("repairNotes") ?? "").trim();
+  await prisma.workOrder.update({ where: { id: workOrderId }, data: { repairNotes: repairNotes || null } });
   revalidatePath(`/work-orders/${workOrderId}`);
   return { success: true };
 }
@@ -227,41 +242,20 @@ export async function sendEstimate(workOrderId: string, formData: FormData) {
   return { success: true };
 }
 
-/**
- * The fast path taken after intake, once the tech is already diagnosing:
- * customer said "just fix it" (in person or on a call) with no formal
- * dollar quote, so skip straight to In Repair instead of manufacturing an
- * estimate just to record approval of it. Mirrors what createWorkOrder does
- * when the same checkbox is ticked at intake instead. See
- * recordPhoneDecision below for the *other* fast path — approving/declining
- * an estimate that *was* already sent.
- */
-export async function skipEstimateApproval(workOrderId: string, formData: FormData) {
+/** What moving a job into repair records when the customer gave the go-ahead in person -- shared by "Save & start repair" and the Start Repair button. Keeps any not-to-exceed amount captured at intake. */
+async function inPersonRepairData(customerId: string) {
+  const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { name: true } });
+  return { status: "inRepair", approvalMethod: "in-person", decidedByName: customer?.name ?? "Customer", decidedAt: new Date() };
+}
+
+/** Diagnosing -> In Repair without a written estimate (the customer already said go ahead). See recordPhoneDecision below for approving an estimate that was already sent. */
+export async function startRepair(workOrderId: string) {
   const { organizationId } = await requireCanManageWorkOrders("update");
   const workOrder = await loadOwnWorkOrder(workOrderId, organizationId);
   if (!workOrder) return { error: "That work order doesn't exist." };
   if (workOrder.status !== "droppedOff" && workOrder.status !== "diagnosing") return { error: "This work order is already past that point." };
 
-  const raw = String(formData.get("notToExceedAmount") ?? "").trim();
-  let notToExceedAmount: string | null = null;
-  if (raw) {
-    const num = Number(raw);
-    if (!Number.isFinite(num) || num < 0) return { error: "Not-to-exceed amount needs to be a positive number." };
-    notToExceedAmount = num.toFixed(2);
-  }
-
-  const customer = await prisma.customer.findUnique({ where: { id: workOrder.customerId } });
-
-  await prisma.workOrder.update({
-    where: { id: workOrderId },
-    data: {
-      status: "inRepair",
-      approvalMethod: "in-person",
-      decidedByName: customer?.name ?? "Customer",
-      decidedAt: new Date(),
-      notToExceedAmount,
-    },
-  });
+  await prisma.workOrder.update({ where: { id: workOrderId }, data: await inPersonRepairData(workOrder.customerId) });
 
   revalidatePath(`/work-orders/${workOrderId}`);
   revalidatePath("/work-orders");

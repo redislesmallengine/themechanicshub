@@ -12,6 +12,7 @@ import { WorkOrderPartsPanel } from "@/components/work-order-parts-panel";
 import { GenerateInvoiceButton } from "@/components/generate-invoice-button";
 import { SentEmailsPanel } from "@/components/sent-emails-panel";
 import { DeleteWorkOrderButton } from "@/components/delete-work-order-button";
+import { WorkOrderRepairNotesForm } from "@/components/work-order-repair-notes-form";
 
 export default async function WorkOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -53,6 +54,37 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   const showDeliveryFee = workOrder.dropOffMethod === "pickupDelivery";
   const deliveryFeeDefault = shopProfile?.deliveryFee?.toString() ?? "";
 
+  // Pending / Diagnosing: the Diagnosis form comes first -- it is where the next move
+  // (send an estimate, repair later, start repair) is chosen. Later on it drops below Status.
+  const earlyStage = status === "droppedOff" || status === "diagnosing";
+  const diagnosisCard = (
+  <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+    <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
+      Diagnosis
+    </h2>
+    <WorkOrderDiagnosisForm
+      workOrderId={workOrder.id}
+      status={status}
+      preApprovalRequired={workOrder.preApprovalRequired}
+      members={members.filter((m) => m.user).map((m) => ({ userId: m.userId, name: m.user!.name }))}
+      initialDiagnosisNotes={workOrder.diagnosisNotes ?? ""}
+      initialLabourHours={workOrder.labourHours?.toString() ?? ""}
+      initialAssignedToUserId={workOrder.assignedToUserId ?? ""}
+    />
+  </div>
+  );
+
+  // "The story so far" -- problem (the complaint card above), diagnosis, what the
+  // customer was told, and how it was fixed, together once work is underway.
+  const showStory = status === "inRepair" || status === "readyForPickup" || status === "closed";
+  const approvalMethodText = workOrder.approvalMethod === "phone" ? "by phone" : workOrder.approvalMethod === "in-person" ? "in person" : "through the online link";
+  const toldCustomer = workOrder.estimateAmount
+    ? `$${workOrder.estimateAmount.toString()} — ${workOrder.estimateNotes ?? ""}${workOrder.decidedByName ? ` Approved by ${workOrder.decidedByName} ${approvalMethodText} on ${workOrder.decidedAt?.toLocaleDateString() ?? ""}.` : ""}`
+    : workOrder.decidedByName
+      ? `No written estimate — go-ahead given ${approvalMethodText} by ${workOrder.decidedByName} on ${workOrder.decidedAt?.toLocaleDateString() ?? ""}.${workOrder.notToExceedAmount ? ` Not to exceed $${workOrder.notToExceedAmount.toString()}.` : ""}`
+      : "—";
+  const diagnosisSub = [workOrder.assignedTo?.name, workOrder.labourHours ? `${workOrder.labourHours.toString()} hr` : null].filter(Boolean).join(" · ");
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -92,6 +124,12 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
                   · <PhoneLink phone={workOrder.customer.phone} />
                 </>
               )}
+              {workOrder.assignedTo && (
+                <>
+                  {" "}
+                  · Technician: <b style={{ color: "var(--text-secondary)" }}>{workOrder.assignedTo.name}</b>
+                </>
+              )}
             </p>
           </div>
           <CallButton phone={workOrder.customer.phone} name={workOrder.customer.name} />
@@ -116,6 +154,37 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         </p>
       </div>
 
+      {earlyStage && diagnosisCard}
+
+      {showStory && (
+        <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+          <h2 className="text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>
+            The Story So Far
+          </h2>
+          <div>
+            {[
+              { label: "Diagnosis", sub: diagnosisSub, body: <p className="text-sm whitespace-pre-wrap" style={{ color: "var(--text-primary)" }}>{workOrder.diagnosisNotes ?? "—"}</p> },
+              { label: "Told the customer", sub: "estimate and go-ahead", body: <p className="text-sm" style={{ color: "var(--text-primary)" }}>{toldCustomer}</p> },
+              { label: "Work performed", sub: "how it was fixed", body: <WorkOrderRepairNotesForm workOrderId={workOrder.id} initialNotes={workOrder.repairNotes ?? ""} /> },
+            ].map((row) => (
+              <div key={row.label} className="grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-1 sm:gap-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                <div>
+                  <div className="text-[11px] font-extrabold uppercase tracking-wide" style={{ color: "var(--text-secondary)" }}>
+                    {row.label}
+                  </div>
+                  {row.sub && (
+                    <div className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                      {row.sub}
+                    </div>
+                  )}
+                </div>
+                <div>{row.body}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
         <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
           Status
@@ -124,6 +193,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           workOrderId={workOrder.id}
           status={status}
           hasCustomerEmail={!!workOrder.customer.email}
+          preApprovalRequired={workOrder.preApprovalRequired}
           hasDiagnosticFee={!!shopProfile?.diagnosticFee}
           showDeliveryFee={showDeliveryFee}
           deliveryFeeDefault={deliveryFeeDefault}
@@ -166,18 +236,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         />
       </div>
 
-      <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-        <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
-          Diagnosis
-        </h2>
-        <WorkOrderDiagnosisForm
-          workOrderId={workOrder.id}
-          members={members.filter((m) => m.user).map((m) => ({ userId: m.userId, name: m.user!.name }))}
-          initialDiagnosisNotes={workOrder.diagnosisNotes ?? ""}
-          initialLabourHours={workOrder.labourHours?.toString() ?? ""}
-          initialAssignedToUserId={workOrder.assignedToUserId ?? ""}
-        />
-      </div>
+      {!earlyStage && diagnosisCard}
 
       <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
         <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
