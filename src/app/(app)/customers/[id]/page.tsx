@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PhoneLink, CallButton } from "@/components/phone-link";
 import { notFound, redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
@@ -77,7 +78,15 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
                 {customer.name}
               </h1>
               <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                {[customer.phone, customer.email, customer.address].filter(Boolean).join(" · ") || "No contact info on file"}
+                {customer.phone || customer.email || customer.address ? (
+                  <>
+                    {customer.phone && <PhoneLink phone={customer.phone} />}
+                    {customer.phone && (customer.email || customer.address) && " · "}
+                    {[customer.email, customer.address].filter(Boolean).join(" · ")}
+                  </>
+                ) : (
+                  "No contact info on file"
+                )}
               </p>
               <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
                 Customer since {customer.createdAt.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
@@ -85,6 +94,7 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <CallButton phone={customer.phone} name={customer.name} />
             <Link
               href={`/invoices/new?customerId=${customer.id}`}
               className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-slate-50"

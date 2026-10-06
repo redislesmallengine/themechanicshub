@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PhoneLink } from "@/components/phone-link";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -119,7 +120,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                     </Link>
                   </td>
                   <td className="dt-td num text-sm" style={{ color: "var(--text-secondary)" }}>
-                    {c.phone ?? "—"}
+                    {c.phone ? <PhoneLink phone={c.phone} /> : "—"}
                   </td>
                   <td className="dt-td text-sm" style={{ color: "var(--text-secondary)" }}>
                     {c.email ?? "—"}

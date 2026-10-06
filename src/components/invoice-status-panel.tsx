@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { sendInvoice, previewInvoiceEmail, markInvoicePaid, voidInvoice } from "@/app/(app)/invoices/actions";
 import { PAYMENT_METHODS } from "@/lib/invoices";
+import { EmailSentNotice } from "@/components/email-sent-notice";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -30,7 +31,8 @@ function SendForm({
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ subject: string; html: string; replyTo: string | null } | null>(null);
+  const [preview, setPreview] = useState<{ subject: string; html: string; replyTo: string | null; to: string | null } | null>(null);
+  const [sent, setSent] = useState<{ to: string | null } | null>(null);
   const [pendingPreview, startPreview] = useTransition();
   const [pendingSend, startSend] = useTransition();
 
@@ -42,7 +44,7 @@ function SendForm({
         setError(result?.error ?? "Couldn't load the preview.");
         return;
       }
-      setPreview({ subject: result.subject, html: result.html, replyTo: result.replyTo ?? null });
+      setPreview({ subject: result.subject, html: result.html, replyTo: result.replyTo ?? null, to: result.to ?? null });
     });
   }
 
@@ -54,8 +56,15 @@ function SendForm({
         setError(result.error);
         return;
       }
-      router.refresh();
+      // Show the confirmation first; the page behind refreshes when it is closed.
+      setSent({ to: preview?.to ?? null });
     });
+  }
+
+  function handleCloseSent() {
+    setSent(null);
+    setPreview(null);
+    router.refresh();
   }
 
   return (
@@ -80,7 +89,9 @@ function SendForm({
         </p>
       )}
 
-      {preview && (
+      {sent && <EmailSentNotice title={isPaid ? "Receipt sent" : "Invoice sent"} to={sent.to} onClose={handleCloseSent} />}
+
+      {preview && !sent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.4)" }} onClick={() => setPreview(null)}>
           <div
             className="w-full max-w-5xl h-[90vh] flex flex-col rounded-xl overflow-hidden"

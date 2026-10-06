@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { STATUS_LABELS as WO_STATUS_LABELS, STATUS_BADGE as WO_STATUS_BADGE, now as getNow, type WorkOrderStatus } from "@/lib/work-orders";
 import type { OpenWorkOrderRow } from "@/app/api/dashboard/open-work-orders/route";
+import { PhoneLink } from "@/components/phone-link";
 import { Spinner } from "@/components/dashboard/skeletons";
 
 async function fetchOpenWorkOrdersPage(page: number, pageSize: number): Promise<{ workOrders: OpenWorkOrderRow[]; total: number }> {
@@ -137,7 +138,7 @@ export function OpenWorkOrdersTable({
                         {wo.customerName}
                       </Link>
                       <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                        {wo.customerContact}
+                        {wo.customerPhone ? <PhoneLink phone={wo.customerPhone} /> : wo.customerContact}
                       </div>
                     </td>
                     <td className="dt-td text-sm">{wo.equipmentLabel}</td>

@@ -103,6 +103,7 @@ export async function OpenWorkOrdersSection({ organizationId, agingDays }: { org
     readyForPickupAt: wo.readyForPickupAt ? wo.readyForPickupAt.toISOString() : null,
     customerName: wo.customer.name,
     customerContact: wo.customer.phone ?? wo.customer.email ?? "",
+    customerPhone: wo.customer.phone ?? null,
     equipmentLabel: [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment",
   }));
 

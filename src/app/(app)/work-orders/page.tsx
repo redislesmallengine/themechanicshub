@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PhoneLink } from "@/components/phone-link";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -242,7 +243,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
                         {wo.customer.name}
                       </Link>
                       <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                        {wo.customer.phone ?? wo.customer.email ?? ""}
+                        {wo.customer.phone ? <PhoneLink phone={wo.customer.phone} /> : (wo.customer.email ?? "")}
                       </div>
                     </td>
                     <td className="dt-td text-sm">{equipmentLabel}</td>

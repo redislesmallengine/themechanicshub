@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PhoneLink } from "@/components/phone-link";
 import { notFound, redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
@@ -219,7 +220,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
               )}
               {invoice.customer.phone && (
                 <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
-                  {invoice.customer.phone}
+                  <PhoneLink phone={invoice.customer.phone} className="font-semibold text-brand-600 hover:underline" />
                 </p>
               )}
               {invoice.customer.email && (

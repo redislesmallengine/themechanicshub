@@ -12,6 +12,7 @@ import {
   closeWorkOrder,
 } from "@/app/(app)/work-orders/actions";
 import { GenerateInvoiceButton } from "@/components/generate-invoice-button";
+import { EmailSentNotice } from "@/components/email-sent-notice";
 import type { WorkOrderStatus } from "@/lib/work-orders";
 
 const inputStyle = {
@@ -139,7 +140,8 @@ function SendEstimateForm({ workOrderId, hasCustomerEmail }: { workOrderId: stri
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null);
+  const [preview, setPreview] = useState<{ subject: string; html: string; to: string | null } | null>(null);
+  const [sent, setSent] = useState<{ to: string | null } | null>(null);
   const [pendingPreview, startPreview] = useTransition();
   const [pendingSend, startSend] = useTransition();
   const boundPreview = previewEstimateEmail.bind(null, workOrderId);
@@ -156,7 +158,7 @@ function SendEstimateForm({ workOrderId, hasCustomerEmail }: { workOrderId: stri
         setError(result?.error ?? "Couldn't load the preview.");
         return;
       }
-      setPreview({ subject: result.subject, html: result.html });
+      setPreview({ subject: result.subject, html: result.html, to: result.to ?? null });
     });
   }
 
@@ -170,8 +172,16 @@ function SendEstimateForm({ workOrderId, hasCustomerEmail }: { workOrderId: stri
         setError(result.error);
         return;
       }
-      router.refresh();
+      // Show the confirmation first -- refreshing right away would move the job to
+      // Awaiting Approval and tear this whole form (and popup) down with no sign it sent.
+      setSent({ to: preview?.to ?? null });
     });
+  }
+
+  function handleCloseSent() {
+    setSent(null);
+    setPreview(null);
+    router.refresh();
   }
 
   return (
@@ -206,7 +216,9 @@ function SendEstimateForm({ workOrderId, hasCustomerEmail }: { workOrderId: stri
         </button>
       </form>
 
-      {preview && (
+      {sent && <EmailSentNotice title="Estimate sent" to={sent.to} detail="The work order is now Awaiting Approval." onClose={handleCloseSent} />}
+
+      {preview && !sent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.4)" }} onClick={() => setPreview(null)}>
           <div
             className="w-full max-w-lg max-h-[85vh] flex flex-col rounded-xl overflow-hidden"

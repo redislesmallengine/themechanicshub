@@ -16,7 +16,12 @@ export function InvoiceDetailsForm({ invoiceId, initialDueDate, initialNotes }: 
   const [pending, startTransition] = useTransition();
   const bound = updateInvoiceDetails.bind(null, invoiceId);
 
-  function handleSubmit(formData: FormData) {
+  // A plain onSubmit, not <form action>: React 19 resets a form's fields to their
+  // original defaults once an action finishes, so the saved value (e.g. the
+  // technician) snapped back to the old one on screen until a full refresh.
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
     setMessage(null);
     startTransition(async () => {
       const result = await bound(formData);
@@ -30,7 +35,7 @@ export function InvoiceDetailsForm({ invoiceId, initialDueDate, initialNotes }: 
   }
 
   return (
-    <form action={handleSubmit} className="space-y-3">
+    <form onSubmit={handleSubmit} className="space-y-3">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
         <div>
           <label htmlFor="dueDate" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>

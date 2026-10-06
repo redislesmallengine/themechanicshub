@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PhoneLink, CallButton } from "@/components/phone-link";
 import { notFound, redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
@@ -85,8 +86,15 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
               <Link href={`/equipment/${workOrder.equipment.id}`} className="text-brand-600 font-semibold">
                 View equipment
               </Link>
+              {workOrder.customer.phone && (
+                <>
+                  {" "}
+                  · <PhoneLink phone={workOrder.customer.phone} />
+                </>
+              )}
             </p>
           </div>
+          <CallButton phone={workOrder.customer.phone} name={workOrder.customer.name} />
           {(status === "droppedOff" || status === "declined" || isOwner) && !workOrder.invoice && !workOrder.combinedInto && canDelete.success && (
             <DeleteWorkOrderButton
               workOrderId={workOrder.id}
