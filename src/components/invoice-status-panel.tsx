@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { sendInvoice, previewInvoiceEmail, markInvoicePaid, voidInvoice } from "@/app/(app)/invoices/actions";
+import { sendInvoice, previewInvoiceEmail, markInvoicePaid, voidInvoice, closeInvoiceWorkOrders } from "@/app/(app)/invoices/actions";
 import { PAYMENT_METHODS } from "@/lib/invoices";
 import { EmailSentNotice } from "@/components/email-sent-notice";
 
@@ -140,7 +140,7 @@ function SendForm({
   );
 }
 
-function MarkPaidForm({ invoiceId }: { invoiceId: string }) {
+function MarkPaidForm({ invoiceId, awaitingPickupCount }: { invoiceId: string; awaitingPickupCount: number }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -183,6 +183,17 @@ function MarkPaidForm({ invoiceId }: { invoiceId: string }) {
           <input id="paymentReference" name="paymentReference" type="text" placeholder="e-transfer confirmation #, etc." className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
         </div>
       </div>
+      {awaitingPickupCount > 0 && (
+        <label className="flex items-start gap-2 text-xs font-semibold cursor-pointer" style={{ color: "var(--text-secondary)" }}>
+          <input type="checkbox" name="closeWorkOrder" defaultChecked className="mt-0.5" />
+          <span>
+            Customer picked up the machine{awaitingPickupCount > 1 ? "s" : ""} — close the work order{awaitingPickupCount > 1 ? "s" : ""}
+            <span className="block font-normal text-[10px]" style={{ color: "var(--text-muted)" }}>
+              Untick if they&apos;re paying now but collecting later.
+            </span>
+          </span>
+        </label>
+      )}
       {error && (
         <p className="text-xs font-semibold" style={{ color: "var(--color-error-solid)" }}>
           {error}
@@ -234,6 +245,38 @@ function VoidForm({ invoiceId }: { invoiceId: string }) {
   );
 }
 
+/** Paid but the machine hasn't gone out yet: one button to record the pickup without leaving the invoice. */
+function PickupAction({ invoiceId, count }: { invoiceId: string; count: number }) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function handleClick() {
+    setError(null);
+    startTransition(async () => {
+      const result = await closeInvoiceWorkOrders(invoiceId);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="pt-1">
+      <button type="button" onClick={handleClick} disabled={pending} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
+        {pending ? "Closing…" : count > 1 ? "Customer Picked Up — Close Work Orders" : "Customer Picked Up — Close Work Order"}
+      </button>
+      {error && (
+        <p className="text-xs font-semibold mt-2" style={{ color: "var(--color-error-solid)" }}>
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function InvoiceStatusPanel({
   invoiceId,
   status,
@@ -241,6 +284,7 @@ export function InvoiceStatusPanel({
   hasRecipient,
   hasRecipientEmail,
   canVoid,
+  awaitingPickupCount,
 }: {
   invoiceId: string;
   status: string;
@@ -248,6 +292,8 @@ export function InvoiceStatusPanel({
   hasRecipient: boolean;
   hasRecipientEmail: boolean;
   canVoid: boolean;
+  /** Linked work orders still sitting at Ready for Pickup. */
+  awaitingPickupCount: number;
 }) {
   return (
     <div className="space-y-3">
@@ -258,7 +304,7 @@ export function InvoiceStatusPanel({
       {/* Draft is included here too, not just Sent/Viewed — a walk-in cash sale with no customer to email needs a way to close out that doesn't go through Send Invoice at all. */}
       {(status === "draft" || status === "sent" || status === "viewed") && (
         <>
-          <MarkPaidForm invoiceId={invoiceId} />
+          <MarkPaidForm invoiceId={invoiceId} awaitingPickupCount={awaitingPickupCount} />
           {canVoid && <VoidForm invoiceId={invoiceId} />}
         </>
       )}
@@ -267,6 +313,7 @@ export function InvoiceStatusPanel({
           Paid.
         </p>
       )}
+      {status === "paid" && awaitingPickupCount > 0 && <PickupAction invoiceId={invoiceId} count={awaitingPickupCount} />}
       {status === "void" && (
         <p className="text-xs font-semibold" style={{ color: "var(--color-error-solid)" }}>
           Voided.

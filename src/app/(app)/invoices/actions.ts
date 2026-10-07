@@ -31,6 +31,26 @@ async function loadOwnInvoice(invoiceId: string, organizationId: string) {
   return invoice;
 }
 
+/**
+ * Closes (picked up) every work order behind this invoice that is still Ready for
+ * Pickup -- the direct one plus any folded into a combined invoice. Returns how many
+ * were closed, or null if the signed-in user may not update work orders.
+ */
+async function closeReadyWorkOrders(invoice: { workOrderId: string | null; combinedWorkOrders: { workOrderId: string }[] }, organizationId: string) {
+  const allowed = await auth.api.hasPermission({ headers: await headers(), body: { permissions: { workOrder: ["update"] } } });
+  if (!allowed.success) return null;
+  const ids = [...(invoice.workOrderId ? [invoice.workOrderId] : []), ...invoice.combinedWorkOrders.map((c) => c.workOrderId)];
+  if (ids.length === 0) return 0;
+  const result = await prisma.workOrder.updateMany({
+    where: { id: { in: ids }, organizationId, status: "readyForPickup" },
+    data: { status: "closed", closedAt: new Date() },
+  });
+  for (const id of ids) revalidatePath(`/work-orders/${id}`);
+  revalidatePath("/work-orders");
+  revalidatePath("/dashboard");
+  return result.count;
+}
+
 /** Recomputes and persists subtotal/taxAmount/total (and invoiceType — adding/removing a line can flip Repair Service into Combined) from the invoice's current line items — called after any line item change. */
 async function recalcTotals(invoiceId: string, organizationId: string) {
   const [invoice, lineItems, shopProfile, combinedWorkOrderCount] = await Promise.all([
@@ -773,10 +793,27 @@ export async function markInvoicePaid(invoiceId: string, formData: FormData) {
     data: { status: "paid", paidAt: new Date(), paymentMethod, paymentReference: paymentReference || null },
   });
 
+  // The "customer picked up the machine" tick-box on the Mark as Paid form.
+  if (formData.get("closeWorkOrder") === "on") await closeReadyWorkOrders(invoice, organizationId);
+
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
   if (invoice.workOrderId) revalidatePath(`/work-orders/${invoice.workOrderId}`);
   for (const cwo of invoice.combinedWorkOrders) revalidatePath(`/work-orders/${cwo.workOrderId}`);
+  return { success: true };
+}
+
+/** "Customer picked up -- close the work order(s)" from the invoice page, for when payment and pickup happen at different times. */
+export async function closeInvoiceWorkOrders(invoiceId: string) {
+  const { organizationId } = await requireCanManageInvoices("update");
+  const invoice = await loadOwnInvoice(invoiceId, organizationId);
+  if (!invoice) return { error: "That invoice doesn't exist." };
+
+  const closed = await closeReadyWorkOrders(invoice, organizationId);
+  if (closed === null) return { error: "You don't have permission to close work orders." };
+  if (closed === 0) return { error: "Nothing to close — the work order isn't waiting for pickup." };
+
+  revalidatePath(`/invoices/${invoiceId}`);
   return { success: true };
 }
 

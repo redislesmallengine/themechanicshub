@@ -404,6 +404,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           hasRecipient={invoice.payerType === "warranty" ? !!invoice.warrantyProvider : !!invoice.customer}
           hasRecipientEmail={invoice.payerType === "warranty" ? !!invoice.warrantyProvider?.billingEmail : !!invoice.customer?.email}
           canVoid={canVoid.success}
+          awaitingPickupCount={[invoice.workOrder, ...invoice.combinedWorkOrders.map((c) => c.workOrder)].filter((wo) => wo?.status === "readyForPickup").length}
         />
         {invoice.status === "paid" && invoice.paymentReference && (
           <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
