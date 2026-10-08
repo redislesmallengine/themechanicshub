@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { updateRepairNotes } from "@/app/(app)/work-orders/actions";
 
 /** "Work performed" -- how it was fixed. Plain onSubmit (not <form action>) so the text isn't reset after saving. */
-export function WorkOrderRepairNotesForm({ workOrderId, initialNotes }: { workOrderId: string; initialNotes: string }) {
+export function WorkOrderRepairNotesForm({ workOrderId, initialNotes, prefilledFromDiagnosis = false }: { workOrderId: string; initialNotes: string; prefilledFromDiagnosis?: boolean }) {
   const router = useRouter();
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [pending, startTransition] = useTransition();
@@ -37,6 +37,11 @@ export function WorkOrderRepairNotesForm({ workOrderId, initialNotes }: { workOr
         className="w-full px-3 py-2 rounded-lg text-xs font-medium"
         style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)", color: "var(--text-primary)" }}
       />
+      {prefilledFromDiagnosis && (
+        <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+          Pre-filled from the diagnosis — edit it to say what was actually done, then save.
+        </p>
+      )}
       <div className="flex items-center gap-3">
         <button type="submit" disabled={pending} className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
           {pending ? "Saving…" : "Save Work Performed"}

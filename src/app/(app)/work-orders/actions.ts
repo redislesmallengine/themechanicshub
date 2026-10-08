@@ -314,6 +314,53 @@ export async function closeWorkOrder(workOrderId: string) {
   return { success: true };
 }
 
+// Pipeline order, used to tell a move forward from a move back.
+const STATUS_ORDER = ["droppedOff", "diagnosing", "awaitingApproval", "inRepair", "readyForPickup", "closed", "declined"];
+
+/**
+ * The owner's "Move to..." selector: jump a job to any status without clicking through
+ * every step. The timestamps the rest of the app relies on (awaiting-approval age,
+ * ready-for-pickup aging, closed date) are kept in step automatically. Two things are
+ * refused because they would leave the job contradicting itself: Awaiting Approval with
+ * no estimate sent, and going back before Ready for Pickup once an invoice exists.
+ */
+export async function changeWorkOrderStatus(workOrderId: string, target: string) {
+  const { organizationId } = await requireCanManageWorkOrders("update");
+  if (!STATUS_ORDER.includes(target)) return { error: "That isn't a valid status." };
+
+  const workOrder = await prisma.workOrder.findUnique({ where: { id: workOrderId }, include: { invoice: { select: { id: true } }, combinedInto: { select: { id: true } } } });
+  if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
+  if (workOrder.status === target) return { success: true };
+
+  const hasInvoice = !!(workOrder.invoice || workOrder.combinedInto);
+  if (hasInvoice && STATUS_ORDER.indexOf(target) < STATUS_ORDER.indexOf("readyForPickup")) {
+    return { error: "This job already has an invoice, so it can't go back before Ready for Pickup." };
+  }
+  if (hasInvoice && target === "declined") return { error: "This job already has an invoice, so it can't be marked Declined." };
+  if (target === "awaitingApproval" && !workOrder.estimateAmount) return { error: "Send an estimate first — Awaiting Approval means an estimate is out with the customer." };
+
+  const now = new Date();
+  const data: { status: string; approvalMethod?: string; decidedByName?: string; decidedAt?: Date; awaitingApprovalAt?: Date; readyForPickupAt?: Date | null; closedAt?: Date | null } = { status: target };
+  const rank = STATUS_ORDER.indexOf(target);
+
+  if (target === "awaitingApproval") data.awaitingApprovalAt = now;
+  if (target === "inRepair" && !workOrder.decidedAt) Object.assign(data, await inPersonRepairData(workOrder.customerId));
+  if (target === "readyForPickup") data.readyForPickupAt = workOrder.readyForPickupAt ?? now;
+  if (target === "closed") {
+    data.closedAt = now;
+    data.readyForPickupAt = workOrder.readyForPickupAt ?? now;
+  } else {
+    data.closedAt = null;
+  }
+  if (rank < STATUS_ORDER.indexOf("readyForPickup") || target === "declined") data.readyForPickupAt = null;
+
+  await prisma.workOrder.update({ where: { id: workOrderId }, data });
+  revalidatePath(`/work-orders/${workOrderId}`);
+  revalidatePath("/work-orders");
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
 /**
  * Permanently removes a work order. Blocked entirely once it has an
  * invoice (direct or folded into a combined one) -- that means real money

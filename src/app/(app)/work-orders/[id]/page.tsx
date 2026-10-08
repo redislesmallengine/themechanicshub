@@ -13,6 +13,8 @@ import { GenerateInvoiceButton } from "@/components/generate-invoice-button";
 import { SentEmailsPanel } from "@/components/sent-emails-panel";
 import { DeleteWorkOrderButton } from "@/components/delete-work-order-button";
 import { WorkOrderRepairNotesForm } from "@/components/work-order-repair-notes-form";
+import { WorkOrderStatusMover } from "@/components/work-order-status-mover";
+import { CompleteCollectForm } from "@/components/complete-collect-form";
 
 export default async function WorkOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -67,6 +69,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
       status={status}
       preApprovalRequired={workOrder.preApprovalRequired}
       members={members.filter((m) => m.user).map((m) => ({ userId: m.userId, name: m.user!.name }))}
+      currentUserId={session.user.id}
       initialDiagnosisNotes={workOrder.diagnosisNotes ?? ""}
       initialLabourHours={workOrder.labourHours?.toString() ?? ""}
       initialAssignedToUserId={workOrder.assignedToUserId ?? ""}
@@ -165,7 +168,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
             {[
               { label: "Diagnosis", sub: diagnosisSub, body: <p className="text-sm whitespace-pre-wrap" style={{ color: "var(--text-primary)" }}>{workOrder.diagnosisNotes ?? "—"}</p> },
               { label: "Told the customer", sub: "estimate and go-ahead", body: <p className="text-sm" style={{ color: "var(--text-primary)" }}>{toldCustomer}</p> },
-              { label: "Work performed", sub: "how it was fixed", body: <WorkOrderRepairNotesForm workOrderId={workOrder.id} initialNotes={workOrder.repairNotes ?? ""} /> },
+              { label: "Work performed", sub: "how it was fixed", body: <WorkOrderRepairNotesForm workOrderId={workOrder.id} initialNotes={workOrder.repairNotes ?? workOrder.diagnosisNotes ?? ""} prefilledFromDiagnosis={!workOrder.repairNotes && !!workOrder.diagnosisNotes} /> },
             ].map((row) => (
               <div key={row.label} className="grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-1 sm:gap-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                 <div>
@@ -185,10 +188,40 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         </div>
       )}
 
+      {status === "inRepair" && !workOrder.invoice && !workOrder.combinedInto && (
+        <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--color-brand-600)" }}>
+          <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+            Complete &amp; Collect
+          </h2>
+          <p className="text-[11px] mt-0.5 mb-3" style={{ color: "var(--text-muted)" }}>
+            Customer at the counter? Finish the repair, bill it, take payment and close the job in one step. Not ready to bill yet? Use <b>Mark Repair Completed</b> in Status below.
+          </p>
+          <CompleteCollectForm
+            workOrderId={workOrder.id}
+            initialRepairNotes={workOrder.repairNotes ?? workOrder.diagnosisNotes ?? ""}
+            notesPrefilledFromDiagnosis={!workOrder.repairNotes && !!workOrder.diagnosisNotes}
+            initialLabourHours={workOrder.labourHours?.toString() ?? ""}
+            parts={workOrder.parts.map((p) => ({ name: p.name, quantity: p.quantity }))}
+            hasDiagnosticFee={!!shopProfile?.diagnosticFee}
+            showDeliveryFee={showDeliveryFee}
+            deliveryFeeDefault={deliveryFeeDefault}
+            customerEmail={workOrder.customer.email}
+          />
+        </div>
+      )}
+
       <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-        <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
-          Status
-        </h2>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+            Status
+          </h2>
+          <WorkOrderStatusMover
+            workOrderId={workOrder.id}
+            status={status}
+            hasEstimate={!!workOrder.estimateAmount}
+            hasInvoice={!!(workOrder.invoice || workOrder.combinedInto)}
+          />
+        </div>
         <WorkOrderStatusPanel
           workOrderId={workOrder.id}
           status={status}

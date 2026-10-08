@@ -7,6 +7,8 @@ import { SearchIcon } from "@/components/icons";
 import { Pagination } from "@/components/pagination";
 import { DeleteWorkOrderButton } from "@/components/delete-work-order-button";
 import { SortTh } from "@/components/sortable-th";
+import { WorkOrderQuickAction } from "@/components/work-order-quick-action";
+import { WorkOrderStatusMover } from "@/components/work-order-status-mover";
 import { parseSort, sortQuery } from "@/lib/sort";
 import { BOARD_STATUSES, STATUS_LABELS, STATUS_BADGE, now as getNow, type WorkOrderStatus } from "@/lib/work-orders";
 
@@ -303,12 +305,17 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
                       {fmtAge(ageMs)}
                     </td>
                     <td className="dt-td">
-                      <Link href={nextStep.href} className="text-xs font-bold text-brand-600 whitespace-nowrap">
-                        {nextStep.label}
-                      </Link>
+                      {woStatus === "droppedOff" || woStatus === "diagnosing" || woStatus === "inRepair" ? (
+                        <WorkOrderQuickAction workOrderId={wo.id} status={woStatus} />
+                      ) : (
+                        <Link href={nextStep.href} className="text-xs font-bold text-brand-600 whitespace-nowrap">
+                          {nextStep.label}
+                        </Link>
+                      )}
                     </td>
                     <td className="dt-td text-right">
                       <div className="flex justify-end items-center gap-3">
+                        {canUpdate.success && <WorkOrderStatusMover workOrderId={wo.id} status={woStatus} hasEstimate={!!wo.estimateAmount} hasInvoice={!!invoiceId} compact />}
                         {canUpdate.success && (
                           <Link href={`/work-orders/${wo.id}`} className="text-[11px] font-bold text-brand-600">
                             Edit

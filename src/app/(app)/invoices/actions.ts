@@ -117,24 +117,29 @@ async function insertLineItem(invoiceId: string, afterHeaderId: string | null, d
   });
 }
 
-export async function generateInvoiceFromWorkOrder(workOrderId: string, formData: FormData) {
-  const { organizationId } = await requireCanManageInvoices("create");
+type WorkOrderInvoiceLine = { type: string; description: string; quantity: string; unitPrice: string; unitCost: string | null; taxable: boolean; lineTotal: string; sortOrder: number };
 
-  const workOrder = await prisma.workOrder.findUnique({
-    where: { id: workOrderId },
-    include: { parts: true, invoice: true, combinedInto: true },
-  });
-  if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
-  if (workOrder.status !== "readyForPickup" && workOrder.status !== "closed") {
-    return { error: "This work order isn't ready to invoice yet — mark it Repair Completed first." };
-  }
-  if (workOrder.invoice || workOrder.combinedInto) return { error: "This work order already has an invoice." };
-
-  const shopProfile = await prisma.shopProfile.findUnique({ where: { organizationId } });
+/** The fee choices on the Generate Invoice / Complete & Collect forms. */
+function readFeeOptions(formData: FormData): { includeDiagnosticFee: boolean; deliveryFee: number | null } | { error: string } {
   const includeDiagnosticFee = formData.get("includeDiagnosticFee") === "on";
-  const includeDeliveryFee = formData.get("includeDeliveryFee") === "on";
+  if (formData.get("includeDeliveryFee") !== "on") return { includeDiagnosticFee, deliveryFee: null };
+  // Staff-entered, not always the shop's configured default -- distance
+  // varies job to job (a 2km drop vs. a 20km one), so the amount is
+  // editable on the form, pre-filled from shopProfile.deliveryFee but
+  // overridable there, not locked to it.
+  const raw = String(formData.get("deliveryFeeAmount") ?? "").trim();
+  const fee = Number(raw);
+  if (!raw || !Number.isFinite(fee) || fee < 0) return { error: "Enter a delivery fee amount." };
+  return { includeDiagnosticFee, deliveryFee: fee };
+}
 
-  const lines: { type: string; description: string; quantity: string; unitPrice: string; unitCost: string | null; taxable: boolean; lineTotal: string; sortOrder: number }[] = [];
+/** Labour, parts and the optional fees for one work order -- shared by Generate Invoice and Complete & Collect. */
+function buildWorkOrderInvoiceLines(
+  workOrder: { labourHours: { toString(): string } | null; parts: { name: string; quantity: number; unitSellPrice: { toString(): string } | null; unitCostPrice: { toString(): string } | null }[] },
+  shopProfile: { labourRate: { toString(): string } | null; diagnosticFee: { toString(): string } | null } | null,
+  fees: { includeDiagnosticFee: boolean; deliveryFee: number | null }
+): WorkOrderInvoiceLine[] {
+  const lines: WorkOrderInvoiceLine[] = [];
   let sortOrder = 0;
 
   if (workOrder.labourHours && shopProfile?.labourRate) {
@@ -166,39 +171,35 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
     });
   }
 
-  if (includeDiagnosticFee && shopProfile?.diagnosticFee) {
+  if (fees.includeDiagnosticFee && shopProfile?.diagnosticFee) {
     const fee = Number(shopProfile.diagnosticFee);
-    lines.push({
-      type: "fee",
-      description: "Diagnostic Fee",
-      quantity: "1.00",
-      unitPrice: fee.toFixed(2),
-      unitCost: null,
-      taxable: true,
-      lineTotal: fee.toFixed(2),
-      sortOrder: sortOrder++,
-    });
+    lines.push({ type: "fee", description: "Diagnostic Fee", quantity: "1.00", unitPrice: fee.toFixed(2), unitCost: null, taxable: true, lineTotal: fee.toFixed(2), sortOrder: sortOrder++ });
   }
 
-  if (includeDeliveryFee) {
-    // Staff-entered, not always the shop's configured default — distance
-    // varies job to job (a 2km drop vs. a 20km one), so the amount is
-    // editable on the Generate Invoice form, pre-filled from
-    // shopProfile.deliveryFee but overridable there, not locked to it.
-    const deliveryFeeRaw = String(formData.get("deliveryFeeAmount") ?? "").trim();
-    const fee = Number(deliveryFeeRaw);
-    if (!deliveryFeeRaw || !Number.isFinite(fee) || fee < 0) return { error: "Enter a delivery fee amount." };
-    lines.push({
-      type: "fee",
-      description: "Pickup/Delivery Fee",
-      quantity: "1.00",
-      unitPrice: fee.toFixed(2),
-      unitCost: null,
-      taxable: true,
-      lineTotal: fee.toFixed(2),
-      sortOrder: sortOrder++,
-    });
+  if (fees.deliveryFee !== null) {
+    lines.push({ type: "fee", description: "Pickup/Delivery Fee", quantity: "1.00", unitPrice: fees.deliveryFee.toFixed(2), unitCost: null, taxable: true, lineTotal: fees.deliveryFee.toFixed(2), sortOrder: sortOrder++ });
   }
+
+  return lines;
+}
+
+export async function generateInvoiceFromWorkOrder(workOrderId: string, formData: FormData) {
+  const { organizationId } = await requireCanManageInvoices("create");
+
+  const workOrder = await prisma.workOrder.findUnique({
+    where: { id: workOrderId },
+    include: { parts: true, invoice: true, combinedInto: true },
+  });
+  if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
+  if (workOrder.status !== "readyForPickup" && workOrder.status !== "closed") {
+    return { error: "This work order isn't ready to invoice yet — mark it Repair Completed first." };
+  }
+  if (workOrder.invoice || workOrder.combinedInto) return { error: "This work order already has an invoice." };
+
+  const shopProfile = await prisma.shopProfile.findUnique({ where: { organizationId } });
+  const fees = readFeeOptions(formData);
+  if ("error" in fees) return { error: fees.error };
+  const lines = buildWorkOrderInvoiceLines({ labourHours: workOrder.labourHours, parts: workOrder.parts }, shopProfile, fees);
 
   const totals = computeTotals(
     lines.map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), taxable: l.taxable })),
@@ -227,6 +228,94 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
   revalidatePath(`/work-orders/${workOrderId}`);
   revalidatePath("/invoices");
   redirect(`/invoices/${invoice.id}`);
+}
+
+/**
+ * "Complete & Collect" -- the counter-job shortcut. One submit finishes the repair,
+ * bills it, records the payment and closes the work order: the same result as
+ * Mark Repair Completed -> Generate Invoice -> Mark as Paid -> Mark Picked Up, in a
+ * single transaction so a half-finished job can't be left behind.
+ */
+export async function completeAndCollect(workOrderId: string, formData: FormData) {
+  const { organizationId } = await requireCanManageInvoices("create");
+  const reqHeaders = await headers();
+  const [canPay, canClose] = await Promise.all([
+    auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["update"] } } }),
+    auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { workOrder: ["update"] } } }),
+  ]);
+  if (!canPay.success || !canClose.success) return { error: "You don't have permission to complete and collect a job." };
+
+  const workOrder = await prisma.workOrder.findUnique({
+    where: { id: workOrderId },
+    include: { parts: true, invoice: true, combinedInto: true, customer: { select: { email: true } } },
+  });
+  if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
+  if (workOrder.status !== "inRepair" && workOrder.status !== "readyForPickup") return { error: "Only a job that is In Repair or Ready for Pickup can be completed and collected." };
+  if (workOrder.invoice || workOrder.combinedInto) return { error: "This work order already has an invoice." };
+
+  const paymentMethod = String(formData.get("paymentMethod") ?? "").trim();
+  if (!PAYMENT_METHODS.includes(paymentMethod as (typeof PAYMENT_METHODS)[number])) return { error: "Choose a payment method." };
+  const paymentReference = String(formData.get("paymentReference") ?? "").trim() || null;
+
+  const labourRaw = String(formData.get("labourHours") ?? "").trim();
+  let labourHours = workOrder.labourHours;
+  if (labourRaw) {
+    const num = Number(labourRaw);
+    if (!Number.isFinite(num) || num < 0) return { error: "Labour hours needs to be a positive number." };
+    labourHours = num.toFixed(2) as unknown as typeof workOrder.labourHours;
+  }
+  const repairNotes = String(formData.get("repairNotes") ?? "").trim() || null;
+
+  const fees = readFeeOptions(formData);
+  if ("error" in fees) return { error: fees.error };
+
+  const shopProfile = await prisma.shopProfile.findUnique({ where: { organizationId } });
+  const lines = buildWorkOrderInvoiceLines({ labourHours, parts: workOrder.parts }, shopProfile, fees);
+  const totals = computeTotals(
+    lines.map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), taxable: l.taxable })),
+    Number(shopProfile?.taxRate ?? 0)
+  );
+
+  const now = new Date();
+  const invoice = await prisma.$transaction(async (tx) => {
+    await tx.workOrder.update({
+      where: { id: workOrderId },
+      data: { repairNotes, labourHours, status: "closed", readyForPickupAt: workOrder.readyForPickupAt ?? now, closedAt: now },
+    });
+    const invoiceNumber = await claimInvoiceNumber(tx, organizationId);
+    return tx.invoice.create({
+      data: {
+        organizationId,
+        workOrderId,
+        customerId: workOrder.customerId,
+        equipmentId: workOrder.equipmentId,
+        invoiceType: classifyInvoiceType({ hasEquipment: true, hasWorkOrder: true, lineItems: lines.map((l) => ({ type: l.type })) }),
+        invoiceNumber,
+        viewToken: generateViewToken(),
+        status: "paid",
+        paidAt: now,
+        paymentMethod,
+        paymentReference,
+        notes: repairNotes,
+        ...totals,
+        lineItems: { create: lines },
+      },
+    });
+  });
+
+  revalidatePath(`/work-orders/${workOrderId}`);
+  revalidatePath("/work-orders");
+  revalidatePath("/invoices");
+  revalidatePath("/dashboard");
+
+  // Optional receipt. The job is already done and paid by now, so a failed send is reported, not rolled back.
+  let emailError: string | null = null;
+  if (formData.get("emailReceipt") === "on" && workOrder.customer.email) {
+    const sent = await sendInvoice(invoice.id);
+    if (sent?.error) emailError = sent.error;
+  }
+
+  return { success: true as const, invoiceId: invoice.id, emailError };
 }
 
 /** Work orders for this customer that are ready to fold into a combined invoice — same eligibility rule as generateInvoiceFromWorkOrder, minus the "already has an invoice" case (checked here via both the direct link and the combined-invoice join table). Used by the New Invoice page to build its checklist. */

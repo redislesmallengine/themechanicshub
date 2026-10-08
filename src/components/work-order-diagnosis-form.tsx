@@ -23,6 +23,7 @@ export function WorkOrderDiagnosisForm({
   status,
   preApprovalRequired,
   members,
+  currentUserId,
   initialDiagnosisNotes,
   initialLabourHours,
   initialAssignedToUserId,
@@ -32,6 +33,8 @@ export function WorkOrderDiagnosisForm({
   /** The intake answer -- only decides which button is highlighted; null on jobs created before it was recorded. */
   preApprovalRequired: boolean | null;
   members: { userId: string; name: string }[];
+  /** The signed-in user -- becomes the default technician on an unassigned job. */
+  currentUserId: string;
   initialDiagnosisNotes: string;
   initialLabourHours: string;
   initialAssignedToUserId: string;
@@ -42,6 +45,10 @@ export function WorkOrderDiagnosisForm({
   const bound = updateDiagnosis.bind(null, workOrderId);
   // Pending / Diagnosing: the three outcomes. Anything later: a plain Save.
   const choosing = status === "droppedOff" || status === "diagnosing";
+  // A one-person shop has nobody to choose between, so the technician is simply that person; with
+  // several staff the signed-in user is pre-selected (changeable) rather than "Unassigned".
+  const soleMember = members.length === 1 ? members[0] : null;
+  const defaultTechnician = initialAssignedToUserId || (members.some((m) => m.userId === currentUserId) ? currentUserId : "");
   const recommended: Outcome = preApprovalRequired === true ? "estimate" : preApprovalRequired === false ? "repair" : "later";
 
   // A plain onSubmit, not <form action>: React 19 resets a form's fields to their
@@ -67,19 +74,31 @@ export function WorkOrderDiagnosisForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-        <div>
-          <label htmlFor="assignedToUserId" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-            Assigned Technician
-          </label>
-          <select id="assignedToUserId" name="assignedToUserId" defaultValue={initialAssignedToUserId} className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
-            <option value="">Unassigned</option>
-            {members.map((m) => (
-              <option key={m.userId} value={m.userId}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        {soleMember ? (
+          <div>
+            <input type="hidden" name="assignedToUserId" value={soleMember.userId} />
+            <div className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+              Technician
+            </div>
+            <div className="px-3 py-2 text-xs font-semibold" style={{ color: "var(--text-primary)" }}>
+              {soleMember.name}
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label htmlFor="assignedToUserId" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+              Assigned Technician
+            </label>
+            <select id="assignedToUserId" name="assignedToUserId" defaultValue={defaultTechnician} className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
+              <option value="">Unassigned</option>
+              {members.map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div>
           <label htmlFor="labourHours" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
             Labour Hours
