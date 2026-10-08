@@ -17,11 +17,16 @@ import {
 } from "@/lib/invoices";
 import { DeleteInvoiceButton } from "@/components/delete-invoice-button";
 import { Pagination } from "@/components/pagination";
+import { SortTh } from "@/components/sortable-th";
+import { parseSort, sortQuery } from "@/lib/sort";
+import type { Prisma } from "@/generated/prisma/client";
 
 const PAGE_SIZE = 50;
+// "number" sorts by creation time: invoice numbers are handed out in order, and a plain text sort would put INV-999 after INV-1056.
+const SORT_FIELDS = ["number", "customer", "type", "status", "total", "due"] as const;
 
-export default async function InvoicesPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; type?: string; page?: string }> }) {
-  const { q, status, type, page: pageRaw } = await searchParams;
+export default async function InvoicesPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; type?: string; page?: string; sort?: string; dir?: string }> }) {
+  const { q, status, type, page: pageRaw, sort: sortRaw, dir: dirRaw } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
@@ -30,6 +35,22 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
   const searchTerm = q?.trim();
   const statusFilter = status && (INVOICE_STATUSES as readonly string[]).includes(status) ? status : undefined;
   const typeFilter = type && (INVOICE_TYPES as readonly string[]).includes(type) ? type : undefined;
+  const sort = parseSort(sortRaw, dirRaw, SORT_FIELDS, { field: "number", dir: "desc" });
+  const filterParams = { q: searchTerm, status: statusFilter, type: typeFilter };
+  const orderBy: Prisma.InvoiceOrderByWithRelationInput[] = [
+    sort.field === "customer"
+      ? { customer: { name: sort.dir } }
+      : sort.field === "type"
+        ? { invoiceType: sort.dir }
+        : sort.field === "status"
+          ? { status: sort.dir }
+          : sort.field === "total"
+            ? { total: sort.dir }
+            : sort.field === "due"
+              ? { dueDate: sort.dir }
+              : { createdAt: sort.dir },
+    { id: "asc" },
+  ];
 
   const where = organizationId
     ? {
@@ -51,7 +72,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
     ? await Promise.all([
         prisma.invoice.findMany({
           where,
-          orderBy: { createdAt: "desc" },
+          orderBy,
           include: { customer: true, warrantyProvider: true, lineItems: { select: { partId: true } }, _count: { select: { combinedWorkOrders: true } } },
           skip: (page - 1) * PAGE_SIZE,
           take: PAGE_SIZE,
@@ -81,6 +102,12 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
       </div>
 
       <form method="GET" className="mb-4 flex flex-col sm:flex-row gap-3 max-w-2xl">
+        {sort.explicit && sort.field && (
+          <>
+            <input type="hidden" name="sort" value={sort.field} />
+            <input type="hidden" name="dir" value={sort.dir} />
+          </>
+        )}
         <div className="relative flex-1">
           <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
           <input
@@ -128,12 +155,12 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
           <table className="dt-table">
             <thead className="dt-head">
               <tr>
-                <th className="dt-th text-left">Invoice #</th>
-                <th className="dt-th text-left">Customer</th>
-                <th className="dt-th text-left">Type</th>
-                <th className="dt-th text-left">Status</th>
-                <th className="dt-th text-left">Total</th>
-                <th className="dt-th text-left">Due</th>
+                <SortTh label="Invoice #" field="number" sort={sort.field} dir={sort.dir} basePath="/invoices" params={filterParams} firstDir="desc" />
+                <SortTh label="Customer" field="customer" sort={sort.field} dir={sort.dir} basePath="/invoices" params={filterParams} />
+                <SortTh label="Type" field="type" sort={sort.field} dir={sort.dir} basePath="/invoices" params={filterParams} />
+                <SortTh label="Status" field="status" sort={sort.field} dir={sort.dir} basePath="/invoices" params={filterParams} />
+                <SortTh label="Total" field="total" sort={sort.field} dir={sort.dir} basePath="/invoices" params={filterParams} firstDir="desc" />
+                <SortTh label="Due" field="due" sort={sort.field} dir={sort.dir} basePath="/invoices" params={filterParams} firstDir="desc" />
                 <th className="dt-th text-right">Actions</th>
               </tr>
             </thead>
@@ -225,7 +252,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
         </div>
       </div>
 
-      <Pagination page={page} pageSize={PAGE_SIZE} total={total} basePath="/invoices" params={{ q: searchTerm, status: statusFilter, type: typeFilter }} />
+      <Pagination page={page} pageSize={PAGE_SIZE} total={total} basePath="/invoices" params={{ ...filterParams, ...sortQuery(sort) }} />
     </div>
   );
 }

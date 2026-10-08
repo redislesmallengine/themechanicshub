@@ -5,11 +5,15 @@ import { prisma } from "@/lib/prisma";
 import { EquipmentIcon, SearchIcon } from "@/components/icons";
 import { DeleteEquipmentButton } from "@/components/delete-equipment-button";
 import { Pagination } from "@/components/pagination";
+import { SortTh } from "@/components/sortable-th";
+import { parseSort, sortQuery } from "@/lib/sort";
+import type { Prisma } from "@/generated/prisma/client";
 
 const PAGE_SIZE = 50;
+const SORT_FIELDS = ["model", "type", "serial", "customer", "added"] as const;
 
-export default async function EquipmentListPage({ searchParams }: { searchParams: Promise<{ q?: string; type?: string; page?: string }> }) {
-  const { q, type, page: pageRaw } = await searchParams;
+export default async function EquipmentListPage({ searchParams }: { searchParams: Promise<{ q?: string; type?: string; page?: string; sort?: string; dir?: string }> }) {
+  const { q, type, page: pageRaw, sort: sortRaw, dir: dirRaw } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
@@ -17,6 +21,20 @@ export default async function EquipmentListPage({ searchParams }: { searchParams
   const page = Math.max(1, Number.parseInt(pageRaw ?? "1", 10) || 1);
   const searchTerm = q?.trim();
   const typeId = type?.trim() || undefined;
+  const sort = parseSort(sortRaw, dirRaw, SORT_FIELDS, { field: "added", dir: "desc" });
+  const filterParams = { q: searchTerm, type: typeId };
+  const orderBy: Prisma.EquipmentOrderByWithRelationInput[] = [
+    ...(sort.field === "model"
+      ? [{ make: { sort: sort.dir, nulls: "last" as const } }, { model: { sort: sort.dir, nulls: "last" as const } }]
+      : sort.field === "type"
+        ? [{ equipmentType: { name: sort.dir } }]
+        : sort.field === "serial"
+          ? [{ serialNumber: { sort: sort.dir, nulls: "last" as const } }]
+          : sort.field === "customer"
+            ? [{ customer: { name: sort.dir } }]
+            : [{ createdAt: sort.dir }]),
+    { id: "asc" },
+  ];
 
   const equipmentTypes = organizationId ? await prisma.equipmentType.findMany({ where: { organizationId }, orderBy: { name: "asc" } }) : [];
 
@@ -41,7 +59,7 @@ export default async function EquipmentListPage({ searchParams }: { searchParams
     ? await Promise.all([
         prisma.equipment.findMany({
           where,
-          orderBy: { createdAt: "desc" },
+          orderBy,
           include: { customer: true, equipmentType: true },
           skip: (page - 1) * PAGE_SIZE,
           take: PAGE_SIZE,
@@ -64,6 +82,12 @@ export default async function EquipmentListPage({ searchParams }: { searchParams
       </div>
 
       <form method="GET" className="mb-4 flex flex-col sm:flex-row gap-3 max-w-2xl">
+        {sort.explicit && sort.field && (
+          <>
+            <input type="hidden" name="sort" value={sort.field} />
+            <input type="hidden" name="dir" value={sort.dir} />
+          </>
+        )}
         <div className="relative flex-1">
           <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
           <input
@@ -98,11 +122,11 @@ export default async function EquipmentListPage({ searchParams }: { searchParams
           <table className="dt-table">
             <thead className="dt-head">
               <tr>
-                <th className="dt-th text-left">Make/Model</th>
-                <th className="dt-th text-left">Type</th>
-                <th className="dt-th text-left">Serial Number</th>
-                <th className="dt-th text-left">Customer</th>
-                <th className="dt-th text-left">Added</th>
+                <SortTh label="Make/Model" field="model" sort={sort.field} dir={sort.dir} basePath="/equipment" params={filterParams} />
+                <SortTh label="Type" field="type" sort={sort.field} dir={sort.dir} basePath="/equipment" params={filterParams} />
+                <SortTh label="Serial Number" field="serial" sort={sort.field} dir={sort.dir} basePath="/equipment" params={filterParams} />
+                <SortTh label="Customer" field="customer" sort={sort.field} dir={sort.dir} basePath="/equipment" params={filterParams} />
+                <SortTh label="Added" field="added" sort={sort.field} dir={sort.dir} basePath="/equipment" params={filterParams} firstDir="desc" />
                 <th className="dt-th text-right">Actions</th>
               </tr>
             </thead>
@@ -176,7 +200,7 @@ export default async function EquipmentListPage({ searchParams }: { searchParams
         </div>
       </div>
 
-      <Pagination page={page} pageSize={PAGE_SIZE} total={total} basePath="/equipment" params={{ q: searchTerm, type: typeId }} />
+      <Pagination page={page} pageSize={PAGE_SIZE} total={total} basePath="/equipment" params={{ ...filterParams, ...sortQuery(sort) }} />
     </div>
   );
 }

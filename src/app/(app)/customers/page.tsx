@@ -7,17 +7,35 @@ import { CustomersIcon, SearchIcon } from "@/components/icons";
 import { DeleteCustomerButton } from "@/components/delete-customer-button";
 import { Pagination } from "@/components/pagination";
 import { CustomerEquipmentPopup } from "@/components/customer-equipment-popup";
+import { SortTh } from "@/components/sortable-th";
+import { parseSort, sortQuery } from "@/lib/sort";
+import type { Prisma } from "@/generated/prisma/client";
 
 const PAGE_SIZE = 50;
+const SORT_FIELDS = ["name", "phone", "email", "equipment", "added"] as const;
 
-export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
-  const { q, page: pageRaw } = await searchParams;
+export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string; sort?: string; dir?: string }> }) {
+  const { q, page: pageRaw, sort: sortRaw, dir: dirRaw } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
 
   const page = Math.max(1, Number.parseInt(pageRaw ?? "1", 10) || 1);
   const searchTerm = q?.trim();
+  const sort = parseSort(sortRaw, dirRaw, SORT_FIELDS, { field: "added", dir: "desc" });
+  const filterParams = { q: searchTerm };
+  const orderBy: Prisma.CustomerOrderByWithRelationInput[] = [
+    sort.field === "name"
+      ? { name: sort.dir }
+      : sort.field === "phone"
+        ? { phone: { sort: sort.dir, nulls: "last" } }
+        : sort.field === "email"
+          ? { email: { sort: sort.dir, nulls: "last" } }
+          : sort.field === "equipment"
+            ? { equipment: { _count: sort.dir } }
+            : { createdAt: sort.dir },
+    { id: "asc" },
+  ];
 
   const where = organizationId
     ? {
@@ -38,7 +56,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
     ? await Promise.all([
         prisma.customer.findMany({
           where,
-          orderBy: { createdAt: "desc" },
+          orderBy,
           include: { equipment: { include: { equipmentType: true }, orderBy: { createdAt: "desc" } } },
           skip: (page - 1) * PAGE_SIZE,
           take: PAGE_SIZE,
@@ -67,6 +85,12 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
       </div>
 
       <form method="GET" className="mb-4 max-w-md">
+        {sort.explicit && sort.field && (
+          <>
+            <input type="hidden" name="sort" value={sort.field} />
+            <input type="hidden" name="dir" value={sort.dir} />
+          </>
+        )}
         <div className="relative">
           <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
           <input
@@ -85,11 +109,11 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
           <table className="dt-table">
             <thead className="dt-head">
               <tr>
-                <th className="dt-th text-left">Name</th>
-                <th className="dt-th text-left">Phone</th>
-                <th className="dt-th text-left">Email</th>
-                <th className="dt-th text-left">Equipment</th>
-                <th className="dt-th text-left">Added</th>
+                <SortTh label="Name" field="name" sort={sort.field} dir={sort.dir} basePath="/customers" params={filterParams} />
+                <SortTh label="Phone" field="phone" sort={sort.field} dir={sort.dir} basePath="/customers" params={filterParams} />
+                <SortTh label="Email" field="email" sort={sort.field} dir={sort.dir} basePath="/customers" params={filterParams} />
+                <SortTh label="Equipment" field="equipment" sort={sort.field} dir={sort.dir} basePath="/customers" params={filterParams} firstDir="desc" />
+                <SortTh label="Added" field="added" sort={sort.field} dir={sort.dir} basePath="/customers" params={filterParams} firstDir="desc" />
                 <th className="dt-th text-right">Actions</th>
               </tr>
             </thead>
@@ -159,7 +183,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
         </div>
       </div>
 
-      <Pagination page={page} pageSize={PAGE_SIZE} total={total} basePath="/customers" params={{ q: searchTerm }} />
+      <Pagination page={page} pageSize={PAGE_SIZE} total={total} basePath="/customers" params={{ ...filterParams, ...sortQuery(sort) }} />
     </div>
   );
 }

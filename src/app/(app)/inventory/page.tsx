@@ -8,8 +8,20 @@ import { DeletePartButton } from "@/components/delete-part-button";
 import { AdjustStockPopup } from "@/components/adjust-stock-popup";
 import { Pagination } from "@/components/pagination";
 import { SavedViewsBar, type SavedViewItem } from "@/components/saved-views-bar";
+import { SortTh } from "@/components/sortable-th";
+import { parseSort, sortQuery } from "@/lib/sort";
 
 const PAGE_SIZE = 50;
+
+// Allow-list of sortable columns -> the SQL they order by. Only these literals ever reach the query, never the raw ?sort= value.
+const SORT_COLUMNS = {
+  name: 'p."name"',
+  category: "pc.name",
+  sku: 'p."sku"',
+  onHand: 'p."quantityOnHand"',
+  sellPrice: 'p."sellPrice"',
+} as const;
+const SORT_FIELDS = Object.keys(SORT_COLUMNS) as (keyof typeof SORT_COLUMNS)[];
 
 const STOCK_VIEWS = ["all", "in", "low", "out"] as const;
 type StockView = (typeof STOCK_VIEWS)[number];
@@ -42,9 +54,9 @@ interface StockCounts {
 export default async function InventoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; category?: string; stock?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; stock?: string; page?: string; sort?: string; dir?: string }>;
 }) {
-  const { q, category, stock: stockRaw, page: pageRaw } = await searchParams;
+  const { q, category, stock: stockRaw, page: pageRaw, sort: sortRaw, dir: dirRaw } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
@@ -53,6 +65,9 @@ export default async function InventoryPage({
   const searchTerm = q?.trim();
   const categoryId = category?.trim() || undefined;
   const stock: StockView = (STOCK_VIEWS as readonly string[]).includes(stockRaw ?? "") ? (stockRaw as StockView) : "all";
+  const sort = parseSort(sortRaw, dirRaw, SORT_FIELDS, { field: "name", dir: "asc" });
+  const filterParams = { q: searchTerm, category: categoryId, stock: stock !== "all" ? stock : undefined };
+  const orderSql = Prisma.sql`${Prisma.raw(SORT_COLUMNS[sort.field ?? "name"])} ${Prisma.raw(sort.dir === "desc" ? "DESC" : "ASC")} NULLS LAST, p."name" ASC, p.id ASC`;
 
   const categories = organizationId ? await prisma.partCategory.findMany({ where: { organizationId }, orderBy: { name: "asc" } }) : [];
   const savedViewRows = organizationId
@@ -97,7 +112,7 @@ export default async function InventoryPage({
         FROM "Part" p
         LEFT JOIN "PartCategory" pc ON pc.id = p."categoryId"
         WHERE ${listWhere}
-        ORDER BY p.name ASC
+        ORDER BY ${orderSql}
         LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}
       `),
       prisma.$queryRaw<{ count: bigint }[]>(Prisma.sql`SELECT count(*)::bigint AS count FROM "Part" p WHERE ${listWhere}`),
@@ -196,6 +211,12 @@ export default async function InventoryPage({
       <SavedViewsBar views={savedViews} currentFilters={{ q: searchTerm, category: categoryId, stock: stock !== "all" ? stock : undefined }} />
 
       <form method="GET" className="mb-4 flex flex-col sm:flex-row gap-3 max-w-2xl">
+        {sort.explicit && sort.field && (
+          <>
+            <input type="hidden" name="sort" value={sort.field} />
+            <input type="hidden" name="dir" value={sort.dir} />
+          </>
+        )}
         {stock !== "all" && <input type="hidden" name="stock" value={stock} />}
         <div className="relative flex-1">
           <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
@@ -231,11 +252,11 @@ export default async function InventoryPage({
           <table className="dt-table">
             <thead className="dt-head">
               <tr>
-                <th className="dt-th text-left">Part</th>
-                <th className="dt-th text-left">Category</th>
-                <th className="dt-th text-left">SKU</th>
-                <th className="dt-th text-left">On Hand</th>
-                <th className="dt-th text-left">Sell Price</th>
+                <SortTh label="Part" field="name" sort={sort.field} dir={sort.dir} basePath="/inventory" params={filterParams} />
+                <SortTh label="Category" field="category" sort={sort.field} dir={sort.dir} basePath="/inventory" params={filterParams} />
+                <SortTh label="SKU" field="sku" sort={sort.field} dir={sort.dir} basePath="/inventory" params={filterParams} />
+                <SortTh label="On Hand" field="onHand" sort={sort.field} dir={sort.dir} basePath="/inventory" params={filterParams} />
+                <SortTh label="Sell Price" field="sellPrice" sort={sort.field} dir={sort.dir} basePath="/inventory" params={filterParams} firstDir="desc" />
                 <th className="dt-th text-right">Actions</th>
               </tr>
             </thead>
@@ -303,7 +324,7 @@ export default async function InventoryPage({
         </div>
       </div>
 
-      <Pagination page={page} pageSize={PAGE_SIZE} total={total} basePath="/inventory" params={{ q: searchTerm, category: categoryId, stock: stock !== "all" ? stock : undefined }} />
+      <Pagination page={page} pageSize={PAGE_SIZE} total={total} basePath="/inventory" params={{ ...filterParams, ...sortQuery(sort) }} />
     </div>
   );
 }

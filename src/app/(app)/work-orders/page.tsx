@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { SearchIcon } from "@/components/icons";
 import { Pagination } from "@/components/pagination";
 import { DeleteWorkOrderButton } from "@/components/delete-work-order-button";
+import { SortTh } from "@/components/sortable-th";
+import { parseSort, sortQuery } from "@/lib/sort";
 import { BOARD_STATUSES, STATUS_LABELS, STATUS_BADGE, now as getNow, type WorkOrderStatus } from "@/lib/work-orders";
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -18,6 +20,10 @@ const DAY_MS = 86400000;
 const AWAITING_ALERT_DAYS = 2;
 const HISTORY_STATUSES = ["closed", "declined"];
 
+// Pipeline order -- what sorting by Status (and Next step, which follows from it) means.
+const STATUS_RANK = ["droppedOff", "diagnosing", "awaitingApproval", "inRepair", "readyForPickup", "closed", "declined"];
+const SORT_FIELDS = ["customer", "equipment", "status", "technician", "stage", "next"] as const;
+
 const FILTER_STATUSES = ["droppedOff", "diagnosing", "awaitingApproval", "inRepair", "readyForPickup"] as const;
 
 function fmtAge(ms: number): string {
@@ -28,8 +34,8 @@ function fmtAge(ms: number): string {
   return `${days} day${days === 1 ? "" : "s"}`;
 }
 
-export default async function WorkOrdersPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; page?: string; pageSize?: string }> }) {
-  const { q, status, page: pageRaw, pageSize: pageSizeRaw } = await searchParams;
+export default async function WorkOrdersPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; page?: string; pageSize?: string; sort?: string; dir?: string }> }) {
+  const { q, status, page: pageRaw, pageSize: pageSizeRaw, sort: sortRaw, dir: dirRaw } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
@@ -38,6 +44,8 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
   const requestedSize = Number.parseInt(pageSizeRaw ?? "", 10);
   const pageSize = PAGE_SIZE_OPTIONS.includes(requestedSize) ? requestedSize : DEFAULT_PAGE_SIZE;
   const searchTerm = q?.trim();
+  // No column picked = the page's own order (needs-attention first, then most recently touched).
+  const sort = parseSort(sortRaw, dirRaw, SORT_FIELDS, { field: null, dir: "asc" });
   const filter = status === "history" || (FILTER_STATUSES as readonly string[]).includes(status ?? "") ? status : undefined;
 
   const statusWhere = filter === "history" ? { in: HISTORY_STATUSES } : filter ? filter : { in: BOARD_STATUSES as string[] };
@@ -116,8 +124,35 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
     }
   }
 
-  // Needs-attention jobs first, then most recently touched. Array.sort is stable.
-  const sorted = [...workOrders].sort((a, b) => Number(isAttention(b)) - Number(isAttention(a)));
+  function equipmentLabelOf(wo: (typeof workOrders)[number]): string {
+    return [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment";
+  }
+
+  // Default: needs-attention jobs first, then most recently touched (the query already orders by
+  // updatedAt; Array.sort is stable). A clicked column header replaces that with a plain sort on
+  // the whole fetched set, with the same stable tie-break.
+  const sortKey = (wo: (typeof workOrders)[number]): string | number => {
+    switch (sort.field) {
+      case "customer":
+        return wo.customer.name.toLowerCase();
+      case "equipment":
+        return equipmentLabelOf(wo).toLowerCase();
+      case "technician":
+        return wo.assignedTo?.name.toLowerCase() ?? "\uffff"; // unassigned last
+      case "stage":
+        return now - stageSince(wo).getTime();
+      default:
+        return STATUS_RANK.indexOf(wo.status); // "status" and "next"
+    }
+  };
+  const sorted = sort.field
+    ? [...workOrders].sort((a, b) => {
+        const ka = sortKey(a);
+        const kb = sortKey(b);
+        const cmp = typeof ka === "number" && typeof kb === "number" ? ka - kb : String(ka).localeCompare(String(kb));
+        return sort.dir === "desc" ? -cmp : cmp;
+      })
+    : [...workOrders].sort((a, b) => Number(isAttention(b)) - Number(isAttention(a)));
   const attentionCount = sorted.filter(isAttention).length;
   const total = sorted.length;
   const rows = sorted.slice((page - 1) * pageSize, page * pageSize);
@@ -127,9 +162,11 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
     if (value) params.set("status", value);
     if (searchTerm) params.set("q", searchTerm);
     if (pageSize !== DEFAULT_PAGE_SIZE) params.set("pageSize", String(pageSize));
+    for (const [key, value] of Object.entries(sortQuery(sort))) if (value) params.set(key, value);
     const qs = params.toString();
     return qs ? `/work-orders?${qs}` : "/work-orders";
   }
+  const filterParams = { q: searchTerm, status: filter, pageSize: pageSize !== DEFAULT_PAGE_SIZE ? String(pageSize) : undefined };
 
   const chips: { value?: string; label: string; count?: number; dashed?: boolean }[] = [
     { value: undefined, label: "All active", count: activeCount },
@@ -152,6 +189,12 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
           <form method="GET" className="relative">
             {filter && <input type="hidden" name="status" value={filter} />}
             {pageSize !== DEFAULT_PAGE_SIZE && <input type="hidden" name="pageSize" value={pageSize} />}
+            {sort.explicit && sort.field && (
+              <>
+                <input type="hidden" name="sort" value={sort.field} />
+                <input type="hidden" name="dir" value={sort.dir} />
+              </>
+            )}
             <SearchIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
             <input
               type="text"
@@ -200,12 +243,12 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
           <table className="dt-table">
             <thead className="dt-head">
               <tr>
-                <th className="dt-th text-left">Customer</th>
-                <th className="dt-th text-left">Equipment</th>
-                <th className="dt-th text-left">Status</th>
-                <th className="dt-th text-left">Technician</th>
-                <th className="dt-th text-left">In this stage</th>
-                <th className="dt-th text-left">Next step</th>
+                <SortTh label="Customer" field="customer" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} />
+                <SortTh label="Equipment" field="equipment" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} />
+                <SortTh label="Status" field="status" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} />
+                <SortTh label="Technician" field="technician" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} />
+                <SortTh label="In this stage" field="stage" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} firstDir="desc" />
+                <SortTh label="Next step" field="next" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} />
                 <th className="dt-th text-right">Actions</th>
               </tr>
             </thead>
@@ -222,7 +265,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
                 const attention = isAttention(wo);
                 const since = stageSince(wo);
                 const ageMs = now - since.getTime();
-                const equipmentLabel = [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment";
+                const equipmentLabel = equipmentLabelOf(wo);
                 const invoiceId = wo.invoice?.id ?? wo.combinedInto?.invoiceId ?? null;
                 const aging = woStatus === "readyForPickup" && attention;
                 const nextStep =
@@ -287,7 +330,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
         pageSize={pageSize}
         total={total}
         basePath="/work-orders"
-        params={{ q: searchTerm, status: filter }}
+        params={{ q: searchTerm, status: filter, ...sortQuery(sort) }}
         pageSizeOptions={PAGE_SIZE_OPTIONS}
         defaultPageSize={DEFAULT_PAGE_SIZE}
       />
