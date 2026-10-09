@@ -73,15 +73,6 @@ function setCollapsed(next: boolean) {
 // Customers/Equipment/Inventory lead (the day-to-day lookup tools) with
 // Work Orders after them, matching how a shop actually starts a visit —
 // find the customer and their equipment before opening a ticket.
-const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: DashboardIcon, color: "text-blue-400" },
-  { href: "/customers", label: "Customers", icon: CustomersIcon, color: "text-emerald-400" },
-  { href: "/equipment", label: "Customer Equipment", icon: EquipmentIcon, color: "text-violet-400" },
-  { href: "/inventory", label: "Inventory", icon: InventoryIcon, color: "text-indigo-400" },
-  { href: "/work-orders", label: "Work Orders", icon: WorkOrderIcon, color: "text-amber-400" },
-  { href: "/invoices", label: "Invoices", icon: InvoiceIcon, color: "text-sky-400" },
-];
-
 interface NavItem {
   href: string;
   label: string;
@@ -96,27 +87,6 @@ interface NavItem {
 function isNavItemActive(item: NavItem, pathname: string) {
   return item.exact ? pathname === item.href : pathname.startsWith(item.href);
 }
-
-// The "Configuration" submenu — everything a shop owner sets up once and
-// rarely touches again, tucked behind its own collapsible parent instead of
-// competing with the daily-use items above for sidebar space.
-// "Email" needs an exact match, not startsWith, or its highlight would also
-// light up on /settings/email-templates.
-const CONFIG_NAV: NavItem[] = [
-  { href: "/settings/shop", label: "Shop Profile", icon: StoreIcon, color: "text-teal-400" },
-  { href: "/settings/email", label: "Email", icon: SettingsIcon, color: "text-rose-400", exact: true },
-  { href: "/settings/email-templates", label: "Email Templates", icon: SettingsIcon, color: "text-rose-400" },
-  { href: "/settings/equipment-types", label: "Equipment Types", icon: EquipmentIcon, color: "text-violet-400" },
-  { href: "/settings/equipment-makes", label: "Equipment Makes", icon: EquipmentIcon, color: "text-violet-400" },
-  { href: "/settings/engine-types", label: "Engine Types", icon: EquipmentIcon, color: "text-violet-400" },
-  { href: "/settings/part-categories", label: "Part Categories", icon: InventoryIcon, color: "text-indigo-400" },
-  { href: "/settings/warranty-providers", label: "Warranty Providers", icon: InvoiceIcon, color: "text-sky-400" },
-];
-
-// One entry today (a customer's full history — equipment, work orders,
-// invoices, activity, all in one place) but its own top-level menu since
-// more reports land here later, same as Configuration.
-const REPORTS_NAV: NavItem[] = [{ href: "/reports/customer-360", label: "Customer 360", icon: CustomersIcon, color: "text-emerald-400" }];
 
 // Parts-lookup sites technicians use to find diagrams/order parts for a
 // specific machine — open in a new tab so the shop's own data stays put.
@@ -428,6 +398,140 @@ function NavGroup({
   );
 }
 
+interface TreeNode {
+  href: string;
+  label: string;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  color: string;
+  children?: TreeNode[];
+}
+
+interface MenuSection {
+  label: string;
+  /** Sections that are also a page (Shop Profile) render their heading as a link. */
+  href?: string;
+  icon?: ComponentType<SVGProps<SVGSVGElement>>;
+  color?: string;
+  nodes: TreeNode[];
+}
+
+// The sidebar, as a tree. Every parent is also a page of its own (click the label to open
+// it, the chevron to expand), so no destination is lost by nesting. Which branches exist
+// follows the same permissions the flat menu used: shop settings, reports, site admin.
+function buildMenu({ canManageSettings, canViewReports, isSiteAdmin }: { canManageSettings: boolean; canViewReports: boolean; isSiteAdmin: boolean }): MenuSection[] {
+  const partsList: TreeNode = { href: "/inventory", label: "Part #", icon: InventoryIcon, color: "text-indigo-400" };
+
+  const operations: TreeNode[] = [
+    {
+      href: "/customers",
+      label: "Customers",
+      icon: CustomersIcon,
+      color: "text-emerald-400",
+      children: [
+        { href: "/equipment", label: "Equipment", icon: EquipmentIcon, color: "text-violet-400" },
+        { href: "/work-orders", label: "Work Orders", icon: WorkOrderIcon, color: "text-amber-400" },
+        { href: "/invoices", label: "Invoices", icon: InvoiceIcon, color: "text-sky-400" },
+      ],
+    },
+    {
+      href: "/inventory",
+      label: "Parts / Service Inventory",
+      icon: InventoryIcon,
+      color: "text-indigo-400",
+      children: canManageSettings ? [{ href: "/settings/part-categories", label: "Parts Category", icon: InventoryIcon, color: "text-indigo-400", children: [partsList] }] : [partsList],
+    },
+  ];
+  if (canManageSettings) {
+    operations.push({
+      href: "/settings/equipment-types",
+      label: "Equipment Types",
+      icon: EquipmentIcon,
+      color: "text-violet-400",
+      children: [
+        { href: "/settings/equipment-makes", label: "Equipment Makes", icon: EquipmentIcon, color: "text-violet-400" },
+        { href: "/settings/engine-types", label: "Engine Types", icon: EquipmentIcon, color: "text-violet-400" },
+      ],
+    });
+  }
+
+  const sections: MenuSection[] = [{ label: "Operations", nodes: operations }];
+
+  if (canManageSettings) {
+    sections.push({
+      label: "Shop Profile",
+      href: "/settings/shop",
+      icon: StoreIcon,
+      color: "text-teal-400",
+      nodes: [
+        { href: "/settings/email", label: "Email", icon: SettingsIcon, color: "text-rose-400" },
+        { href: "/settings/email-templates", label: "Email Templates", icon: SettingsIcon, color: "text-rose-400" },
+        { href: "/settings/warranty-providers", label: "Warranty Providers", icon: InvoiceIcon, color: "text-sky-400" },
+      ],
+    });
+  }
+
+  if (canViewReports) {
+    // One report today (a customer's full history); more land here later.
+    sections.push({ label: "Reports", nodes: [{ href: "/reports/customer-360", label: "Customer 360", icon: ReportIcon, color: "text-orange-400" }] });
+  }
+
+  const platform: TreeNode[] = [{ href: "/staff", label: "Security & Roles", icon: StaffIcon, color: "text-brand-400" }];
+  if (isSiteAdmin) platform.push({ href: "/admin/roles", label: "Roles & Rights", icon: ShieldIcon, color: "text-violet-400" });
+  sections.push({ label: "Platform", nodes: platform });
+
+  return sections;
+}
+
+/** A node is on its own page when the URL is its href or beneath it ("/email" must not light up "/email-templates"). */
+function isTreeNodeActive(node: TreeNode, pathname: string) {
+  return pathname === node.href || pathname.startsWith(node.href + "/");
+}
+
+function isTreeBranchActive(node: TreeNode, pathname: string): boolean {
+  return isTreeNodeActive(node, pathname) || (node.children ?? []).some((child) => isTreeBranchActive(child, pathname));
+}
+
+function TreeItem({ node, collapsed, pathname, onNavigate }: { node: TreeNode; collapsed: boolean; pathname: string; onNavigate?: () => void }) {
+  const children = node.children ?? [];
+  const selfActive = isTreeNodeActive(node, pathname);
+  const childActive = children.some((child) => isTreeBranchActive(child, pathname));
+  // Follows the current page until the user opens or closes it themselves.
+  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  const open = manualOpen ?? (selfActive || childActive);
+
+  if (children.length === 0) {
+    return <NavLink href={node.href} label={node.label} icon={node.icon} color={node.color} collapsed={collapsed} onNavigate={onNavigate} active={selfActive} />;
+  }
+
+  return (
+    <div>
+      <div className="flex items-stretch gap-0.5">
+        <div className="flex-1 min-w-0">
+          {/* The row lights up only when nothing beneath it is the current page, so a branch never highlights twice. */}
+          <NavLink href={node.href} label={node.label} icon={node.icon} color={node.color} collapsed={collapsed} onNavigate={onNavigate} active={selfActive && !childActive} />
+        </div>
+        <button
+          type="button"
+          onClick={() => setManualOpen(!open)}
+          aria-expanded={open}
+          aria-label={`${open ? "Collapse" : "Expand"} ${node.label}`}
+          className={`px-1.5 rounded-lg hover:bg-white/5 ${collapsed ? "md:hidden" : ""}`}
+          style={{ color: "#94A3B8" }}
+        >
+          <ChevronDownIcon className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+      {open && (
+        <div className={`space-y-0.5 mt-0.5 pl-3.5 ml-4 border-l border-l-[#1E293B] ${collapsed ? "md:hidden" : ""}`}>
+          {children.map((child) => (
+            <TreeItem key={child.label} node={child} collapsed={collapsed} pathname={pathname} onNavigate={onNavigate} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AppShell({
   user,
   roleLabel,
@@ -444,6 +548,7 @@ export function AppShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  const menu = buildMenu({ canManageSettings: !!canManageSettings, canViewReports: !!canViewReports, isSiteAdmin: !!isSiteAdmin });
   const collapsed = useSyncExternalStore(subscribeCollapsed, getCollapsedSnapshot, getCollapsedServerSnapshot);
   // Separate from `collapsed` (the desktop icon-rail preference, persisted)
   // — this is the mobile off-canvas drawer's open/closed state, always
@@ -471,45 +576,49 @@ export function AppShell({
           className={`fixed md:static inset-y-0 left-0 md:inset-auto z-40 p-3 flex flex-col shrink-0 overflow-y-auto transform md:transform-none transition-transform md:transition-[width] duration-200 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 w-64 ${collapsed ? "md:w-16" : "md:w-64"}`}
           style={{ background: "#0F172A", borderRight: "1px solid #1E293B" }}
         >
-          <SectionLabel collapsed={collapsed}>Operations</SectionLabel>
           <nav className="space-y-0.5 mb-4">
-            {NAV.map(({ href, label, icon, color }) => (
-              <NavLink
-                key={href}
-                href={href}
-                label={label}
-                icon={icon}
-                color={color}
-                collapsed={collapsed}
-                onNavigate={closeMobileMenu}
-                active={pathname === href || pathname.startsWith(href + "/")}
-              />
-            ))}
+            <NavLink href="/dashboard" label="Dashboard" icon={DashboardIcon} color="text-blue-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname === "/dashboard" || pathname.startsWith("/dashboard/")} />
           </nav>
 
-          <SectionLabel collapsed={collapsed}>Security &amp; Staff</SectionLabel>
-          <nav className="space-y-0.5 mb-4">
-            <NavLink href="/staff" label="Staff &amp; Roles" icon={StaffIcon} color="text-brand-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname.startsWith("/staff")} />
-          </nav>
+          {menu.map((section) => (
+            <div key={section.label} className="mb-4">
+              {section.href && section.icon ? (
+                <>
+                  <Link
+                    href={section.href}
+                    onClick={closeMobileMenu}
+                    className={`block px-2 text-[11px] font-semibold uppercase tracking-wider mb-1 font-mono hover:text-white ${collapsed ? "md:hidden" : ""}`}
+                    style={{ color: pathname === section.href || pathname.startsWith(section.href + "/") ? "#FFFFFF" : "#64748B" }}
+                  >
+                    {section.label}
+                  </Link>
+                  {/* The icon rail has no room for headings, so a heading that is also a page gets its own icon there. */}
+                  {collapsed && (
+                    <div className="hidden md:block mb-0.5">
+                      <NavLink
+                        href={section.href}
+                        label={section.label}
+                        icon={section.icon}
+                        color={section.color ?? "text-slate-400"}
+                        collapsed={collapsed}
+                        onNavigate={closeMobileMenu}
+                        active={pathname === section.href || pathname.startsWith(section.href + "/")}
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <SectionLabel collapsed={collapsed}>{section.label}</SectionLabel>
+              )}
+              <nav className="space-y-0.5">
+                {section.nodes.map((node) => (
+                  <TreeItem key={node.label} node={node} collapsed={collapsed} pathname={pathname} onNavigate={closeMobileMenu} />
+                ))}
+              </nav>
+            </div>
+          ))}
 
           <NavGroup label="External Links" icon={ExternalLinkIcon} iconColor="text-sky-400" items={EXTERNAL_LINKS_NAV} collapsed={collapsed} pathname={pathname} onNavigate={closeMobileMenu} />
-
-          {canViewReports && (
-            <NavGroup label="Reports" icon={ReportIcon} iconColor="text-orange-400" items={REPORTS_NAV} collapsed={collapsed} pathname={pathname} onNavigate={closeMobileMenu} />
-          )}
-
-          {canManageSettings && (
-            <NavGroup label="Configuration" icon={SettingsIcon} iconColor="text-teal-400" items={CONFIG_NAV} collapsed={collapsed} pathname={pathname} onNavigate={closeMobileMenu} />
-          )}
-
-          {isSiteAdmin && (
-            <>
-              <SectionLabel collapsed={collapsed}>Platform</SectionLabel>
-              <nav className="space-y-0.5">
-                <NavLink href="/admin/roles" label="Roles &amp; Rights" icon={ShieldIcon} color="text-violet-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname.startsWith("/admin")} />
-              </nav>
-            </>
-          )}
 
           <div className="mt-auto pt-3 hidden md:block" style={{ borderTop: "1px solid #1E293B" }}>
             <button
