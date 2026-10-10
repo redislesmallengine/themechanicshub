@@ -101,6 +101,11 @@ export default async function DashboardPage() {
               + New Work Order
             </Link>
           )}
+          {canCreateWorkOrder && (
+            <Link href="/work-orders/quick" className={quickActionClass}>
+              ⚡ Quick Job
+            </Link>
+          )}
           {canCreateInvoice && (
             <Link href="/invoices/new" className={quickActionClass}>
               + New Invoice

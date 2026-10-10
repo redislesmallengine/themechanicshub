@@ -207,6 +207,13 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
               style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)", color: "var(--text-primary)" }}
             />
           </form>
+          <Link
+            href="/work-orders/quick"
+            className="flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold shadow-sm transition whitespace-nowrap hover:bg-slate-50"
+            style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}
+          >
+            ⚡ Quick Job
+          </Link>
           <Link href="/work-orders/new" className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-3.5 py-2 text-xs font-semibold shadow-sm transition whitespace-nowrap">
             + New Work Order
           </Link>
