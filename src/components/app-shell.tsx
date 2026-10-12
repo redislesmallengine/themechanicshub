@@ -434,6 +434,7 @@ export function AppShell({
   canManageSettings,
   canViewReports,
   isSiteAdmin,
+  pendingShopCount = 0,
   children,
 }: {
   user: { name: string; email: string };
@@ -441,6 +442,8 @@ export function AppShell({
   canManageSettings?: boolean;
   canViewReports?: boolean;
   isSiteAdmin?: boolean;
+  /** Shops waiting for the site administrator's approval -- shown beside Shop Approvals. */
+  pendingShopCount?: number;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -506,7 +509,8 @@ export function AppShell({
             <>
               <SectionLabel collapsed={collapsed}>Platform</SectionLabel>
               <nav className="space-y-0.5">
-                <NavLink href="/admin/roles" label="Roles &amp; Rights" icon={ShieldIcon} color="text-violet-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname.startsWith("/admin")} />
+                <NavLink href="/admin/shops" label={pendingShopCount > 0 ? `Shop Approvals (${pendingShopCount})` : "Shop Approvals"} icon={StoreIcon} color="text-teal-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname.startsWith("/admin/shops")} />
+                <NavLink href="/admin/roles" label="Roles &amp; Rights" icon={ShieldIcon} color="text-violet-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname.startsWith("/admin/roles")} />
               </nav>
             </>
           )}

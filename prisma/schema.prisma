@@ -113,6 +113,13 @@ model Organization {
   metadata  String? // JSON-encoded; Better Auth reads/writes this as a string
   createdAt DateTime @default(now())
 
+  // A new shop can not be signed in to until the site administrator approves it
+  // ("pending" -> "approved", or "rejected"). New rows default to pending; the migration
+  // that added this column marked every shop that already existed as approved.
+  approvalStatus String    @default("pending")
+  approvedAt     DateTime?
+  approvalNote   String? // optional reason shown to the owner on a rejection
+
   members           Member[]
   invitations       Invitation[]
   teams             Team[]
@@ -133,6 +140,8 @@ model Organization {
   invoices          Invoice[]
   warrantyProviders WarrantyProvider[]
   savedViews        SavedView[]
+
+  @@index([approvalStatus])
 }
 
 // =============================================================================

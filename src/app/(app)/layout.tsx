@@ -38,6 +38,13 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     membership = await prisma.member.findFirst({ where: { userId: session.user.id } });
   }
 
+  // A shop the site administrator has not approved yet can not be used. Signing in is already refused
+  // (src/lib/auth.ts); this covers a session that was started before the shop's status changed.
+  if (membership && !session.user.isSiteAdmin) {
+    const shop = await prisma.organization.findUnique({ where: { id: session.session.activeOrganizationId ?? membership.organizationId }, select: { approvalStatus: true } });
+    if (shop && shop.approvalStatus !== "approved") redirect("/pending-approval");
+  }
+
   let roleLabel: string | undefined;
   if (membership) {
     roleLabel =
@@ -55,8 +62,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     : false;
   const canViewReports = membership ? (await auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { report: ["view"] } } })).success : false;
 
+  const isSiteAdmin = session.user.isSiteAdmin ?? false;
+  const pendingShopCount = isSiteAdmin ? await prisma.organization.count({ where: { approvalStatus: "pending" } }) : 0;
+
   return (
-    <AppShell user={session.user} roleLabel={roleLabel} canManageSettings={canManageSettings} canViewReports={canViewReports} isSiteAdmin={session.user.isSiteAdmin ?? false}>
+    <AppShell user={session.user} roleLabel={roleLabel} canManageSettings={canManageSettings} canViewReports={canViewReports} isSiteAdmin={isSiteAdmin} pendingShopCount={pendingShopCount}>
       {children}
     </AppShell>
   );

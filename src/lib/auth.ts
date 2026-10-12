@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { organization } from "better-auth/plugins/organization";
+import { APIError } from "better-auth/api";
 import { prisma } from "@/lib/prisma";
 import { sendMail } from "@/lib/email";
 import { loadEmailTemplate, renderTemplate, EMAIL_TEMPLATE_META } from "@/lib/email-templates";
@@ -10,6 +11,7 @@ import { seedDefaultEquipmentTypes } from "@/lib/equipment-types";
 import { seedDefaultEquipmentMakes } from "@/lib/equipment-makes";
 import { seedDefaultEngineTypes } from "@/lib/engine-types";
 import { seedDefaultPartCategories } from "@/lib/part-categories";
+import { signInBlockReason } from "@/lib/shop-approval";
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
@@ -23,6 +25,21 @@ export const auth = betterAuth({
       // update payload; only ever flipped by direct DB access (see
       // prisma/schema.prisma's comment on User.isSiteAdmin).
       isSiteAdmin: { type: "boolean", required: false, defaultValue: false, input: false },
+    },
+  },
+
+  databaseHooks: {
+    session: {
+      create: {
+        // A shop that has not been approved by the site administrator can not be signed in to.
+        // Every way of starting a session passes through here, so the sign-in form, a password
+        // reset, or a hand-made request all get the same answer.
+        before: async (session) => {
+          const reason = await signInBlockReason(session.userId);
+          if (reason) throw new APIError("FORBIDDEN", { message: reason });
+          return { data: session };
+        },
+      },
     },
   },
 
@@ -54,7 +71,9 @@ export const auth = betterAuth({
       roles: STATIC_ROLES, // just "owner" — every other role is dynamic, see src/lib/rbac.ts
       creatorRole: "owner", // whoever signs up first for a shop becomes its Owner
       // Staff are invited, not self-registered — see AGENTS.md / build plan Phase 1.
-      allowUserToCreateOrganization: true,
+      // Shops are only created by the sign-up page (src/app/sign-up/actions.ts), which starts them as
+      // "pending" until the site administrator approves them -- so no other route may create one.
+      allowUserToCreateOrganization: false,
       // Roles beyond Owner are DB-driven (site admin's shared PlatformRole
       // library) instead of hardcoded — this is Better Auth's own built-in
       // mechanism for that; it reads the OrganizationRole table at request

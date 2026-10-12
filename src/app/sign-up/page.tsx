@@ -1,67 +1,57 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { authClient } from "@/lib/auth-client";
 import { WrenchIcon } from "@/components/icons";
-
-function slugify(input: string) {
-  return input
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
+import { registerShop } from "./actions";
 
 export default function SignUpPage() {
-  const router = useRouter();
   const [shopName, setShopName] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
-
-    const signUpResult = await authClient.signUp.email({ email, password, name });
-    if (signUpResult.error) {
-      setLoading(false);
-      setError(signUpResult.error.message ?? "Couldn't create that account.");
-      return;
-    }
-
-    const orgResult = await authClient.organization.create({
-      name: shopName,
-      slug: `${slugify(shopName)}-${Math.random().toString(36).slice(2, 6)}`,
-    });
-    if (orgResult.error) {
-      setLoading(false);
-      setError(
-        orgResult.error.message ??
-          "Your account was created, but setting up the shop failed — try signing in and creating it from settings."
-      );
-      return;
-    }
-
-    // organization.create is supposed to set this org active on the session
-    // automatically, but that didn't happen reliably in testing — set it
-    // explicitly rather than trust the side effect.
-    const setActiveResult = await authClient.organization.setActive({ organizationId: orgResult.data.id });
+    // The shop is created on the server and starts out waiting for the site administrator's approval,
+    // so nobody is signed in afterwards -- they sign in once it has been approved.
+    const result = await registerShop({ shopName, name, email, password }).catch(() => ({ error: "Something went wrong. Please try again." }));
     setLoading(false);
-    if (setActiveResult.error) {
-      setError(
-        setActiveResult.error.message ??
-          "Your shop was created, but activating it failed — try signing in again."
-      );
+    if ("error" in result && result.error) {
+      setError(result.error);
       return;
     }
+    setSubmitted(true);
+  }
 
-    router.push("/dashboard");
-    router.refresh();
+  if (submitted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "var(--bg-app)" }}>
+        <div className="w-full max-w-md rounded-xl p-8 md:p-10 text-center" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-md)" }}>
+          <span className="inline-flex items-center justify-center w-11 h-11 rounded-full mb-4" style={{ background: "var(--color-success-subtle)" }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-success-solid)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          </span>
+          <h1 className="text-2xl font-extrabold mb-2" style={{ color: "var(--text-primary)" }}>
+            Thanks, {shopName}
+          </h1>
+          <p className="text-sm mb-2" style={{ color: "var(--text-secondary)" }}>
+            Your sign-up is in. We review every new shop before it opens, so you can&apos;t sign in just yet.
+          </p>
+          <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
+            You&apos;ll get an email at <b>{email}</b> as soon as it&apos;s approved.
+          </p>
+          <a href="/sign-in" className="text-sm font-semibold text-brand-600">
+            Back to sign in
+          </a>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -83,7 +73,7 @@ export default function SignUpPage() {
           Set up your shop
         </h1>
         <p className="text-sm mb-8" style={{ color: "var(--text-secondary)" }}>
-          This creates your Owner account and your shop&apos;s workspace.
+          This creates your Owner account and your shop&apos;s workspace. New shops are approved before they can sign in.
         </p>
 
         <form onSubmit={handleSubmit}>
