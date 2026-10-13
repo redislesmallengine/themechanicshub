@@ -36,7 +36,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
   });
   if (!invoice || invoice.organizationId !== organizationId) notFound();
 
-  const [canUpdate, canVoid, canDelete, canViewMargins, availableParts, sentEmails, membership, warrantyProviders] = await Promise.all([
+  const [canUpdate, canVoid, canDelete, canViewMargins, availableParts, sentEmails, membership, warrantyProviders, services] = await Promise.all([
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["update"] } } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["void"] } } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["delete"] } } }),
@@ -45,6 +45,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     prisma.sentEmail.findMany({ where: { relatedType: "invoice", relatedId: id }, orderBy: { createdAt: "desc" } }),
     prisma.member.findFirst({ where: { organizationId, userId: session.user.id } }),
     prisma.warrantyProvider.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
+    prisma.service.findMany({ where: { organizationId, active: true }, orderBy: { name: "asc" } }),
   ]);
   const isOwner = membership?.role === "owner";
 
@@ -176,6 +177,31 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           </p>
         </div>
       )}
+
+      <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "2px solid var(--color-brand-600)" }}>
+        <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
+          Status
+        </h2>
+        <InvoiceStatusPanel
+          invoiceId={invoice.id}
+          status={invoice.status}
+          isWarranty={invoice.payerType === "warranty"}
+          hasRecipient={invoice.payerType === "warranty" ? !!invoice.warrantyProvider : !!invoice.customer}
+          hasRecipientEmail={invoice.payerType === "warranty" ? !!invoice.warrantyProvider?.billingEmail : !!invoice.customer?.email}
+          canVoid={canVoid.success}
+          awaitingPickupCount={[invoice.workOrder, ...invoice.combinedWorkOrders.map((c) => c.workOrder)].filter((wo) => wo?.status === "readyForPickup").length}
+        />
+        {invoice.status === "paid" && invoice.paymentReference && (
+          <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
+            Reference: {invoice.paymentReference}
+          </p>
+        )}
+        {invoice.status === "void" && invoice.voidReason && (
+          <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
+            Reason: {invoice.voidReason}
+          </p>
+        )}
+      </div>
 
       <div className="rounded-xl p-5 grid grid-cols-1 sm:grid-cols-2 gap-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
         <div>
@@ -309,6 +335,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             lineTotal: l.lineTotal.toString(),
           }))}
           availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, quantityOnHand: p.quantityOnHand, sellPrice: p.sellPrice?.toString() ?? null }))}
+          services={services.map((sv) => ({ id: sv.id, name: sv.name, price: sv.price.toString(), description: sv.description }))}
         />
         <div className="flex justify-end mt-4">
           <div className="w-56 text-sm">
@@ -334,6 +361,17 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
+      {(editable || canEditParty) && (
+        <details className="rounded-xl" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+          <summary className="cursor-pointer list-none px-5 py-4 flex items-center justify-between gap-3">
+            <span className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+              ▸ Invoice details
+            </span>
+            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+              {invoice.payerType === "warranty" ? "Warranty claim" : "Billed to the customer"} · due {invoice.dueDate.toLocaleDateString()}
+            </span>
+          </summary>
+          <div className="px-5 pb-5 space-y-4">
       {editable && (
         <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
           <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
@@ -382,6 +420,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </div>
       )}
 
+          </div>
+        </details>
+      )}
+
       {invoice.notes && !editable && (
         <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
           <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
@@ -392,31 +434,6 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           </p>
         </div>
       )}
-
-      <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-        <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
-          Status
-        </h2>
-        <InvoiceStatusPanel
-          invoiceId={invoice.id}
-          status={invoice.status}
-          isWarranty={invoice.payerType === "warranty"}
-          hasRecipient={invoice.payerType === "warranty" ? !!invoice.warrantyProvider : !!invoice.customer}
-          hasRecipientEmail={invoice.payerType === "warranty" ? !!invoice.warrantyProvider?.billingEmail : !!invoice.customer?.email}
-          canVoid={canVoid.success}
-          awaitingPickupCount={[invoice.workOrder, ...invoice.combinedWorkOrders.map((c) => c.workOrder)].filter((wo) => wo?.status === "readyForPickup").length}
-        />
-        {invoice.status === "paid" && invoice.paymentReference && (
-          <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
-            Reference: {invoice.paymentReference}
-          </p>
-        )}
-        {invoice.status === "void" && invoice.voidReason && (
-          <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
-            Reason: {invoice.voidReason}
-          </p>
-        )}
-      </div>
 
       <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
         <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>

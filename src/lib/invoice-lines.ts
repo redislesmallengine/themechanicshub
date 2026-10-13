@@ -1,12 +1,12 @@
-// Building the invoice lines for a work order -- shared by Generate Invoice, Complete & Collect and Quick Job.
+// Building the invoice lines for a work order -- shared by Generate Invoice, Finish & collect and Quick Job.
 // Plain functions (not server actions) so any of those can call them, including inside a transaction.
 
-import { computeTotals } from "@/lib/invoices";
-import { flatPriceTotals } from "@/lib/pricing";
+import { computeTotals } from "./invoices.ts";
+import { flatPriceTotals } from "./pricing.ts";
 
 export type WorkOrderInvoiceLine = { type: string; description: string; quantity: string; unitPrice: string; unitCost: string | null; taxable: boolean; lineTotal: string; sortOrder: number };
 
-/** The fee choices on the Generate Invoice / Complete & Collect forms. */
+/** The fee choices on the Generate Invoice / Finish & collect forms. */
 export function readFeeOptions(formData: FormData): { includeDiagnosticFee: boolean; deliveryFee: number | null } | { error: string } {
   const includeDiagnosticFee = formData.get("includeDiagnosticFee") === "on";
   if (formData.get("includeDeliveryFee") !== "on") return { includeDiagnosticFee, deliveryFee: null };
@@ -20,7 +20,7 @@ export function readFeeOptions(formData: FormData): { includeDiagnosticFee: bool
   return { includeDiagnosticFee, deliveryFee: fee };
 }
 
-/** Labour, parts and the optional fees for one work order -- shared by Generate Invoice and Complete & Collect. */
+/** Labour, parts and the optional fees for one work order -- shared by Generate Invoice and Finish & collect. */
 export function buildWorkOrderInvoiceLines(
   workOrder: { labourHours: { toString(): string } | null; parts: { name: string; quantity: number; unitSellPrice: { toString(): string } | null; unitCostPrice: { toString(): string } | null }[] },
   shopProfile: { labourRate: { toString(): string } | null; diagnosticFee: { toString(): string } | null } | null,
@@ -72,10 +72,10 @@ export function buildWorkOrderInvoiceLines(
 
 // ---------------------------------------------------------------------------------------------
 // Billing choice: "by hours and parts" (labour x rate + parts) or "one flat price" (what the owner
-// charged, typed in, with tax included or added on top). Used by Quick Job and Complete & Collect.
+// charged, typed in, with tax included or added on top). Used by Quick Job and Finish & collect.
 // ---------------------------------------------------------------------------------------------
 
-export type Billing = { mode: "hours" } | { mode: "flat"; amount: number; taxIncluded: boolean; description: string };
+export type Billing = { mode: "hours" } | { mode: "flat"; amount: number; taxIncluded: boolean; taxable: boolean; description: string };
 
 /** Reads the billing choice from a form. `fallbackDescription` names the flat line when none was typed. */
 export function readBilling(formData: FormData, fallbackDescription: string): Billing | { error: string } {
@@ -84,7 +84,8 @@ export function readBilling(formData: FormData, fallbackDescription: string): Bi
   const amount = Number(raw);
   if (!raw || !Number.isFinite(amount) || amount <= 0) return { error: "Enter the amount charged, for example 207.00." };
   const description = String(formData.get("flatDescription") ?? "").trim() || fallbackDescription || "Repair service";
-  return { mode: "flat", amount, taxIncluded: formData.get("flatTax") !== "extra", description: description.slice(0, 200) };
+  // A saved service can be marked "no tax"; everything else is taxable.
+  return { mode: "flat", amount, taxIncluded: formData.get("flatTax") !== "extra", taxable: formData.get("flatTaxable") !== "off", description: description.slice(0, 200) };
 }
 
 type Totals = { subtotal: string; taxAmount: string; total: string };
@@ -114,14 +115,14 @@ export function buildInvoiceFromBilling(params: {
     return { lines, totals: computeTotals(lines.map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), taxable: l.taxable })), taxRate) };
   }
 
-  const flat = flatPriceTotals(billing.amount, billing.taxIncluded, taxRate);
+  const flat = flatPriceTotals(billing.amount, billing.taxIncluded, taxRate, billing.taxable);
   const flatLine: WorkOrderInvoiceLine = {
     type: "labor",
     description: billing.description,
     quantity: "1.00",
     unitPrice: flat.unitPrice.toFixed(2),
     unitCost: null,
-    taxable: true,
+    taxable: billing.taxable,
     lineTotal: flat.unitPrice.toFixed(2),
     sortOrder: 0,
   };

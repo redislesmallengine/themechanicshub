@@ -8,10 +8,8 @@ import {
   previewEstimateEmail,
   startRepair,
   recordPhoneDecision,
-  markReadyForPickup,
 } from "@/app/(app)/work-orders/actions";
 import { CloseJobAction } from "@/components/close-job-dialog";
-import { GenerateInvoiceButton } from "@/components/generate-invoice-button";
 import { EmailSentNotice } from "@/components/email-sent-notice";
 import type { WorkOrderStatus } from "@/lib/work-orders";
 
@@ -49,88 +47,6 @@ function SimpleAction({ label, action }: { label: string; action: () => Promise<
         <p className="text-xs font-semibold mt-2" style={{ color: "var(--color-error-solid)" }}>
           {error}
         </p>
-      )}
-    </div>
-  );
-}
-
-/**
- * "Mark Repair Completed" specifically -- the one status change that makes
- * invoicing possible for the first time (generateInvoiceFromWorkOrder
- * blocks on status otherwise), so this is the one moment a "create the
- * invoice now" popup is actually correct rather than premature. Embeds the
- * real GenerateInvoiceButton (same redirect-on-success behavior as the one
- * on the readyForPickup view below) rather than a link, since generating an
- * invoice needs the diagnostic-fee checkbox submitted, not just a click.
- */
-function MarkCompleteAction({
-  workOrderId,
-  hasDiagnosticFee,
-  showDeliveryFee,
-  deliveryFeeDefault,
-}: {
-  workOrderId: string;
-  hasDiagnosticFee: boolean;
-  showDeliveryFee: boolean;
-  deliveryFeeDefault: string;
-}) {
-  const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-  const [showPrompt, setShowPrompt] = useState(false);
-
-  function handleClick() {
-    setError(null);
-    startTransition(async () => {
-      const result = await markReadyForPickup(workOrderId);
-      if (result?.error) {
-        setError(result.error);
-        return;
-      }
-      setShowPrompt(true);
-    });
-  }
-
-  function dismiss() {
-    setShowPrompt(false);
-    router.refresh();
-  }
-
-  return (
-    <div>
-      <button onClick={handleClick} disabled={pending} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-        {pending ? "Working…" : "Mark ready for pickup"}
-      </button>
-      {error && (
-        <p className="text-xs font-semibold mt-2" style={{ color: "var(--color-error-solid)" }}>
-          {error}
-        </p>
-      )}
-
-      {showPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(15,23,42,0.5)" }} onClick={dismiss}>
-          <div
-            className="w-full max-w-md rounded-2xl p-7 text-center"
-            style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-md)" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span className="inline-flex items-center justify-center w-11 h-11 rounded-full mb-4" style={{ background: "var(--color-success-subtle)" }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-success-solid)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 6 9 17l-5-5" />
-              </svg>
-            </span>
-            <h3 className="text-lg font-extrabold mb-1.5" style={{ color: "var(--text-primary)" }}>
-              Marked ready for pickup
-            </h3>
-            <p className="text-sm mb-5" style={{ color: "var(--text-secondary)" }}>
-              Ready to bill this out?
-            </p>
-            <GenerateInvoiceButton workOrderId={workOrderId} hasDiagnosticFee={hasDiagnosticFee} showDeliveryFee={showDeliveryFee} deliveryFeeDefault={deliveryFeeDefault} />
-            <button type="button" onClick={dismiss} className="mt-3 text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
-              Skip for now
-            </button>
-          </div>
-        </div>
       )}
     </div>
   );
@@ -356,18 +272,12 @@ export function WorkOrderStatusPanel({
   status,
   hasCustomerEmail,
   preApprovalRequired,
-  hasDiagnosticFee,
-  showDeliveryFee,
-  deliveryFeeDefault,
   draftInvoiceId,
 }: {
   workOrderId: string;
   status: WorkOrderStatus;
   hasCustomerEmail: boolean;
   preApprovalRequired: boolean | null;
-  hasDiagnosticFee: boolean;
-  showDeliveryFee: boolean;
-  deliveryFeeDefault: string;
   /** The job's invoice, when it is still a draft -- closing the job then offers to mark it sent too. */
   draftInvoiceId: string | null;
 }) {
@@ -406,7 +316,11 @@ export function WorkOrderStatusPanel({
         </div>
       );
     case "inRepair":
-      return <MarkCompleteAction workOrderId={workOrderId} hasDiagnosticFee={hasDiagnosticFee} showDeliveryFee={showDeliveryFee} deliveryFeeDefault={deliveryFeeDefault} />;
+      return (
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          Use <b>Finish this job</b> above to bill it, or move it to another status with the selector.
+        </p>
+      );
     case "readyForPickup":
       return <CloseJobAction workOrderId={workOrderId} draftInvoiceId={draftInvoiceId} />;
     case "closed":

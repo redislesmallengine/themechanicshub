@@ -167,31 +167,43 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
 }
 
 /**
- * "Complete & Collect" -- the counter-job shortcut. One submit finishes the repair,
- * bills it, records the payment and closes the work order: the same result as
- * Mark Repair Completed -> Generate Invoice -> Mark as Paid -> Mark Picked Up, in a
- * single transaction so a half-finished job can't be left behind.
+ * "Finish & collect" -- the one panel that takes a job from In Repair (or Ready for pickup) to billed, and
+ * optionally paid and picked up, in a single transaction so a half-finished job can't be left behind:
+ *
+ *   paying now  -> the invoice is created already paid
+ *   bill later  -> the invoice is created as a draft
+ *   picked up   -> the job is closed; otherwise it is left Ready for pickup
+ *
+ * It is the same result as Mark ready for pickup -> Generate Invoice -> Mark as Paid -> Mark Picked Up, minus the
+ * pop-ups and the trips between screens.
  */
-export async function completeAndCollect(workOrderId: string, formData: FormData) {
+export async function finishJob(workOrderId: string, formData: FormData) {
   const { organizationId } = await requireCanManageInvoices("create");
   const reqHeaders = await headers();
-  const [canPay, canClose] = await Promise.all([
+  const payNow = formData.get("payment") !== "later";
+  const [canPay, canUpdateJob] = await Promise.all([
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["update"] } } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { workOrder: ["update"] } } }),
   ]);
-  if (!canPay.success || !canClose.success) return { error: "You don't have permission to complete and collect a job." };
+  if (!canUpdateJob.success) return { error: "You don't have permission to update work orders." };
+  if (payNow && !canPay.success) return { error: "You don't have permission to record payments." };
 
   const workOrder = await prisma.workOrder.findUnique({
     where: { id: workOrderId },
     include: { parts: true, invoice: true, combinedInto: true, customer: { select: { email: true } } },
   });
   if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
-  if (workOrder.status !== "inRepair" && workOrder.status !== "readyForPickup") return { error: "Only a job that is In Repair or Ready for Pickup can be completed and collected." };
+  if (workOrder.status !== "inRepair" && workOrder.status !== "readyForPickup") return { error: "Only a job that is In Repair or Ready for pickup can be finished and billed." };
   if (workOrder.invoice || workOrder.combinedInto) return { error: "This work order already has an invoice." };
 
-  const paymentMethod = String(formData.get("paymentMethod") ?? "").trim();
-  if (!PAYMENT_METHODS.includes(paymentMethod as (typeof PAYMENT_METHODS)[number])) return { error: "Choose a payment method." };
-  const paymentReference = String(formData.get("paymentReference") ?? "").trim() || null;
+  let paymentMethod = "";
+  let paymentReference: string | null = null;
+  if (payNow) {
+    paymentMethod = String(formData.get("paymentMethod") ?? "").trim();
+    if (!PAYMENT_METHODS.includes(paymentMethod as (typeof PAYMENT_METHODS)[number])) return { error: "Choose how the customer paid." };
+    paymentReference = String(formData.get("paymentReference") ?? "").trim() || null;
+  }
+  const pickedUp = formData.get("pickedUp") === "on";
 
   const labourRaw = String(formData.get("labourHours") ?? "").trim();
   let labourHours = workOrder.labourHours;
@@ -209,12 +221,19 @@ export async function completeAndCollect(workOrderId: string, formData: FormData
   const billing = readBilling(formData, (repairNotes ?? "").split("\n")[0].slice(0, 80));
   if ("error" in billing) return { error: billing.error };
   const { lines, totals } = buildInvoiceFromBilling({ billing, labourHours, parts: workOrder.parts, shopProfile, fees });
+  if (lines.length === 0) return { error: "There is nothing to bill yet. Type the amount charged, or add labour hours or parts." };
 
   const now = new Date();
   const invoice = await prisma.$transaction(async (tx) => {
     await tx.workOrder.update({
       where: { id: workOrderId },
-      data: { repairNotes, labourHours, status: "closed", readyForPickupAt: workOrder.readyForPickupAt ?? now, closedAt: now },
+      data: {
+        repairNotes,
+        labourHours,
+        status: pickedUp ? "closed" : "readyForPickup",
+        readyForPickupAt: workOrder.readyForPickupAt ?? now,
+        ...(pickedUp ? { closedAt: now } : {}),
+      },
     });
     const invoiceNumber = await claimInvoiceNumber(tx, organizationId);
     return tx.invoice.create({
@@ -226,10 +245,7 @@ export async function completeAndCollect(workOrderId: string, formData: FormData
         invoiceType: classifyInvoiceType({ hasEquipment: true, hasWorkOrder: true, lineItems: lines.map((l) => ({ type: l.type })) }),
         invoiceNumber,
         viewToken: generateViewToken(),
-        status: "paid",
-        paidAt: now,
-        paymentMethod,
-        paymentReference,
+        ...(payNow ? { status: "paid", paidAt: now, paymentMethod, paymentReference } : {}),
         notes: repairNotes,
         ...totals,
         lineItems: { create: lines },
@@ -242,9 +258,9 @@ export async function completeAndCollect(workOrderId: string, formData: FormData
   revalidatePath("/invoices");
   revalidatePath("/dashboard");
 
-  // Optional receipt. The job is already done and paid by now, so a failed send is reported, not rolled back.
+  // Optional receipt. The job is already billed and paid by now, so a failed send is reported, not rolled back.
   let emailError: string | null = null;
-  if (formData.get("emailReceipt") === "on" && workOrder.customer.email) {
+  if (payNow && formData.get("emailReceipt") === "on" && workOrder.customer.email) {
     const sent = await sendInvoice(invoice.id);
     if (sent?.error) emailError = sent.error;
   }
@@ -512,6 +528,40 @@ export async function addCustomLineItem(invoiceId: string, formData: FormData) {
  * Order) is what tells removeLineItem and classifyInvoiceType this part's
  * stock was moved right here, on this invoice.
  */
+/** Adds a saved service ("Snowblower Full Service $180") as one line at its saved price, and puts what it includes into the invoice notes. */
+export async function addServiceLineItem(invoiceId: string, formData: FormData) {
+  const { organizationId } = await requireCanManageInvoices("update");
+  const invoice = await loadOwnInvoice(invoiceId, organizationId);
+  if (!invoice) return { error: "That invoice doesn't exist." };
+  if (!isEditable(invoice.status)) return { error: "This invoice can't be edited anymore." };
+
+  const serviceId = String(formData.get("serviceId") ?? "").trim();
+  if (!serviceId) return { error: "Pick a service." };
+  const service = await prisma.service.findUnique({ where: { id: serviceId } });
+  if (!service || service.organizationId !== organizationId || !service.active) return { error: "That service doesn't exist." };
+
+  const quantity = Number(formData.get("quantity") ?? "1");
+  if (!Number.isFinite(quantity) || quantity <= 0) return { error: "Quantity needs to be a positive number." };
+  const afterHeaderId = String(formData.get("sectionHeaderId") ?? "").trim() || null;
+  const unitPrice = Number(service.price);
+
+  await insertLineItem(invoiceId, afterHeaderId, {
+    type: "custom",
+    description: service.name,
+    quantity: quantity.toFixed(2),
+    unitPrice: unitPrice.toFixed(2),
+    taxable: service.taxable,
+    lineTotal: (quantity * unitPrice).toFixed(2),
+  });
+  if (service.description && !(invoice.notes ?? "").includes(service.description)) {
+    await prisma.invoice.update({ where: { id: invoiceId }, data: { notes: invoice.notes ? `${invoice.notes}\n${service.description}` : service.description } });
+  }
+  await recalcTotals(invoiceId, organizationId);
+
+  revalidatePath(`/invoices/${invoiceId}`);
+  return { success: true };
+}
+
 export async function addInventoryLineItem(invoiceId: string, formData: FormData) {
   const { organizationId, userId } = await requireCanManageInvoices("update");
   const invoice = await loadOwnInvoice(invoiceId, organizationId);

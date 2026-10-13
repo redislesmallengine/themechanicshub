@@ -139,6 +139,7 @@ model Organization {
   workOrders        WorkOrder[]
   invoices          Invoice[]
   warrantyProviders WarrantyProvider[]
+  services          Service[]
   savedViews        SavedView[]
 
   @@index([approvalStatus])
@@ -641,6 +642,26 @@ model WarrantyProvider {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invoices     Invoice[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+// A saved service with a set price ("Snowblower Full Service $180") -- picked when billing a job so it goes on
+// the invoice as one line instead of a string of labour and part lines. `description` is the default note of what
+// it includes ("new oil, spark plug, belts checked"), which seeds the job's work-performed notes.
+model Service {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  price          Decimal  @db.Decimal(10, 2)
+  taxable        Boolean  @default(true)
+  description    String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, name])
   @@index([organizationId])

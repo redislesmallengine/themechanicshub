@@ -302,8 +302,10 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
                       : (woStatus === "readyForPickup" || woStatus === "closed") && invoiceId
                         ? { label: "View invoice →", href: `/invoices/${invoiceId}` }
                         : woStatus === "readyForPickup"
-                          ? { label: "Generate invoice →", href: `/work-orders/${wo.id}` }
-                          : { label: "Open →", href: `/work-orders/${wo.id}` };
+                          ? { label: "Bill & collect →", href: `/work-orders/${wo.id}#finish` }
+                          : woStatus === "inRepair"
+                            ? { label: "Finish & collect →", href: `/work-orders/${wo.id}#finish` }
+                            : { label: "Open →", href: `/work-orders/${wo.id}` };
                 const showDelete = (woStatus === "droppedOff" || woStatus === "declined" || isOwner) && !invoiceId && canDelete.success;
                 return (
                   <tr key={wo.id} className="dt-row" style={attention ? { background: "var(--color-error-subtle)" } : billingFlag ? { background: "var(--color-warning-subtle)" } : undefined}>
@@ -351,7 +353,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
                       {fmtAge(ageMs)}
                     </td>
                     <td className="dt-td">
-                      {woStatus === "droppedOff" || woStatus === "diagnosing" || woStatus === "inRepair" ? (
+                      {woStatus === "droppedOff" || woStatus === "diagnosing" ? (
                         <WorkOrderQuickAction workOrderId={wo.id} status={woStatus} />
                       ) : draftInvoiceId ? (
                         <div className="flex items-center gap-2">

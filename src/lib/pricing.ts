@@ -40,7 +40,11 @@ export function unitPriceFor(amount: number, taxIncluded: boolean, ratePercent: 
  * pre-tax price that adds up exactly at 15%), so $207 always prints as $207.00. When tax is added on top it
  * follows the same arithmetic as computeTotals.
  */
-export function flatPriceTotals(amount: number, taxIncluded: boolean, ratePercent: number): { unitPrice: number; subtotal: string; taxAmount: string; total: string } {
+export function flatPriceTotals(amount: number, taxIncluded: boolean, ratePercent: number, taxable = true): { unitPrice: number; subtotal: string; taxAmount: string; total: string } {
+  if (!taxable) {
+    const price = cents(amount);
+    return { unitPrice: price, subtotal: price.toFixed(2), taxAmount: "0.00", total: price.toFixed(2) };
+  }
   if (taxIncluded) {
     const { net } = netForGross(amount, ratePercent);
     const total = cents(amount);

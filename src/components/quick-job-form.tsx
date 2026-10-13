@@ -30,6 +30,14 @@ interface PartOption {
   sellPrice: number;
 }
 
+export interface QuickJobService {
+  id: string;
+  name: string;
+  price: number;
+  taxable: boolean;
+  description: string | null;
+}
+
 interface ShopRates {
   labourRate: number | null;
   diagnosticFee: number | null;
@@ -53,6 +61,7 @@ export function QuickJobForm({
   members,
   currentUserId,
   parts,
+  services,
   shop,
 }: {
   customers: CustomerOption[];
@@ -62,6 +71,7 @@ export function QuickJobForm({
   members: { userId: string; name: string }[];
   currentUserId: string;
   parts: PartOption[];
+  services: QuickJobService[];
   shop: ShopRates;
 }) {
   const router = useRouter();
@@ -87,6 +97,8 @@ export function QuickJobForm({
   const [flatAmount, setFlatAmount] = useState("");
   const [flatTax, setFlatTax] = useState<"included" | "extra">("included");
   const [flatDescription, setFlatDescription] = useState("");
+  const [flatTaxable, setFlatTaxable] = useState(true);
+  const [serviceId, setServiceId] = useState("");
   // Steps the screen ticked on his behalf (because a later step was ticked) fold up to one line.
   const [autoTicked, setAutoTicked] = useState<Set<number>>(new Set());
   const [openAuto, setOpenAuto] = useState<Set<number>>(new Set());
@@ -155,6 +167,19 @@ export function QuickJobForm({
     });
   }
 
+  function pickService(id: string) {
+    setServiceId(id);
+    const service = services.find((sv) => sv.id === id);
+    if (!service) return;
+    // A saved price is the price before tax; every field can still be changed.
+    setBillingMode("flat");
+    setFlatAmount(service.price.toFixed(2));
+    setFlatTax("extra");
+    setFlatTaxable(service.taxable);
+    setFlatDescription(service.name);
+    if (!repairNotes.trim() && service.description) setRepairNotes(service.description);
+  }
+
   function addPart() {
     const part = parts.find((p) => p.id === pickPartId);
     const quantity = Number(pickQty);
@@ -183,7 +208,7 @@ export function QuickJobForm({
     if (billingMode === "flat") {
       const amount = Number(flatAmount);
       if (!Number.isFinite(amount) || amount <= 0) return { lines: feeLines, tax: feeTax, total: feeSubtotal + feeTax, taxIncluded: false };
-      const flat = flatPriceTotals(amount, flatTax === "included", shop.taxRate);
+      const flat = flatPriceTotals(amount, flatTax === "included", shop.taxRate, flatTaxable);
       return {
         lines: [{ label: flatDescription.trim() || "Repair service", amount: Number(flat.subtotal) }, ...feeLines],
         tax: Number(flat.taxAmount) + feeTax,
@@ -199,7 +224,7 @@ export function QuickJobForm({
     const subtotal = lines.reduce((sum, l) => sum + l.amount, 0);
     const tax = Math.round(subtotal * shop.taxRate) / 100;
     return { lines, tax, total: subtotal + tax, taxIncluded: false };
-  }, [hours, usedParts, feeDiag, feeDelivery, deliveryAmount, shop, billingMode, flatAmount, flatTax, flatDescription]);
+  }, [hours, usedParts, feeDiag, feeDelivery, deliveryAmount, shop, billingMode, flatAmount, flatTax, flatTaxable, flatDescription]);
 
   const status = pickedUp ? "Picked up / Delivered" : repaired ? "Ready for pickup" : approved ? "In Repair" : diagnosed ? "Diagnosing" : "Pending";
   const summary: string[] = [
@@ -579,6 +604,21 @@ export function QuickJobForm({
                 {name === "billed" && (
                   <>
                     <input type="hidden" name="billingMode" value={billingMode} />
+                    <input type="hidden" name="flatTaxable" value={flatTaxable ? "on" : "off"} />
+                    {services.length > 0 && (
+                      <div className="max-w-md">
+                        <label htmlFor="qj-service" className="block font-bold mb-1" style={labelStyle}>
+                          Use a saved service (optional)
+                        </label>
+                        <SearchSelect
+                          id="qj-service"
+                          value={serviceId}
+                          onChange={pickService}
+                          placeholder="Type to find a service, e.g. Snowblower…"
+                          options={services.map((sv) => ({ value: sv.id, label: sv.name, hint: money(sv.price), keywords: sv.description ?? "" }))}
+                        />
+                      </div>
+                    )}
                     <div className="inline-flex rounded-lg overflow-hidden" style={{ border: "1px solid var(--border-strong)" }} role="group" aria-label="How to bill this job">
                       {(
                         [

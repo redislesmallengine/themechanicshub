@@ -3,7 +3,7 @@
 import { SearchSelect } from "@/components/search-select";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addCustomLineItem, addInventoryLineItem, removeLineItem } from "@/app/(app)/invoices/actions";
+import { addCustomLineItem, addInventoryLineItem, removeLineItem, addServiceLineItem } from "@/app/(app)/invoices/actions";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -28,6 +28,13 @@ export interface AvailablePart {
   name: string;
   quantityOnHand: number;
   sellPrice: string | null;
+}
+
+export interface ServiceChoice {
+  id: string;
+  name: string;
+  price: string;
+  description: string | null;
 }
 
 export interface SectionHeader {
@@ -175,12 +182,77 @@ function AddCustomLineForm({ invoiceId, headerLines }: { invoiceId: string; head
   );
 }
 
-function AddLineTabs({ invoiceId, availableParts, headerLines }: { invoiceId: string; availableParts: AvailablePart[]; headerLines: SectionHeader[] }) {
-  const [tab, setTab] = useState<"inventory" | "custom">(availableParts.length > 0 ? "inventory" : "custom");
+function AddServiceLineForm({ invoiceId, services, headerLines }: { invoiceId: string; services: ServiceChoice[]; headerLines: SectionHeader[] }) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [serviceId, setServiceId] = useState("");
+  const [pending, startTransition] = useTransition();
+  const bound = addServiceLineItem.bind(null, invoiceId);
+
+  function handleSubmit(formData: FormData) {
+    setError(null);
+    startTransition(async () => {
+      const result = await bound(formData);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      setServiceId("");
+      router.refresh();
+    });
+  }
+
+  return (
+    <form action={handleSubmit} className="flex items-end gap-2 flex-wrap">
+      {headerLines.length > 1 && <SectionPicker headerLines={headerLines} />}
+      <div className="flex-1 min-w-[220px]">
+        <label htmlFor="serviceId" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+          Service
+        </label>
+        <SearchSelect
+          id="serviceId"
+          name="serviceId"
+          required
+          value={serviceId}
+          onChange={setServiceId}
+          placeholder="Type to find a service…"
+          options={services.map((s) => ({ value: s.id, label: s.name, hint: `$${s.price}`, keywords: s.description ?? "" }))}
+        />
+      </div>
+      <div className="w-20">
+        <label htmlFor="serviceQuantity" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
+          Qty
+        </label>
+        <input id="serviceQuantity" name="quantity" type="number" step="1" min="1" defaultValue="1" required className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
+      </div>
+      <button type="submit" disabled={pending} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
+        {pending ? "Adding…" : "Add Service"}
+      </button>
+      {error && (
+        <p className="text-xs font-semibold w-full" style={{ color: "var(--color-error-solid)" }}>
+          {error}
+        </p>
+      )}
+    </form>
+  );
+}
+
+function AddLineTabs({ invoiceId, availableParts, services, headerLines }: { invoiceId: string; availableParts: AvailablePart[]; services: ServiceChoice[]; headerLines: SectionHeader[] }) {
+  const [tab, setTab] = useState<"inventory" | "custom" | "service">(services.length > 0 ? "service" : availableParts.length > 0 ? "inventory" : "custom");
 
   return (
     <div className="space-y-3">
       <div className="flex gap-1 p-0.5 rounded-lg w-fit" style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-subtle)" }}>
+        {services.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setTab("service")}
+            className="px-3 py-1 rounded-md text-[11px] font-bold transition-colors"
+            style={tab === "service" ? { background: "var(--bg-surface)", color: "var(--text-primary)", boxShadow: "var(--shadow-sm)" } : { color: "var(--text-muted)" }}
+          >
+            Service
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setTab("inventory")}
@@ -198,7 +270,9 @@ function AddLineTabs({ invoiceId, availableParts, headerLines }: { invoiceId: st
           Type it in
         </button>
       </div>
-      {tab === "inventory" ? (
+      {tab === "service" ? (
+        <AddServiceLineForm invoiceId={invoiceId} services={services} headerLines={headerLines} />
+      ) : tab === "inventory" ? (
         <AddInventoryLineForm invoiceId={invoiceId} availableParts={availableParts} headerLines={headerLines} />
       ) : (
         <AddCustomLineForm invoiceId={invoiceId} headerLines={headerLines} />
@@ -286,12 +360,14 @@ export function InvoiceLineItemsPanel({
   editable,
   showMargins,
   availableParts,
+  services,
 }: {
   invoiceId: string;
   lines: InvoiceLine[];
   editable: boolean;
   showMargins: boolean;
   availableParts: AvailablePart[];
+  services: ServiceChoice[];
 }) {
   // Present only on a combined invoice (2+ equipment sections) -- gives the
   // "Add Line" forms below something to let staff choose between, instead
@@ -329,7 +405,7 @@ export function InvoiceLineItemsPanel({
           </table>
         </div>
       </div>
-      {editable && <AddLineTabs invoiceId={invoiceId} availableParts={availableParts} headerLines={headerLines} />}
+      {editable && <AddLineTabs invoiceId={invoiceId} availableParts={availableParts} services={services} headerLines={headerLines} />}
     </div>
   );
 }

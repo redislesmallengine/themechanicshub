@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { STATUS_LABELS, STATUS_BADGE, DROP_OFF_METHOD_LABELS, type WorkOrderStatus } from "@/lib/work-orders";
-import { STATUS_LABELS as INVOICE_STATUS_LABELS, STATUS_BADGE as INVOICE_STATUS_BADGE, isOverdue, invoiceChip, type InvoiceStatus } from "@/lib/invoices";
+import { invoiceChip } from "@/lib/invoices";
 import { MarkInvoiceSentButton } from "@/components/mark-invoice-sent-button";
 import { WorkOrderStatusPanel } from "@/components/work-order-status-panel";
 import { WorkOrderDiagnosisForm } from "@/components/work-order-diagnosis-form";
@@ -13,9 +13,29 @@ import { WorkOrderPartsPanel } from "@/components/work-order-parts-panel";
 import { GenerateInvoiceButton } from "@/components/generate-invoice-button";
 import { SentEmailsPanel } from "@/components/sent-emails-panel";
 import { DeleteWorkOrderButton } from "@/components/delete-work-order-button";
+
+// A card that starts folded, for the parts of a job that matter less once the next step is on screen.
+function Collapsible({ title, summary, defaultOpen = false, children }: { title: string; summary?: string; defaultOpen?: boolean; children: React.ReactNode }) {
+  return (
+    <details open={defaultOpen} className="rounded-xl" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+      <summary className="cursor-pointer list-none px-5 py-4 flex items-center justify-between gap-3">
+        <span className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+          ▸ {title}
+        </span>
+        {summary && (
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+            {summary}
+          </span>
+        )}
+      </summary>
+      <div className="px-5 pb-5">{children}</div>
+    </details>
+  );
+}
 import { WorkOrderRepairNotesForm } from "@/components/work-order-repair-notes-form";
 import { WorkOrderStatusMover } from "@/components/work-order-status-mover";
-import { CompleteCollectForm } from "@/components/complete-collect-form";
+import { FinishJobPanel } from "@/components/finish-job-panel";
+import { InvoiceStatusPanel } from "@/components/invoice-status-panel";
 
 export default async function WorkOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -31,19 +51,21 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
       equipment: { include: { equipmentType: true } },
       assignedTo: true,
       parts: { orderBy: { createdAt: "asc" } },
-      invoice: true,
-      combinedInto: { include: { invoice: true } },
+      invoice: { include: { warrantyProvider: true } },
+      combinedInto: { include: { invoice: { include: { warrantyProvider: true } } } },
     },
   });
   if (!workOrder || workOrder.organizationId !== organizationId) notFound();
 
-  const [{ members }, availableParts, shopProfile, sentEmails, canDelete, membership] = await Promise.all([
+  const [{ members }, availableParts, shopProfile, sentEmails, canDelete, membership, services, canVoid] = await Promise.all([
     auth.api.listMembers({ headers: reqHeaders }),
     prisma.part.findMany({ where: { organizationId, quantityOnHand: { gt: 0 } }, orderBy: { name: "asc" } }),
     prisma.shopProfile.findUnique({ where: { organizationId } }),
     prisma.sentEmail.findMany({ where: { relatedType: "estimate", relatedId: workOrder.id }, orderBy: { createdAt: "desc" } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { workOrder: ["delete"] } } }),
     prisma.member.findFirst({ where: { organizationId, userId: session.user.id } }),
+    prisma.service.findMany({ where: { organizationId, active: true }, orderBy: { name: "asc" } }),
+    auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["void"] } } }),
   ]);
   const isOwner = membership?.role === "owner";
 
@@ -53,6 +75,8 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   const draftInvoiceId = linkedInvoice?.status === "draft" ? linkedInvoice.id : null;
   const moneyChip = linkedInvoice ? invoiceChip(linkedInvoice.status, linkedInvoice.dueDate, linkedInvoice.payerType) : null;
   const jobIsDone = status === "readyForPickup" || status === "closed";
+  // Not billed yet and ready for it: the Finish panel is this job's next step.
+  const showFinish = (status === "inRepair" || status === "readyForPickup") && !linkedInvoice;
   const equipmentLabel = [workOrder.equipment.make, workOrder.equipment.model].filter(Boolean).join(" / ") || workOrder.equipment.equipmentType?.name || "Equipment";
   // The option shows whenever this work order was marked Shop
   // Pickup/Delivery at intake -- independent of whether Shop Profile has a
@@ -65,11 +89,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   // Pending / Diagnosing: the Diagnosis form comes first -- it is where the next move
   // (send an estimate, repair later, start repair) is chosen. Later on it drops below Status.
   const earlyStage = status === "droppedOff" || status === "diagnosing";
-  const diagnosisCard = (
-  <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-    <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
-      Diagnosis
-    </h2>
+  const diagnosisForm = (
     <WorkOrderDiagnosisForm
       workOrderId={workOrder.id}
       status={status}
@@ -80,7 +100,14 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
       initialLabourHours={workOrder.labourHours?.toString() ?? ""}
       initialAssignedToUserId={workOrder.assignedToUserId ?? ""}
     />
-  </div>
+  );
+  const diagnosisCard = (
+    <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+      <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
+        Diagnosis
+      </h2>
+      {diagnosisForm}
+    </div>
   );
 
   // "The story so far" -- problem (the complaint card above), diagnosis, what the
@@ -200,6 +227,34 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
 
       {earlyStage && diagnosisCard}
 
+      {/* Billed: the invoice is the next step, with sending and payment right here. */}
+      {linkedInvoice && (
+        <div id="invoice-card" className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "2px solid var(--color-brand-600)" }}>
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+            <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+              Invoice {linkedInvoice.invoiceNumber} · ${linkedInvoice.total.toString()}
+              {workOrder.combinedInto && (
+                <span className="ml-2 text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>
+                  combined with other equipment
+                </span>
+              )}
+            </h2>
+            <Link href={`/invoices/${linkedInvoice.id}`} className="text-xs font-bold text-brand-600">
+              Open the full invoice →
+            </Link>
+          </div>
+          <InvoiceStatusPanel
+            invoiceId={linkedInvoice.id}
+            status={linkedInvoice.status}
+            isWarranty={linkedInvoice.payerType === "warranty"}
+            hasRecipient={linkedInvoice.payerType === "warranty" ? !!linkedInvoice.warrantyProvider : !!workOrder.customer}
+            hasRecipientEmail={linkedInvoice.payerType === "warranty" ? !!linkedInvoice.warrantyProvider?.billingEmail : !!workOrder.customer.email}
+            canVoid={canVoid.success}
+            awaitingPickupCount={status === "readyForPickup" ? 1 : 0}
+          />
+        </div>
+      )}
+
       {showStory && (
         <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
           <h2 className="text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>
@@ -209,7 +264,10 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
             {[
               { label: "Diagnosis", sub: diagnosisSub, body: <p className="text-sm whitespace-pre-wrap" style={{ color: "var(--text-primary)" }}>{workOrder.diagnosisNotes ?? "—"}</p> },
               { label: "Told the customer", sub: "estimate and go-ahead", body: <p className="text-sm" style={{ color: "var(--text-primary)" }}>{toldCustomer}</p> },
-              { label: "Work performed", sub: "how it was fixed", body: <WorkOrderRepairNotesForm workOrderId={workOrder.id} initialNotes={workOrder.repairNotes ?? workOrder.diagnosisNotes ?? ""} prefilledFromDiagnosis={!workOrder.repairNotes && !!workOrder.diagnosisNotes} /> },
+              // While the Finish panel is open it is the one place to write what was done, so this row waits for it.
+              ...(showFinish
+                ? []
+                : [{ label: "Work performed", sub: "how it was fixed", body: <WorkOrderRepairNotesForm workOrderId={workOrder.id} initialNotes={workOrder.repairNotes ?? workOrder.diagnosisNotes ?? ""} prefilledFromDiagnosis={!workOrder.repairNotes && !!workOrder.diagnosisNotes} /> }]),
             ].map((row) => (
               <div key={row.label} className="grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-1 sm:gap-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                 <div>
@@ -229,28 +287,64 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         </div>
       )}
 
-      {status === "inRepair" && !workOrder.invoice && !workOrder.combinedInto && (
-        <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--color-brand-600)" }}>
+      {/* Not billed yet: the one panel that finishes the job, bills it and (if wanted) takes payment. */}
+      {showFinish && (status === "inRepair" || status === "readyForPickup") && (
+        <div id="finish" className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "2px solid var(--color-brand-600)" }}>
           <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-            Complete &amp; Collect
+            {status === "inRepair" ? "Finish this job" : "Bill this job"}
           </h2>
-          <p className="text-[11px] mt-0.5 mb-3" style={{ color: "var(--text-muted)" }}>
-            Customer at the counter? Finish the repair, bill it, take payment and close the job in one step. Not ready to bill yet? Use <b>Mark ready for pickup</b> in Status below.
+          <p className="text-[11px] mt-0.5 mb-4" style={{ color: "var(--text-muted)" }}>
+            {status === "inRepair"
+              ? "Say what was done, set the price, and take payment, all in one step. Parts used are added in Parts Needed below."
+              : "The repair is done. Set the price and take payment, or create the invoice to send later."}
           </p>
-          <CompleteCollectForm
+          <FinishJobPanel
             workOrderId={workOrder.id}
+            status={status}
             initialRepairNotes={workOrder.repairNotes ?? workOrder.diagnosisNotes ?? ""}
             notesPrefilledFromDiagnosis={!workOrder.repairNotes && !!workOrder.diagnosisNotes}
             initialLabourHours={workOrder.labourHours?.toString() ?? ""}
             parts={workOrder.parts.map((p) => ({ name: p.name, quantity: p.quantity }))}
-            hasDiagnosticFee={!!shopProfile?.diagnosticFee}
+            services={services.map((sv) => ({ id: sv.id, name: sv.name, price: Number(sv.price), taxable: sv.taxable, description: sv.description }))}
+            diagnosticFee={shopProfile?.diagnosticFee ? Number(shopProfile.diagnosticFee) : null}
             showDeliveryFee={showDeliveryFee}
             deliveryFeeDefault={deliveryFeeDefault}
             customerEmail={workOrder.customer.email}
             taxRate={shopProfile?.taxRate ? Number(shopProfile.taxRate) : 0}
             taxLabel={shopProfile?.taxLabel ?? "Tax"}
           />
+          {status === "readyForPickup" && (
+            <p className="text-[10px] mt-3" style={{ color: "var(--text-muted)" }}>
+              Billing this customer for more than one machine at once?{" "}
+              <Link href="/invoices/new" className="font-semibold text-brand-600">
+                Combine work orders into one invoice
+              </Link>{" "}
+              instead.
+            </p>
+          )}
         </div>
+      )}
+
+      {/* Parts first when they are still needed for the price; folded away once the job is billed. */}
+      {earlyStage || status === "inRepair" || status === "awaitingApproval" ? (
+        <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+          <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
+            Parts Needed
+          </h2>
+          <WorkOrderPartsPanel
+            workOrderId={workOrder.id}
+            parts={workOrder.parts.map((p) => ({ id: p.id, name: p.name, quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
+            availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, quantityOnHand: p.quantityOnHand }))}
+          />
+        </div>
+      ) : (
+        <Collapsible title="Parts Needed" summary={workOrder.parts.length === 0 ? "none" : `${workOrder.parts.length} used`}>
+          <WorkOrderPartsPanel
+            workOrderId={workOrder.id}
+            parts={workOrder.parts.map((p) => ({ id: p.id, name: p.name, quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
+            availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, quantityOnHand: p.quantityOnHand }))}
+          />
+        </Collapsible>
       )}
 
       <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
@@ -271,9 +365,6 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           status={status}
           hasCustomerEmail={!!workOrder.customer.email}
           preApprovalRequired={workOrder.preApprovalRequired}
-          hasDiagnosticFee={!!shopProfile?.diagnosticFee}
-          showDeliveryFee={showDeliveryFee}
-          deliveryFeeDefault={deliveryFeeDefault}
           draftInvoiceId={draftInvoiceId}
         />
         {workOrder.status === "awaitingApproval" && workOrder.estimateAmount && (
@@ -296,10 +387,19 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         )}
       </div>
 
-      <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-        <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
-          Emails Sent
-        </h2>
+      {/* Closed with no invoice (an older job): billing is still possible from here. */}
+      {status === "closed" && !linkedInvoice && (
+        <div id="invoice-card" className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+          <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
+            Invoice
+          </h2>
+          <GenerateInvoiceButton workOrderId={workOrder.id} hasDiagnosticFee={!!shopProfile?.diagnosticFee} showDeliveryFee={showDeliveryFee} deliveryFeeDefault={deliveryFeeDefault} />
+        </div>
+      )}
+
+      {!earlyStage && <Collapsible title="Diagnosis" summary={diagnosisSub || undefined}>{diagnosisForm}</Collapsible>}
+
+      <Collapsible title="Emails Sent" summary={sentEmails.length === 0 ? "nothing yet" : `${sentEmails.length} sent`}>
         <SentEmailsPanel
           emails={sentEmails.map((e) => ({
             id: e.id,
@@ -312,69 +412,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
             createdAt: e.createdAt.toISOString(),
           }))}
         />
-      </div>
-
-      {!earlyStage && diagnosisCard}
-
-      <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-        <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
-          Parts Needed
-        </h2>
-        <WorkOrderPartsPanel
-          workOrderId={workOrder.id}
-          parts={workOrder.parts.map((p) => ({ id: p.id, name: p.name, quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
-          availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, quantityOnHand: p.quantityOnHand }))}
-        />
-      </div>
-
-      <div id="invoice-card" className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-        <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
-          Invoice
-        </h2>
-        {workOrder.invoice || workOrder.combinedInto ? (
-          (() => {
-            const linkedInvoice = workOrder.invoice ?? workOrder.combinedInto!.invoice;
-            const invStatus = linkedInvoice.status as InvoiceStatus;
-            const overdue = isOverdue(linkedInvoice.status, linkedInvoice.dueDate);
-            return (
-              <Link href={`/invoices/${linkedInvoice.id}`} className="flex items-center justify-between hover:underline">
-                <div>
-                  <span className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
-                    {linkedInvoice.invoiceNumber}
-                  </span>
-                  <span className="ml-2 text-sm" style={{ color: "var(--text-muted)" }}>
-                    ${linkedInvoice.total.toString()}
-                  </span>
-                  {workOrder.combinedInto && (
-                    <span className="ml-2 text-[10px]" style={{ color: "var(--text-muted)" }}>
-                      combined with other equipment
-                    </span>
-                  )}
-                </div>
-                <span className={`dt-badge dt-badge--${overdue ? "error" : INVOICE_STATUS_BADGE[invStatus]}`}>
-                  <span className="dt-badge-dot" />
-                  {overdue ? "Overdue" : INVOICE_STATUS_LABELS[invStatus]}
-                </span>
-              </Link>
-            );
-          })()
-        ) : status === "readyForPickup" || status === "closed" ? (
-          <>
-            <GenerateInvoiceButton workOrderId={workOrder.id} hasDiagnosticFee={!!shopProfile?.diagnosticFee} showDeliveryFee={showDeliveryFee} deliveryFeeDefault={deliveryFeeDefault} />
-            <p className="text-[10px] mt-2" style={{ color: "var(--text-muted)" }}>
-              Billing this customer for more than one machine at once?{" "}
-              <Link href="/invoices/new" className="font-semibold text-brand-600">
-                Combine work orders into one invoice
-              </Link>{" "}
-              instead.
-            </p>
-          </>
-        ) : (
-          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-            Available once this work order is Ready for pickup.
-          </p>
-        )}
-      </div>
+      </Collapsible>
     </div>
   );
 }

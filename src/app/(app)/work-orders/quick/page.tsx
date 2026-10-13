@@ -12,13 +12,14 @@ export default async function QuickJobPage({ searchParams }: { searchParams: Pro
   if (!session?.session.activeOrganizationId) redirect("/sign-in");
   const organizationId = session.session.activeOrganizationId;
 
-  const [customers, equipmentTypes, makes, { members }, parts, shopProfile] = await Promise.all([
+  const [customers, equipmentTypes, makes, { members }, parts, shopProfile, services] = await Promise.all([
     prisma.customer.findMany({ where: { organizationId }, orderBy: { name: "asc" }, include: { equipment: { include: { equipmentType: true } } } }),
     prisma.equipmentType.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
     prisma.equipmentMake.findMany({ where: { organizationId }, orderBy: { name: "asc" } }),
     auth.api.listMembers({ headers: reqHeaders }),
     prisma.part.findMany({ where: { organizationId, quantityOnHand: { gt: 0 } }, orderBy: { name: "asc" } }),
     prisma.shopProfile.findUnique({ where: { organizationId } }),
+    prisma.service.findMany({ where: { organizationId, active: true }, orderBy: { name: "asc" } }),
   ]);
 
   return (
@@ -52,6 +53,7 @@ export default async function QuickJobPage({ searchParams }: { searchParams: Pro
         members={members.filter((m) => m.user).map((m) => ({ userId: m.userId, name: m.user!.name }))}
         currentUserId={session.user.id}
         parts={parts.map((p) => ({ id: p.id, name: p.name, quantityOnHand: p.quantityOnHand, sellPrice: p.sellPrice ? Number(p.sellPrice) : 0 }))}
+        services={services.map((sv) => ({ id: sv.id, name: sv.name, price: Number(sv.price), taxable: sv.taxable, description: sv.description }))}
         shop={{
           labourRate: shopProfile?.labourRate ? Number(shopProfile.labourRate) : null,
           diagnosticFee: shopProfile?.diagnosticFee ? Number(shopProfile.diagnosticFee) : null,
