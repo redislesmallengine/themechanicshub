@@ -91,7 +91,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
           },
         }),
         prisma.workOrder.groupBy({ by: ["status"], where: { organizationId }, _count: { _all: true } }),
-        prisma.shopProfile.findUnique({ where: { organizationId }, select: { agingAlertDays: true } }),
+        prisma.shopProfile.findUnique({ where: { organizationId }, select: { agingAlertDays: true, newJobMode: true } }),
         auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { workOrder: ["update"] } } }),
         auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { workOrder: ["delete"] } } }),
         prisma.member.findFirst({ where: { organizationId, userId: session!.user.id } }),
@@ -218,16 +218,24 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
               style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)", color: "var(--text-primary)" }}
             />
           </form>
-          <Link
-            href="/work-orders/quick"
-            className="flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold shadow-sm transition whitespace-nowrap hover:bg-slate-50"
-            style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}
-          >
-            ⚡ Quick Job
-          </Link>
-          <Link href="/work-orders/new" className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-3.5 py-2 text-xs font-semibold shadow-sm transition whitespace-nowrap">
-            + New Work Order
-          </Link>
+          {/* The shop picks which of the two leads (Settings > Shop Profile); the other stays one click away. */}
+          {(() => {
+            const primary = "flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg px-3.5 py-2 text-xs font-semibold shadow-sm transition whitespace-nowrap";
+            const quiet = "flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold shadow-sm transition whitespace-nowrap hover:bg-slate-50";
+            const quietStyle = { background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" };
+            const quickLeads = shopProfile?.newJobMode === "quick";
+            const quickLink = (
+              <Link key="quick" href="/work-orders/quick" className={quickLeads ? primary : quiet} style={quickLeads ? undefined : quietStyle}>
+                ⚡ Quick Job
+              </Link>
+            );
+            const stepsLink = (
+              <Link key="steps" href="/work-orders/new" className={quickLeads ? quiet : primary} style={quickLeads ? quietStyle : undefined}>
+                + New Work Order
+              </Link>
+            );
+            return quickLeads ? [stepsLink, quickLink] : [quickLink, stepsLink];
+          })()}
         </div>
       </div>
 

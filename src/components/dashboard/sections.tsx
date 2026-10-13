@@ -134,7 +134,7 @@ export async function RevenueTiles({ organizationId }: { organizationId: string 
       <StatTile label="Overdue" value={fmtMoney(r.overdue)} sub={`${r.overdueCount} invoice${r.overdueCount === 1 ? "" : "s"}`} tone={r.overdue > 0 ? "error" : "neutral"} href="/invoices?status=overdue" />
       <StatTile label="Avg Invoice" value={fmtMoney(r.avgInvoice30d)} sub="last 30 days" href="/reports/sales" />
       <StatTile label="Parts Margin" value={r.partsMarginPercent === null ? "—" : `${r.partsMarginPercent.toFixed(0)}%`} sub="cost vs. sell, this month" />
-      <StatTile label="Warranty Claims Outstanding" value={fmtMoney(r.warrantyOutstanding)} sub={`${r.warrantyOutstandingCount} claim${r.warrantyOutstandingCount === 1 ? "" : "s"}`} href="/invoices?payer=warranty&status=unpaid" />
+      <StatTile label="Warranty Claims Outstanding" value={fmtMoney(r.warrantyOutstanding)} sub={`${r.warrantyOutstandingCount} claim${r.warrantyOutstandingCount === 1 ? "" : "s"}`} href="/warranty" />
     </div>
   );
 }

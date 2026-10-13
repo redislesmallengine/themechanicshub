@@ -26,6 +26,7 @@ export function ShopProfileForm({
   initialTaxLabel,
   initialProvince,
   initialAgingAlertDays,
+  initialNewJobMode,
   initialFacebookUrl,
   initialGoogleReviewUrl,
   initialHstNumber,
@@ -45,6 +46,7 @@ export function ShopProfileForm({
   initialTaxLabel: string;
   initialProvince: string;
   initialAgingAlertDays: string;
+  initialNewJobMode: string;
   initialFacebookUrl: string;
   initialGoogleReviewUrl: string;
   initialHstNumber: string;
@@ -382,6 +384,15 @@ export function ShopProfileForm({
               className="w-full px-3 py-2 rounded-lg text-xs font-mono"
               style={inputStyle}
             />
+          </div>
+          <div>
+            <label htmlFor="newJobMode" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+              Main button for a new job
+            </label>
+            <select id="newJobMode" name="newJobMode" defaultValue={initialNewJobMode === "quick" ? "quick" : "steps"} className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
+              <option value="steps">New Work Order (step by step)</option>
+              <option value="quick">Quick Job (one screen, for the counter)</option>
+            </select>
           </div>
         </div>
         <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>

@@ -22,6 +22,7 @@ import {
 } from "@/components/icons";
 
 const SIDEBAR_COLLAPSED_KEY = "mechanicshophub:sidebar-collapsed";
+const MENU_STYLE_KEY = "mechanicshophub:menu-style";
 
 // A per-viewer preference read from localStorage, synced via
 // useSyncExternalStore rather than "read it in an effect and setState" —
@@ -56,6 +57,40 @@ function getCollapsedServerSnapshot(): boolean {
   return false;
 }
 
+// The sidebar comes in two layouts: "grouped" (Operations / Shop Profile / Reports / Platform, with nested
+// entries) and "classic" (the flat list). A per-browser choice, like the collapsed state above.
+type MenuStyle = "grouped" | "classic";
+let cachedMenuStyle: MenuStyle | null = null;
+const menuStyleListeners = new Set<() => void>();
+
+function readStoredMenuStyle(): MenuStyle {
+  try {
+    return localStorage.getItem(MENU_STYLE_KEY) === "classic" ? "classic" : "grouped";
+  } catch {
+    return "grouped";
+  }
+}
+function subscribeMenuStyle(listener: () => void) {
+  menuStyleListeners.add(listener);
+  return () => menuStyleListeners.delete(listener);
+}
+function getMenuStyleSnapshot(): MenuStyle {
+  if (cachedMenuStyle === null) cachedMenuStyle = readStoredMenuStyle();
+  return cachedMenuStyle;
+}
+function getMenuStyleServerSnapshot(): MenuStyle {
+  return "grouped";
+}
+function setMenuStyle(next: MenuStyle) {
+  cachedMenuStyle = next;
+  try {
+    localStorage.setItem(MENU_STYLE_KEY, next);
+  } catch {
+    // best-effort only
+  }
+  menuStyleListeners.forEach((listener) => listener());
+}
+
 function setCollapsed(next: boolean) {
   cachedCollapsed = next;
   try {
@@ -80,6 +115,7 @@ const NAV = [
   { href: "/inventory", label: "Inventory", icon: InventoryIcon, color: "text-indigo-400" },
   { href: "/work-orders", label: "Work Orders", icon: WorkOrderIcon, color: "text-amber-400" },
   { href: "/invoices", label: "Invoices", icon: InvoiceIcon, color: "text-sky-400" },
+  { href: "/warranty", label: "Warranty Claims", icon: ShieldIcon, color: "text-sky-400" },
 ];
 
 interface NavItem {
@@ -432,6 +468,155 @@ function NavGroup({
   );
 }
 
+interface TreeNode {
+  href: string;
+  label: string;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  color: string;
+  children?: TreeNode[];
+}
+
+interface MenuSection {
+  label: string;
+  /** Sections that are also a page (Shop Profile) render their heading as a link. */
+  href?: string;
+  icon?: ComponentType<SVGProps<SVGSVGElement>>;
+  color?: string;
+  nodes: TreeNode[];
+}
+
+// The sidebar, as a tree. Every parent is also a page of its own (click the label to open
+// it, the chevron to expand), so no destination is lost by nesting. Which branches exist
+// follows the same permissions the flat menu used: shop settings, reports, site admin.
+function buildMenu({ canManageSettings, canViewReports, isSiteAdmin, pendingShopCount }: { canManageSettings: boolean; canViewReports: boolean; isSiteAdmin: boolean; pendingShopCount: number }): MenuSection[] {
+  const partsList: TreeNode = { href: "/inventory", label: "Part #", icon: InventoryIcon, color: "text-indigo-400" };
+
+  const operations: TreeNode[] = [
+    {
+      href: "/customers",
+      label: "Customers",
+      icon: CustomersIcon,
+      color: "text-emerald-400",
+      children: [
+        { href: "/equipment", label: "Equipment", icon: EquipmentIcon, color: "text-violet-400" },
+        { href: "/work-orders", label: "Work Orders", icon: WorkOrderIcon, color: "text-amber-400" },
+        { href: "/invoices", label: "Invoices", icon: InvoiceIcon, color: "text-sky-400" },
+        { href: "/warranty", label: "Warranty Claims", icon: ShieldIcon, color: "text-sky-400" },
+      ],
+    },
+    {
+      href: "/inventory",
+      label: "Parts / Service Inventory",
+      icon: InventoryIcon,
+      color: "text-indigo-400",
+      children: canManageSettings
+        ? [
+            { href: "/settings/part-categories", label: "Parts Category", icon: InventoryIcon, color: "text-indigo-400", children: [partsList] },
+            { href: "/settings/services", label: "Services Inventory", icon: InventoryIcon, color: "text-indigo-400" },
+          ]
+        : [partsList],
+    },
+  ];
+  if (canManageSettings) {
+    operations.push({
+      href: "/settings/equipment-types",
+      label: "Equipment Types",
+      icon: EquipmentIcon,
+      color: "text-violet-400",
+      children: [
+        { href: "/settings/equipment-makes", label: "Equipment Makes", icon: EquipmentIcon, color: "text-violet-400" },
+        { href: "/settings/engine-types", label: "Engine Types", icon: EquipmentIcon, color: "text-violet-400" },
+      ],
+    });
+  }
+
+  const sections: MenuSection[] = [{ label: "Operations", nodes: operations }];
+
+  if (canManageSettings) {
+    sections.push({
+      label: "Shop Profile",
+      href: "/settings/shop",
+      icon: StoreIcon,
+      color: "text-teal-400",
+      nodes: [
+        { href: "/settings/email", label: "Email", icon: SettingsIcon, color: "text-rose-400" },
+        { href: "/settings/email-templates", label: "Email Templates", icon: SettingsIcon, color: "text-rose-400" },
+        { href: "/settings/warranty-providers", label: "Warranty Providers", icon: InvoiceIcon, color: "text-sky-400" },
+      ],
+    });
+  }
+
+  if (canViewReports) {
+    // One report today (a customer's full history); more land here later.
+    sections.push({
+      label: "Reports",
+      nodes: [
+        { href: "/reports/sales", label: "Sales & Tax", icon: ReportIcon, color: "text-orange-400" },
+        { href: "/reports/customer-360", label: "Customer 360", icon: CustomersIcon, color: "text-emerald-400" },
+      ],
+    });
+  }
+
+  const platform: TreeNode[] = [{ href: "/staff", label: "Security & Roles", icon: StaffIcon, color: "text-brand-400" }];
+  if (isSiteAdmin) {
+    platform.push({ href: "/admin/shops", label: pendingShopCount > 0 ? `Shop Approvals (${pendingShopCount})` : "Shop Approvals", icon: StoreIcon, color: "text-teal-400" });
+    platform.push({ href: "/admin/roles", label: "Roles & Rights", icon: ShieldIcon, color: "text-violet-400" });
+  }
+  sections.push({ label: "Platform", nodes: platform });
+
+  return sections;
+}
+
+/** A node is on its own page when the URL is its href or beneath it ("/email" must not light up "/email-templates"). */
+function isTreeNodeActive(node: TreeNode, pathname: string) {
+  return pathname === node.href || pathname.startsWith(node.href + "/");
+}
+
+function isTreeBranchActive(node: TreeNode, pathname: string): boolean {
+  return isTreeNodeActive(node, pathname) || (node.children ?? []).some((child) => isTreeBranchActive(child, pathname));
+}
+
+function TreeItem({ node, collapsed, pathname, onNavigate }: { node: TreeNode; collapsed: boolean; pathname: string; onNavigate?: () => void }) {
+  const children = node.children ?? [];
+  const selfActive = isTreeNodeActive(node, pathname);
+  const childActive = children.some((child) => isTreeBranchActive(child, pathname));
+  // Follows the current page until the user opens or closes it themselves.
+  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  const open = manualOpen ?? (selfActive || childActive);
+
+  if (children.length === 0) {
+    return <NavLink href={node.href} label={node.label} icon={node.icon} color={node.color} collapsed={collapsed} onNavigate={onNavigate} active={selfActive} />;
+  }
+
+  return (
+    <div>
+      <div className="flex items-stretch gap-0.5">
+        <div className="flex-1 min-w-0">
+          {/* The row lights up only when nothing beneath it is the current page, so a branch never highlights twice. */}
+          <NavLink href={node.href} label={node.label} icon={node.icon} color={node.color} collapsed={collapsed} onNavigate={onNavigate} active={selfActive && !childActive} />
+        </div>
+        <button
+          type="button"
+          onClick={() => setManualOpen(!open)}
+          aria-expanded={open}
+          aria-label={`${open ? "Collapse" : "Expand"} ${node.label}`}
+          className={`px-1.5 rounded-lg hover:bg-white/5 ${collapsed ? "md:hidden" : ""}`}
+          style={{ color: "#94A3B8" }}
+        >
+          <ChevronDownIcon className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} />
+        </button>
+      </div>
+      {open && (
+        <div className={`space-y-0.5 mt-0.5 pl-3.5 ml-4 border-l border-l-[#1E293B] ${collapsed ? "md:hidden" : ""}`}>
+          {children.map((child) => (
+            <TreeItem key={child.label} node={child} collapsed={collapsed} pathname={pathname} onNavigate={onNavigate} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AppShell({
   user,
   roleLabel,
@@ -452,6 +637,8 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const collapsed = useSyncExternalStore(subscribeCollapsed, getCollapsedSnapshot, getCollapsedServerSnapshot);
+  const menuStyle = useSyncExternalStore(subscribeMenuStyle, getMenuStyleSnapshot, getMenuStyleServerSnapshot);
+  const menu = buildMenu({ canManageSettings: !!canManageSettings, canViewReports: !!canViewReports, isSiteAdmin: !!isSiteAdmin, pendingShopCount });
   // Separate from `collapsed` (the desktop icon-rail preference, persisted)
   // — this is the mobile off-canvas drawer's open/closed state, always
   // starts closed, never persisted. Below the md breakpoint the sidebar is
@@ -478,6 +665,8 @@ export function AppShell({
           className={`fixed md:static inset-y-0 left-0 md:inset-auto z-40 p-3 flex flex-col shrink-0 overflow-y-auto transform md:transform-none transition-transform md:transition-[width] duration-200 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 w-64 ${collapsed ? "md:w-16" : "md:w-64"}`}
           style={{ background: "#0F172A", borderRight: "1px solid #1E293B" }}
         >
+          {menuStyle === "classic" ? (
+            <>
           <SectionLabel collapsed={collapsed}>Operations</SectionLabel>
           <nav className="space-y-0.5 mb-4">
             {NAV.map(({ href, label, icon, color }) => (
@@ -519,6 +708,56 @@ export function AppShell({
             </>
           )}
 
+            </>
+          ) : (
+            <>
+          <nav className="space-y-0.5 mb-4">
+            <NavLink href="/dashboard" label="Dashboard" icon={DashboardIcon} color="text-blue-400" collapsed={collapsed} onNavigate={closeMobileMenu} active={pathname === "/dashboard" || pathname.startsWith("/dashboard/")} />
+          </nav>
+
+          {menu.map((section) => (
+            <div key={section.label} className="mb-4">
+              {section.href && section.icon ? (
+                <>
+                  <Link
+                    href={section.href}
+                    onClick={closeMobileMenu}
+                    className={`block px-2 text-[11px] font-semibold uppercase tracking-wider mb-1 font-mono hover:text-white ${collapsed ? "md:hidden" : ""}`}
+                    style={{ color: pathname === section.href || pathname.startsWith(section.href + "/") ? "#FFFFFF" : "#64748B" }}
+                  >
+                    {section.label}
+                  </Link>
+                  {/* The icon rail has no room for headings, so a heading that is also a page gets its own icon there. */}
+                  {collapsed && (
+                    <div className="hidden md:block mb-0.5">
+                      <NavLink
+                        href={section.href}
+                        label={section.label}
+                        icon={section.icon}
+                        color={section.color ?? "text-slate-400"}
+                        collapsed={collapsed}
+                        onNavigate={closeMobileMenu}
+                        active={pathname === section.href || pathname.startsWith(section.href + "/")}
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <SectionLabel collapsed={collapsed}>{section.label}</SectionLabel>
+              )}
+              <nav className="space-y-0.5">
+                {section.nodes.map((node) => (
+                  <TreeItem key={node.label} node={node} collapsed={collapsed} pathname={pathname} onNavigate={closeMobileMenu} />
+                ))}
+              </nav>
+            </div>
+          ))}
+
+          <NavGroup label="External Links" icon={ExternalLinkIcon} iconColor="text-sky-400" items={EXTERNAL_LINKS_NAV} collapsed={collapsed} pathname={pathname} onNavigate={closeMobileMenu} />
+
+            </>
+          )}
+
           <div className="mt-auto pt-3 hidden md:block" style={{ borderTop: "1px solid #1E293B" }}>
             <button
               onClick={toggleCollapsed}
@@ -529,6 +768,17 @@ export function AppShell({
               <CollapseIcon className={`w-3.5 h-3.5 shrink-0 transition-transform ${collapsed ? "rotate-180" : ""}`} />
               {!collapsed && "Collapse"}
             </button>
+            {!collapsed && (
+              <button
+                type="button"
+                onClick={() => setMenuStyle(menuStyle === "grouped" ? "classic" : "grouped")}
+                title="Switch between the grouped menu and the classic flat list"
+                className="w-full text-left px-2.5 py-1.5 text-[11px] rounded-lg transition hover:bg-white/5"
+                style={{ color: "#64748B" }}
+              >
+                Menu: {menuStyle === "grouped" ? "Grouped" : "Classic"} · switch
+              </button>
+            )}
           </div>
         </aside>
 

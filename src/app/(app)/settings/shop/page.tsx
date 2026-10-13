@@ -47,6 +47,7 @@ export default async function ShopProfilePage() {
           initialTaxLabel={profile?.taxLabel ?? ""}
           initialProvince={profile?.province ?? ""}
           initialAgingAlertDays={(profile?.agingAlertDays ?? 14).toString()}
+          initialNewJobMode={profile?.newJobMode ?? "steps"}
           initialFacebookUrl={profile?.facebookUrl ?? ""}
           initialGoogleReviewUrl={profile?.googleReviewUrl ?? ""}
           initialHstNumber={profile?.hstNumber ?? ""}

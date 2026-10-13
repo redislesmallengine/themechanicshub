@@ -36,6 +36,7 @@ import { WorkOrderRepairNotesForm } from "@/components/work-order-repair-notes-f
 import { WorkOrderStatusMover } from "@/components/work-order-status-mover";
 import { FinishJobPanel } from "@/components/finish-job-panel";
 import { InvoiceStatusPanel } from "@/components/invoice-status-panel";
+import { ClaimSteps } from "@/components/claim-steps";
 
 export default async function WorkOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -243,6 +244,11 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
               Open the full invoice →
             </Link>
           </div>
+          {linkedInvoice.payerType === "warranty" && (
+            <div className="mb-3">
+              <ClaimSteps status={linkedInvoice.status} submittedAt={linkedInvoice.sentAt} paidAt={linkedInvoice.paidAt} />
+            </div>
+          )}
           <InvoiceStatusPanel
             invoiceId={linkedInvoice.id}
             status={linkedInvoice.status}

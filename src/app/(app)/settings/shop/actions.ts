@@ -80,6 +80,8 @@ export async function saveShopProfile(formData: FormData) {
   const agingAlertDays = Number(agingAlertDaysRaw);
   if (!Number.isInteger(agingAlertDays) || agingAlertDays < 1) return { error: "Aging alert threshold needs to be a whole number of days, 1 or more." };
 
+  const newJobMode = formData.get("newJobMode") === "quick" ? "quick" : "steps";
+
   const facebookUrl = normalizeUrl(formData.get("facebookUrl"));
   const googleReviewUrl = normalizeUrl(formData.get("googleReviewUrl"));
   const hstNumber = String(formData.get("hstNumber") ?? "").trim();
@@ -122,6 +124,7 @@ export async function saveShopProfile(formData: FormData) {
       taxLabel: taxLabel || null,
       province: province || null,
       agingAlertDays,
+      newJobMode,
       facebookUrl,
       googleReviewUrl,
       hstNumber: hstNumber || null,
@@ -137,6 +140,7 @@ export async function saveShopProfile(formData: FormData) {
       taxLabel: taxLabel || null,
       province: province || null,
       agingAlertDays,
+      newJobMode,
       facebookUrl,
       googleReviewUrl,
       hstNumber: hstNumber || null,

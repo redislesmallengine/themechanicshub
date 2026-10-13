@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { STATUS_LABELS, STATUS_BADGE, INVOICE_TYPE_LABELS, INVOICE_TYPE_BADGE, isEditable, isOverdue, type InvoiceStatus, type InvoiceType } from "@/lib/invoices";
 import { InvoiceLineItemsPanel } from "@/components/invoice-line-items-panel";
 import { InvoiceStatusPanel } from "@/components/invoice-status-panel";
+import { ClaimSteps } from "@/components/claim-steps";
 import { InvoiceDetailsForm } from "@/components/invoice-details-form";
 import { InvoicePartyForm } from "@/components/invoice-party-form";
 import { InvoicePayerForm } from "@/components/invoice-payer-form";
@@ -182,6 +183,19 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
           Status
         </h2>
+        {invoice.payerType === "warranty" && (
+          <div className="mb-3 flex items-center gap-3 flex-wrap">
+            <ClaimSteps status={invoice.status} submittedAt={invoice.sentAt} paidAt={invoice.paidAt} />
+            {invoice.claimNumber && (
+              <span className="text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+                Claim # {invoice.claimNumber}
+              </span>
+            )}
+            <Link href={`/warranty${invoice.warrantyProviderId ? `?provider=${invoice.warrantyProviderId}` : ""}`} className="text-xs font-bold text-brand-600">
+              All warranty claims →
+            </Link>
+          </div>
+        )}
         <InvoiceStatusPanel
           invoiceId={invoice.id}
           status={invoice.status}
