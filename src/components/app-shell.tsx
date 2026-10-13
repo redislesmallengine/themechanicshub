@@ -57,17 +57,18 @@ function getCollapsedServerSnapshot(): boolean {
   return false;
 }
 
-// The sidebar comes in two layouts: "grouped" (Operations / Shop Profile / Reports / Platform, with nested
-// entries) and "classic" (the flat list). A per-browser choice, like the collapsed state above.
+// The sidebar comes in two layouts: "classic" (the flat list, the default) and "grouped" (Operations / Shop Profile /
+// Reports / Platform, with nested entries). Anyone can switch from the bottom of the sidebar; the choice is per browser,
+// like the collapsed state above.
 type MenuStyle = "grouped" | "classic";
 let cachedMenuStyle: MenuStyle | null = null;
 const menuStyleListeners = new Set<() => void>();
 
 function readStoredMenuStyle(): MenuStyle {
   try {
-    return localStorage.getItem(MENU_STYLE_KEY) === "classic" ? "classic" : "grouped";
+    return localStorage.getItem(MENU_STYLE_KEY) === "grouped" ? "grouped" : "classic";
   } catch {
-    return "grouped";
+    return "classic";
   }
 }
 function subscribeMenuStyle(listener: () => void) {
@@ -79,7 +80,7 @@ function getMenuStyleSnapshot(): MenuStyle {
   return cachedMenuStyle;
 }
 function getMenuStyleServerSnapshot(): MenuStyle {
-  return "grouped";
+  return "classic";
 }
 function setMenuStyle(next: MenuStyle) {
   cachedMenuStyle = next;
