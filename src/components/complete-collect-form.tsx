@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { completeAndCollect } from "@/app/(app)/invoices/actions";
 import { PAYMENT_METHODS } from "@/lib/invoices";
+import { flatPriceTotals } from "@/lib/pricing";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -27,6 +28,8 @@ export function CompleteCollectForm({
   showDeliveryFee,
   deliveryFeeDefault,
   customerEmail,
+  taxRate,
+  taxLabel,
 }: {
   workOrderId: string;
   initialRepairNotes: string;
@@ -37,11 +40,20 @@ export function CompleteCollectForm({
   showDeliveryFee: boolean;
   deliveryFeeDefault: string;
   customerEmail: string | null;
+  taxRate: number;
+  taxLabel: string;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [emailProblem, setEmailProblem] = useState<{ invoiceId: string; message: string } | null>(null);
   const [includeDelivery, setIncludeDelivery] = useState(showDeliveryFee);
+  const [billingMode, setBillingMode] = useState<"flat" | "hours">("flat");
+  const [flatAmount, setFlatAmount] = useState("");
+  const [flatTax, setFlatTax] = useState<"included" | "extra">("included");
+  const flat = (() => {
+    const amount = Number(flatAmount);
+    return Number.isFinite(amount) && amount > 0 ? flatPriceTotals(amount, flatTax === "included", taxRate) : null;
+  })();
   const [pending, startTransition] = useTransition();
   const bound = completeAndCollect.bind(null, workOrderId);
 
@@ -134,6 +146,77 @@ export function CompleteCollectForm({
         </div>
       </div>
 
+      <div className="space-y-2">
+        <input type="hidden" name="billingMode" value={billingMode} />
+        <div className="inline-flex rounded-lg overflow-hidden" style={{ border: "1px solid var(--border-strong)" }} role="group" aria-label="How to bill this job">
+          {(
+            [
+              ["flat", "One flat price"],
+              ["hours", "By hours & parts"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setBillingMode(value)}
+              aria-pressed={billingMode === value}
+              className="px-3 py-1.5 text-[11px] font-bold"
+              style={billingMode === value ? { background: "var(--color-brand-600)", color: "#fff" } : { background: "var(--bg-surface)", color: "var(--text-secondary)" }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {billingMode === "flat" && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div>
+              <label htmlFor="cc-flatAmount" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+                Amount charged ($)
+              </label>
+              <input id="cc-flatAmount" name="flatAmount" type="number" step="0.01" min="0" inputMode="decimal" value={flatAmount} onChange={(e) => setFlatAmount(e.target.value)} placeholder="207.00" className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
+            </div>
+            <div>
+              <div className="font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+                Tax
+              </div>
+              <div className="inline-flex rounded-lg overflow-hidden" style={{ border: "1px solid var(--border-strong)" }} role="group" aria-label="Does the amount include tax?">
+                {(
+                  [
+                    ["included", "Included"],
+                    ["extra", "Add tax"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setFlatTax(value)}
+                    aria-pressed={flatTax === value}
+                    className="px-3 py-2 text-[11px] font-bold"
+                    style={flatTax === value ? { background: "var(--color-brand-600)", color: "#fff" } : { background: "var(--bg-surface)", color: "var(--text-secondary)" }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <input type="hidden" name="flatTax" value={flatTax} />
+            </div>
+            <div>
+              <label htmlFor="cc-flatDescription" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+                Shown on the invoice as
+              </label>
+              <input id="cc-flatDescription" name="flatDescription" type="text" placeholder="Repair service" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+            </div>
+            {flat && (
+              <p className="sm:col-span-3 text-[11px] font-semibold tabular-nums" style={{ color: "var(--text-secondary)" }}>
+                ${flat.subtotal}
+                {taxRate > 0 ? ` + ${taxLabel} $${flat.taxAmount}` : ""} = <span style={{ color: "var(--text-primary)" }}>${flat.total}</span>
+                {flatTax === "included" && taxRate > 0 ? " (tax included in the amount you typed)" : ""}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="text-xs" style={{ color: "var(--text-secondary)" }}>
         <span className="font-bold">Parts on this job: </span>
         {parts.length === 0 ? (
@@ -147,7 +230,7 @@ export function CompleteCollectForm({
         <div className="space-y-1.5">
           {hasDiagnosticFee && (
             <label className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
-              <input type="checkbox" name="includeDiagnosticFee" defaultChecked className="rounded" style={{ accentColor: "#0F52BA" }} />
+              <input type="checkbox" name="includeDiagnosticFee" className="rounded" style={{ accentColor: "#0F52BA" }} />
               Include diagnostic fee
             </label>
           )}

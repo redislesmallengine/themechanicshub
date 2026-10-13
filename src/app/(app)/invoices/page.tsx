@@ -5,16 +5,16 @@ import { prisma } from "@/lib/prisma";
 import { InvoiceIcon, SearchIcon } from "@/components/icons";
 import {
   STATUS_LABELS,
-  STATUS_BADGE,
   INVOICE_STATUSES,
   INVOICE_TYPES,
   INVOICE_TYPE_LABELS,
   INVOICE_TYPE_BADGE,
-  isOverdue,
   isEditable,
+  invoiceChip,
   type InvoiceStatus,
   type InvoiceType,
 } from "@/lib/invoices";
+import { STATUS_LABELS as JOB_STATUS_LABELS, STATUS_BADGE as JOB_STATUS_BADGE, now as getNow, type WorkOrderStatus } from "@/lib/work-orders";
 import { DeleteInvoiceButton } from "@/components/delete-invoice-button";
 import { Pagination } from "@/components/pagination";
 import { SortTh } from "@/components/sortable-th";
@@ -25,18 +25,28 @@ const PAGE_SIZE = 50;
 // "number" sorts by creation time: invoice numbers are handed out in order, and a plain text sort would put INV-999 after INV-1056.
 const SORT_FIELDS = ["number", "customer", "type", "status", "total", "due"] as const;
 
-export default async function InvoicesPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; type?: string; page?: string; sort?: string; dir?: string }> }) {
-  const { q, status, type, page: pageRaw, sort: sortRaw, dir: dirRaw } = await searchParams;
+export default async function InvoicesPage({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; type?: string; payer?: string; page?: string; sort?: string; dir?: string }> }) {
+  const { q, status, type, payer, page: pageRaw, sort: sortRaw, dir: dirRaw } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   const organizationId = session?.session.activeOrganizationId;
 
   const page = Math.max(1, Number.parseInt(pageRaw ?? "1", 10) || 1);
   const searchTerm = q?.trim();
-  const statusFilter = status && (INVOICE_STATUSES as readonly string[]).includes(status) ? status : undefined;
+  // Besides each real status: "unpaid" (sent or viewed), "overdue" (unpaid and past its due date), and "open" (anything not yet paid, drafts included).
+  const statusFilter = status && ((INVOICE_STATUSES as readonly string[]).includes(status) || ["unpaid", "overdue", "open"].includes(status)) ? status : undefined;
+  const payerFilter = payer === "warranty" || payer === "customer" ? payer : undefined;
+  const today = new Date(getNow());
+  function statusWhereFor(s: string | undefined): Prisma.InvoiceWhereInput {
+    if (!s) return {};
+    if (s === "unpaid") return { status: { in: ["sent", "viewed"] } };
+    if (s === "overdue") return { status: { in: ["sent", "viewed"] }, dueDate: { lt: today } };
+    if (s === "open") return { status: { in: ["draft", "sent", "viewed"] } };
+    return { status: s };
+  }
   const typeFilter = type && (INVOICE_TYPES as readonly string[]).includes(type) ? type : undefined;
   const sort = parseSort(sortRaw, dirRaw, SORT_FIELDS, { field: "number", dir: "desc" });
-  const filterParams = { q: searchTerm, status: statusFilter, type: typeFilter };
+  const filterParams = { q: searchTerm, status: statusFilter, type: typeFilter, payer: payerFilter };
   const orderBy: Prisma.InvoiceOrderByWithRelationInput[] = [
     sort.field === "customer"
       ? { customer: { name: sort.dir } }
@@ -55,7 +65,8 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
   const where = organizationId
     ? {
         organizationId,
-        ...(statusFilter ? { status: statusFilter } : {}),
+        ...statusWhereFor(statusFilter),
+        ...(payerFilter ? { payerType: payerFilter } : {}),
         ...(typeFilter ? { invoiceType: typeFilter } : {}),
         ...(searchTerm
           ? {
@@ -68,12 +79,18 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
       }
     : undefined;
 
-  const [invoices, total, canDelete, canUpdate, membership] = organizationId
+  const [invoices, total, canDelete, canUpdate, membership, chipCounts] = organizationId
     ? await Promise.all([
         prisma.invoice.findMany({
           where,
           orderBy,
-          include: { customer: true, warrantyProvider: true, lineItems: { select: { partId: true } }, _count: { select: { combinedWorkOrders: true } } },
+          include: {
+            customer: true,
+            warrantyProvider: true,
+            lineItems: { select: { partId: true } },
+            _count: { select: { combinedWorkOrders: true } },
+            workOrder: { select: { status: true } },
+          },
           skip: (page - 1) * PAGE_SIZE,
           take: PAGE_SIZE,
         }),
@@ -81,9 +98,36 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
         auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["delete"] } } }),
         auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["update"] } } }),
         prisma.member.findFirst({ where: { organizationId, userId: session!.user.id } }),
+        Promise.all([
+          prisma.invoice.count({ where: { organizationId, status: "draft" } }),
+          prisma.invoice.count({ where: { organizationId, ...statusWhereFor("unpaid") } }),
+          prisma.invoice.count({ where: { organizationId, ...statusWhereFor("overdue") } }),
+          prisma.invoice.count({ where: { organizationId, payerType: "warranty", ...statusWhereFor("open") } }),
+          prisma.invoice.count({ where: { organizationId, status: "paid" } }),
+        ]),
       ])
-    : [[], 0, { success: false as const }, { success: false as const }, null];
+    : [[], 0, { success: false as const }, { success: false as const }, null, [0, 0, 0, 0, 0]];
   const isOwner = membership?.role === "owner";
+
+  // One-click views, each a plain link that keeps the search and type but sets its own status / payer.
+  function chipHref(chipStatus?: string, chipPayer?: string) {
+    const sp = new URLSearchParams();
+    if (searchTerm) sp.set("q", searchTerm);
+    if (typeFilter) sp.set("type", typeFilter);
+    if (chipStatus) sp.set("status", chipStatus);
+    if (chipPayer) sp.set("payer", chipPayer);
+    for (const [key, value] of Object.entries(sortQuery(sort))) if (value) sp.set(key, value);
+    const qs = sp.toString();
+    return qs ? `/invoices?${qs}` : "/invoices";
+  }
+  const chips: { label: string; count?: number; status?: string; payer?: string }[] = [
+    { label: "All" },
+    { label: "Drafts", count: chipCounts[0], status: "draft" },
+    { label: "Unpaid", count: chipCounts[1], status: "unpaid" },
+    { label: "Overdue", count: chipCounts[2], status: "overdue" },
+    { label: "Warranty open", count: chipCounts[3], status: "open", payer: "warranty" },
+    { label: "Paid", count: chipCounts[4], status: "paid" },
+  ];
 
   return (
     <div className="p-6">
@@ -101,7 +145,34 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
         </Link>
       </div>
 
-      <form method="GET" className="mb-4 flex flex-col sm:flex-row gap-3 max-w-2xl">
+      <div className="flex flex-wrap gap-2 mb-4">
+        {chips.map((chip) => {
+          const on = (chip.status ?? "") === (statusFilter ?? "") && (chip.payer ?? "") === (payerFilter ?? "");
+          return (
+            <Link
+              key={chip.label}
+              href={chipHref(chip.status, chip.payer)}
+              aria-current={on ? "true" : undefined}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold"
+              style={{
+                background: on ? "var(--color-brand-600)" : "var(--bg-surface)",
+                color: on ? "#fff" : "var(--text-secondary)",
+                border: `1px solid ${on ? "var(--color-brand-600)" : "var(--border-strong)"}`,
+                opacity: chip.count === 0 && !on ? 0.55 : 1,
+              }}
+            >
+              {chip.label}
+              {chip.count !== undefined && (
+                <span className="num text-[11px] px-1.5 rounded-full" style={{ background: on ? "rgba(255,255,255,.22)" : "var(--bg-surface-subtle)", color: on ? "#fff" : "var(--text-secondary)" }}>
+                  {chip.count}
+                </span>
+              )}
+            </Link>
+          );
+        })}
+      </div>
+
+      <form method="GET" className="mb-4 flex flex-col sm:flex-row gap-3 max-w-3xl">
         {sort.explicit && sort.field && (
           <>
             <input type="hidden" name="sort" value={sort.field} />
@@ -126,11 +197,25 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
           style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)", color: "var(--text-primary)" }}
         >
           <option value="">All statuses</option>
+          <option value="unpaid">Unpaid (sent or viewed)</option>
+          <option value="overdue">Overdue</option>
+          <option value="open">Not yet paid (incl. drafts)</option>
           {INVOICE_STATUSES.map((s) => (
             <option key={s} value={s}>
               {STATUS_LABELS[s]}
             </option>
           ))}
+        </select>
+        <select
+          name="payer"
+          defaultValue={payerFilter ?? ""}
+          aria-label="Billed to"
+          className="px-3 py-2 rounded-lg text-xs font-semibold"
+          style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)", color: "var(--text-primary)" }}
+        >
+          <option value="">Billed to anyone</option>
+          <option value="customer">Customers</option>
+          <option value="warranty">Warranty providers</option>
         </select>
         <select
           name="type"
@@ -158,7 +243,8 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                 <SortTh label="Invoice #" field="number" sort={sort.field} dir={sort.dir} basePath="/invoices" params={filterParams} firstDir="desc" />
                 <SortTh label="Customer" field="customer" sort={sort.field} dir={sort.dir} basePath="/invoices" params={filterParams} />
                 <SortTh label="Type" field="type" sort={sort.field} dir={sort.dir} basePath="/invoices" params={filterParams} />
-                <SortTh label="Status" field="status" sort={sort.field} dir={sort.dir} basePath="/invoices" params={filterParams} />
+                <th className="dt-th text-left">Job</th>
+                <SortTh label="Invoice" field="status" sort={sort.field} dir={sort.dir} basePath="/invoices" params={filterParams} />
                 <SortTh label="Total" field="total" sort={sort.field} dir={sort.dir} basePath="/invoices" params={filterParams} firstDir="desc" />
                 <SortTh label="Due" field="due" sort={sort.field} dir={sort.dir} basePath="/invoices" params={filterParams} firstDir="desc" />
                 <th className="dt-th text-right">Actions</th>
@@ -167,15 +253,14 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
             <tbody>
               {invoices.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
-                    {q || status || type ? "No invoices match those filters." : "No invoices yet — generate one from a work order that's ready for pickup, or create one directly."}
+                  <td colSpan={8} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
+                    {q || status || type || payer ? "No invoices match those filters." : "No invoices yet — generate one from a work order that's ready for pickup, or create one directly."}
                   </td>
                 </tr>
               )}
               {invoices.map((inv) => {
                 const invStatus = inv.status as InvoiceStatus;
                 const invType = inv.invoiceType as InvoiceType;
-                const overdue = isOverdue(inv.status, inv.dueDate);
                 return (
                   <tr key={inv.id} className="dt-row">
                     <td className="dt-td">
@@ -221,10 +306,31 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                       </div>
                     </td>
                     <td className="dt-td">
-                      <span className={`dt-badge dt-badge--${overdue ? "error" : STATUS_BADGE[invStatus]}`}>
-                        <span className="dt-badge-dot" />
-                        {overdue ? "Overdue" : STATUS_LABELS[invStatus]}
-                      </span>
+                      {inv.workOrder ? (
+                        <Link href={`/work-orders/${inv.workOrderId}`} className={`dt-badge dt-badge--${JOB_STATUS_BADGE[inv.workOrder.status as WorkOrderStatus] ?? "info"}`} title="Open the job">
+                          <span className="dt-badge-dot" />
+                          {JOB_STATUS_LABELS[inv.workOrder.status as WorkOrderStatus] ?? inv.workOrder.status}
+                        </Link>
+                      ) : inv._count.combinedWorkOrders > 0 ? (
+                        <span className="text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+                          {inv._count.combinedWorkOrders} jobs
+                        </span>
+                      ) : (
+                        <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                          —
+                        </span>
+                      )}
+                    </td>
+                    <td className="dt-td">
+                      {(() => {
+                        const chip = invoiceChip(inv.status, inv.dueDate, inv.payerType);
+                        return (
+                          <span className={`dt-badge dt-badge--${chip.badge}`}>
+                            <span className="dt-badge-dot" />
+                            {chip.label}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="dt-td num text-sm font-bold" style={{ color: "var(--text-primary)" }}>
                       ${inv.total.toString()}

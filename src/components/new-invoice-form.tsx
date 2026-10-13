@@ -1,5 +1,6 @@
 "use client";
 
+import { SearchSelect } from "@/components/search-select";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -112,24 +113,17 @@ function BlankInvoiceForm({
           <label htmlFor="customerId" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
             Customer — optional
           </label>
-          <select
+          <SearchSelect
             id="customerId"
             name="customerId"
             value={customerId}
-            onChange={(e) => {
-              setCustomerId(e.target.value);
+            onChange={(v) => {
+              setCustomerId(v);
               setEquipmentId(""); // the previously-picked equipment may not belong to the newly-picked customer
             }}
-            className="w-full px-3 py-2 rounded-lg text-xs font-semibold"
-            style={inputStyle}
-          >
-            <option value="">No customer (walk-in / cash sale)</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} {c.phone ? `— ${c.phone}` : c.email ? `— ${c.email}` : ""}
-              </option>
-            ))}
-          </select>
+            placeholder="No customer (walk-in / cash sale), or type to find one"
+            options={customers.map((c) => ({ value: c.id, label: c.name, hint: c.phone ?? c.email ?? "", keywords: `${c.email ?? ""} ${c.phone ?? ""}` }))}
+          />
           <span className="text-[10px] mt-0.5 block" style={{ color: "var(--text-muted)" }}>
             Leave blank for a counter sale — the invoice will show &ldquo;No Customer Info&rdquo; in place of a name.
           </span>
@@ -314,20 +308,13 @@ function CombineWorkOrdersForm({
         <label htmlFor="combineCustomerId" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
           Customer
         </label>
-        <select
+        <SearchSelect
           id="combineCustomerId"
           value={customerId}
-          onChange={(e) => handleCustomerChange(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg text-xs font-semibold"
-          style={inputStyle}
-        >
-          <option value="">Pick a customer…</option>
-          {customers.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name} {c.phone ? `— ${c.phone}` : c.email ? `— ${c.email}` : ""}
-            </option>
-          ))}
-        </select>
+          onChange={handleCustomerChange}
+          placeholder="Type a name, phone or email…"
+          options={customers.map((c) => ({ value: c.id, label: c.name, hint: c.phone ?? c.email ?? "", keywords: `${c.email ?? ""} ${c.phone ?? ""}` }))}
+        />
       </div>
 
       {customerId && (
@@ -341,7 +328,7 @@ function CombineWorkOrdersForm({
             </p>
           ) : workOrders.length === 0 ? (
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              This customer has no finished work orders (Repair Completed or Closed) waiting to be invoiced.
+              This customer has no finished work orders (Ready for pickup, or Picked up / Delivered) waiting to be invoiced.
             </p>
           ) : workOrders.length === 1 ? (
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>

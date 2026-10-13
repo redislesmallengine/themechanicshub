@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createWorkOrder } from "@/app/(app)/work-orders/actions";
 import { WorkOrderIcon } from "@/components/icons";
+import { SearchSelect } from "@/components/search-select";
 import { DROP_OFF_METHOD_LABELS, type DropOffMethod } from "@/lib/work-orders";
 
 const inputStyle = {
@@ -150,25 +151,18 @@ export function WorkOrderIntakeForm({
           <label htmlFor="customerId" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
             Customer <span style={{ color: "var(--color-error-solid)" }}>*</span>
           </label>
-          <select
+          <SearchSelect
             id="customerId"
             name="customerId"
             required
             value={customerId}
-            onChange={(e) => {
-              setCustomerId(e.target.value);
+            onChange={(v) => {
+              setCustomerId(v);
               setEquipmentId("");
             }}
-            className="w-full px-3 py-2 rounded-lg text-xs font-semibold"
-            style={inputStyle}
-          >
-            <option value="">Select…</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} {c.phone ? `— ${c.phone}` : c.email ? `— ${c.email}` : ""}
-              </option>
-            ))}
-          </select>
+            placeholder="Type a name, phone or email…"
+            options={customers.map((c) => ({ value: c.id, label: c.name, hint: c.phone ?? c.email ?? "", keywords: `${c.email ?? ""} ${c.phone ?? ""}` }))}
+          />
           <span className="text-[10px] mt-0.5 block" style={{ color: "var(--text-muted)" }}>
             Don&apos;t see them?{" "}
             <Link href="/customers/new" className="text-brand-600 font-semibold">

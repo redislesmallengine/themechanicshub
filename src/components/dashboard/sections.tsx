@@ -68,21 +68,30 @@ function RankedBarList({ rows, valueLabel }: { rows: { id: string; label: string
 export async function ShopFloorTiles({ organizationId, agingDays }: { organizationId: string; agingDays: number }) {
   const c = await getShopFloorCounts(organizationId, agingDays);
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <StatTile label="On the Bench" value={c.onBench.toString()} sub="diagnosing + in repair" />
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <StatTile label="On the Bench" value={c.onBench.toString()} sub="diagnosing + in repair" href="/work-orders?status=bench" />
       <StatTile
         label="Awaiting Approval"
         value={c.awaitingApproval.toString()}
         sub={c.awaitingApproval2Days > 0 ? `${c.awaitingApproval2Days} waiting 2+ days` : "all recent"}
         tone={c.awaitingApproval2Days > 0 ? "warning" : "neutral"}
+        href="/work-orders?status=awaitingApproval"
       />
       <StatTile
-        label="Repair Completed"
+        label="Ready for Pickup"
         value={c.repairCompleted.toString()}
         sub={c.repairCompletedAging > 0 ? `${c.repairCompletedAging} over ${agingDays} days` : "all within range"}
         tone={c.repairCompletedAging > 0 ? "error" : "neutral"}
+        href="/work-orders?status=readyForPickup"
       />
-      <StatTile label="Unpaid Invoices" value={fmtMoney(c.unpaidTotal)} sub={`${c.unpaidCount} invoice${c.unpaidCount === 1 ? "" : "s"}`} />
+      <StatTile
+        label="Needs Billing"
+        value={c.needsBilling.toString()}
+        sub={c.needsBilling > 0 ? "done, invoice not sent" : "nothing waiting"}
+        tone={c.needsBilling > 0 ? "warning" : "neutral"}
+        href="/work-orders?status=needsBilling"
+      />
+      <StatTile label="Unpaid Invoices" value={fmtMoney(c.unpaidTotal)} sub={`${c.unpaidCount} invoice${c.unpaidCount === 1 ? "" : "s"}`} href="/invoices?status=unpaid" />
     </div>
   );
 }
@@ -120,12 +129,12 @@ export async function RevenueTiles({ organizationId }: { organizationId: string 
   const r = await getRevenueTiles(organizationId);
   return (
     <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-      <StatTile label="Revenue This Month" value={fmtMoney(r.revenueThisMonth)} sub={fmtPercentChange(r.revenueThisMonth, r.revenueLastMonth)} />
-      <StatTile label="Outstanding" value={fmtMoney(r.outstanding)} sub="not yet due" />
-      <StatTile label="Overdue" value={fmtMoney(r.overdue)} sub={`${r.overdueCount} invoice${r.overdueCount === 1 ? "" : "s"}`} tone={r.overdue > 0 ? "error" : "neutral"} />
-      <StatTile label="Avg Invoice" value={fmtMoney(r.avgInvoice30d)} sub="last 30 days" />
+      <StatTile label="Revenue This Month" value={fmtMoney(r.revenueThisMonth)} sub={fmtPercentChange(r.revenueThisMonth, r.revenueLastMonth)} href="/reports/sales" />
+      <StatTile label="Outstanding" value={fmtMoney(r.outstanding)} sub="not yet due" href="/invoices?status=unpaid" />
+      <StatTile label="Overdue" value={fmtMoney(r.overdue)} sub={`${r.overdueCount} invoice${r.overdueCount === 1 ? "" : "s"}`} tone={r.overdue > 0 ? "error" : "neutral"} href="/invoices?status=overdue" />
+      <StatTile label="Avg Invoice" value={fmtMoney(r.avgInvoice30d)} sub="last 30 days" href="/reports/sales" />
       <StatTile label="Parts Margin" value={r.partsMarginPercent === null ? "—" : `${r.partsMarginPercent.toFixed(0)}%`} sub="cost vs. sell, this month" />
-      <StatTile label="Warranty Claims Outstanding" value={fmtMoney(r.warrantyOutstanding)} sub={`${r.warrantyOutstandingCount} claim${r.warrantyOutstandingCount === 1 ? "" : "s"}`} />
+      <StatTile label="Warranty Claims Outstanding" value={fmtMoney(r.warrantyOutstanding)} sub={`${r.warrantyOutstandingCount} claim${r.warrantyOutstandingCount === 1 ? "" : "s"}`} href="/invoices?payer=warranty&status=unpaid" />
     </div>
   );
 }

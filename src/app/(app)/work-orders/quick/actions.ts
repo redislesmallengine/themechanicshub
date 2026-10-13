@@ -4,9 +4,9 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { claimInvoiceNumber, generateViewToken, computeTotals, classifyInvoiceType, PAYMENT_METHODS } from "@/lib/invoices";
+import { claimInvoiceNumber, generateViewToken, classifyInvoiceType, PAYMENT_METHODS } from "@/lib/invoices";
 import { applyStockAdjustment } from "@/lib/inventory";
-import { readFeeOptions, buildWorkOrderInvoiceLines } from "@/lib/invoice-lines";
+import { readFeeOptions, readBilling, buildInvoiceFromBilling, type Billing } from "@/lib/invoice-lines";
 import { sendInvoice } from "@/app/(app)/invoices/actions";
 
 async function can(resource: "workOrder" | "invoice" | "customer", action: "create" | "update") {
@@ -163,12 +163,16 @@ export async function createQuickJob(formData: FormData) {
 
   // Money
   let fees: { includeDiagnosticFee: boolean; deliveryFee: number | null } = { includeDiagnosticFee: false, deliveryFee: null };
+  let billing: Billing = { mode: "hours" };
   let paymentMethod = "";
   let paymentReference: string | null = null;
   if (billed) {
     const parsedFees = readFeeOptions(formData);
     if ("error" in parsedFees) return { error: parsedFees.error };
     fees = parsedFees;
+    const parsedBilling = readBilling(formData, (repairNotes ?? "").split("\n")[0].slice(0, 80));
+    if ("error" in parsedBilling) return { error: parsedBilling.error };
+    billing = parsedBilling;
   }
   if (paid) {
     paymentMethod = String(formData.get("paymentMethod") ?? "").trim();
@@ -215,11 +219,7 @@ export async function createQuickJob(formData: FormData) {
 
     let invoiceId: string | null = null;
     if (billed) {
-      const lines = buildWorkOrderInvoiceLines({ labourHours, parts: partRows }, shopProfile, fees);
-      const totals = computeTotals(
-        lines.map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), taxable: l.taxable })),
-        Number(shopProfile?.taxRate ?? 0)
-      );
+      const { lines, totals } = buildInvoiceFromBilling({ billing, labourHours, parts: partRows, shopProfile, fees });
       const invoiceNumber = await claimInvoiceNumber(tx, organizationId);
       const invoice = await tx.invoice.create({
         data: {

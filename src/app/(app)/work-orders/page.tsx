@@ -10,7 +10,9 @@ import { SortTh } from "@/components/sortable-th";
 import { WorkOrderQuickAction } from "@/components/work-order-quick-action";
 import { WorkOrderStatusMover } from "@/components/work-order-status-mover";
 import { parseSort, sortQuery } from "@/lib/sort";
-import { BOARD_STATUSES, STATUS_LABELS, STATUS_BADGE, now as getNow, type WorkOrderStatus } from "@/lib/work-orders";
+import { BOARD_STATUSES, STATUS_LABELS, STATUS_BADGE, NEEDS_BILLING_WHERE, now as getNow, type WorkOrderStatus } from "@/lib/work-orders";
+import { invoiceChip } from "@/lib/invoices";
+import { MarkInvoiceSentButton } from "@/components/mark-invoice-sent-button";
 
 const DEFAULT_PAGE_SIZE = 25;
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -24,9 +26,12 @@ const HISTORY_STATUSES = ["closed", "declined"];
 
 // Pipeline order -- what sorting by Status (and Next step, which follows from it) means.
 const STATUS_RANK = ["droppedOff", "diagnosing", "awaitingApproval", "inRepair", "readyForPickup", "closed", "declined"];
-const SORT_FIELDS = ["customer", "equipment", "status", "technician", "stage", "next"] as const;
+const SORT_FIELDS = ["customer", "equipment", "status", "invoice", "technician", "stage", "next"] as const;
+// Where an invoice stands, for sorting the Invoice column: none, then in the order money moves.
+const INVOICE_RANK = ["none", "draft", "sent", "viewed", "overdue", "paid", "void"];
 
 const FILTER_STATUSES = ["droppedOff", "diagnosing", "awaitingApproval", "inRepair", "readyForPickup"] as const;
+
 
 function fmtAge(ms: number): string {
   const hours = Math.floor(ms / 3600000);
@@ -48,13 +53,13 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
   const searchTerm = q?.trim();
   // No column picked = the page's own order (needs-attention first, then most recently touched).
   const sort = parseSort(sortRaw, dirRaw, SORT_FIELDS, { field: null, dir: "asc" });
-  const filter = status === "history" || (FILTER_STATUSES as readonly string[]).includes(status ?? "") ? status : undefined;
+  const filter = status === "history" || status === "bench" || status === "needsBilling" || (FILTER_STATUSES as readonly string[]).includes(status ?? "") ? status : undefined;
 
-  const statusWhere = filter === "history" ? { in: HISTORY_STATUSES } : filter ? filter : { in: BOARD_STATUSES as string[] };
+  const statusWhere = filter === "history" ? { in: HISTORY_STATUSES } : filter === "bench" ? { in: ["diagnosing", "inRepair"] } : filter ? filter : { in: BOARD_STATUSES as string[] };
   const where = organizationId
     ? {
         organizationId,
-        status: statusWhere,
+        ...(filter === "needsBilling" ? { AND: [NEEDS_BILLING_WHERE] } : { status: statusWhere }),
         ...(searchTerm
           ? {
               OR: [
@@ -70,7 +75,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
       }
     : undefined;
 
-  const [workOrders, statusCounts, shopProfile, canUpdate, canDelete, membership] = organizationId
+  const [workOrders, statusCounts, shopProfile, canUpdate, canDelete, membership, needsBillingCount] = organizationId
     ? await Promise.all([
         prisma.workOrder.findMany({
           where,
@@ -80,8 +85,8 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
             customer: { select: { name: true, phone: true, email: true } },
             equipment: { select: { make: true, model: true, equipmentType: { select: { name: true } } } },
             assignedTo: { select: { name: true } },
-            invoice: { select: { id: true } },
-            combinedInto: { select: { invoiceId: true } },
+            invoice: { select: { id: true, status: true, dueDate: true, payerType: true } },
+            combinedInto: { select: { invoiceId: true, invoice: { select: { status: true, dueDate: true, payerType: true } } } },
             parts: { select: { id: true } },
           },
         }),
@@ -90,8 +95,9 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
         auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { workOrder: ["update"] } } }),
         auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { workOrder: ["delete"] } } }),
         prisma.member.findFirst({ where: { organizationId, userId: session!.user.id } }),
+        prisma.workOrder.count({ where: { organizationId, ...NEEDS_BILLING_WHERE } }),
       ])
-    : [[], [], null, { success: false as const }, { success: false as const }, null];
+    : [[], [], null, { success: false as const }, { success: false as const }, null, 0];
 
   const isOwner = membership?.role === "owner";
   const agingDays = shopProfile?.agingAlertDays ?? 14;
@@ -141,6 +147,10 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
         return equipmentLabelOf(wo).toLowerCase();
       case "technician":
         return wo.assignedTo?.name.toLowerCase() ?? "\uffff"; // unassigned last
+      case "invoice": {
+        const inv = wo.invoice ?? wo.combinedInto?.invoice ?? null;
+        return INVOICE_RANK.indexOf(inv ? (invoiceChip(inv.status, inv.dueDate, inv.payerType, now).label === "Overdue" ? "overdue" : inv.status) : "none");
+      }
       case "stage":
         return now - stageSince(wo).getTime();
       default:
@@ -172,6 +182,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
 
   const chips: { value?: string; label: string; count?: number; dashed?: boolean }[] = [
     { value: undefined, label: "All active", count: activeCount },
+    { value: "needsBilling", label: "Needs billing", count: needsBillingCount },
     ...FILTER_STATUSES.map((s) => ({ value: s as string, label: STATUS_LABELS[s], count: counts[s] ?? 0 })),
     { value: "history", label: "Closed / Declined", dashed: true },
   ];
@@ -184,7 +195,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
             Work Orders
           </h1>
           <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-            {activeCount} active · {attentionCount > 0 ? `${attentionCount} need attention` : "nothing needs attention"}
+            {activeCount} active · {attentionCount > 0 ? `${attentionCount} need attention` : "nothing needs attention"}{needsBillingCount > 0 ? ` · ${needsBillingCount} need billing` : ""}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -255,6 +266,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
                 <SortTh label="Customer" field="customer" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} />
                 <SortTh label="Equipment" field="equipment" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} />
                 <SortTh label="Status" field="status" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} />
+                <SortTh label="Invoice" field="invoice" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} />
                 <SortTh label="Technician" field="technician" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} />
                 <SortTh label="In this stage" field="stage" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} firstDir="desc" />
                 <SortTh label="Next step" field="next" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} />
@@ -264,7 +276,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
+                  <td colSpan={8} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
                     {searchTerm || filter ? "No work orders match that." : "No active work orders — create one to get started."}
                   </td>
                 </tr>
@@ -276,6 +288,11 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
                 const ageMs = now - since.getTime();
                 const equipmentLabel = equipmentLabelOf(wo);
                 const invoiceId = wo.invoice?.id ?? wo.combinedInto?.invoiceId ?? null;
+                const linkedInvoice = wo.invoice ?? wo.combinedInto?.invoice ?? null;
+                const moneyChip = linkedInvoice ? invoiceChip(linkedInvoice.status, linkedInvoice.dueDate, linkedInvoice.payerType, now) : null;
+                const jobDone = woStatus === "readyForPickup" || woStatus === "closed";
+                const draftInvoiceId = jobDone && linkedInvoice?.status === "draft" ? invoiceId : null;
+                const billingFlag = draftInvoiceId ? "Invoice still a draft" : woStatus === "readyForPickup" && !linkedInvoice ? "No invoice yet" : null;
                 const aging = woStatus === "readyForPickup" && attention;
                 const nextStep =
                   woStatus === "droppedOff"
@@ -289,7 +306,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
                           : { label: "Open →", href: `/work-orders/${wo.id}` };
                 const showDelete = (woStatus === "droppedOff" || woStatus === "declined" || isOwner) && !invoiceId && canDelete.success;
                 return (
-                  <tr key={wo.id} className="dt-row" style={attention ? { background: "var(--color-error-subtle)" } : undefined}>
+                  <tr key={wo.id} className="dt-row" style={attention ? { background: "var(--color-error-subtle)" } : billingFlag ? { background: "var(--color-warning-subtle)" } : undefined}>
                     <td className="dt-td">
                       <Link href={`/work-orders/${wo.id}`} className="font-bold text-sm hover:underline" style={{ color: "var(--text-primary)" }}>
                         {wo.customer.name}
@@ -305,6 +322,28 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
                         {aging ? `Ready · ${Math.floor(ageMs / DAY_MS)}d` : STATUS_LABELS[woStatus]}
                       </span>
                     </td>
+                    <td className="dt-td">
+                      {moneyChip ? (
+                        <span className={`dt-badge dt-badge--${moneyChip.badge}`}>
+                          <span className="dt-badge-dot" />
+                          {moneyChip.label}
+                        </span>
+                      ) : jobDone ? (
+                        <span className="dt-badge dt-badge--warning">
+                          <span className="dt-badge-dot" />
+                          None yet
+                        </span>
+                      ) : (
+                        <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                          —
+                        </span>
+                      )}
+                      {billingFlag && (
+                        <div className="text-[10px] font-bold mt-0.5" style={{ color: "var(--color-warning-text)" }}>
+                          ⚑ {billingFlag}
+                        </div>
+                      )}
+                    </td>
                     <td className="dt-td text-sm" style={{ color: wo.assignedTo ? "var(--text-secondary)" : "var(--text-muted)" }}>
                       {wo.assignedTo?.name ?? "Unassigned"}
                     </td>
@@ -314,6 +353,18 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
                     <td className="dt-td">
                       {woStatus === "droppedOff" || woStatus === "diagnosing" || woStatus === "inRepair" ? (
                         <WorkOrderQuickAction workOrderId={wo.id} status={woStatus} />
+                      ) : draftInvoiceId ? (
+                        <div className="flex items-center gap-2">
+                          <MarkInvoiceSentButton
+                            invoiceId={draftInvoiceId}
+                            warranty={linkedInvoice?.payerType === "warranty"}
+                            label={linkedInvoice?.payerType === "warranty" ? "Mark submitted →" : "Mark sent →"}
+                            className="px-2.5 py-1 rounded-md text-[11px] font-bold whitespace-nowrap bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60"
+                          />
+                          <Link href={nextStep.href} className="text-[11px] font-bold text-brand-600 whitespace-nowrap">
+                            View
+                          </Link>
+                        </div>
                       ) : (
                         <Link href={nextStep.href} className="text-xs font-bold text-brand-600 whitespace-nowrap">
                           {nextStep.label}
@@ -322,7 +373,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
                     </td>
                     <td className="dt-td text-right">
                       <div className="flex justify-end items-center gap-3">
-                        {canUpdate.success && <WorkOrderStatusMover workOrderId={wo.id} status={woStatus} hasEstimate={!!wo.estimateAmount} hasInvoice={!!invoiceId} compact />}
+                        {canUpdate.success && <WorkOrderStatusMover workOrderId={wo.id} status={woStatus} hasEstimate={!!wo.estimateAmount} hasInvoice={!!invoiceId} draftInvoiceId={draftInvoiceId} compact />}
                         {canUpdate.success && (
                           <Link href={`/work-orders/${wo.id}`} className="text-[11px] font-bold text-brand-600">
                             Edit

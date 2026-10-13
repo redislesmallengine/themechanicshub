@@ -9,8 +9,8 @@ import {
   startRepair,
   recordPhoneDecision,
   markReadyForPickup,
-  closeWorkOrder,
 } from "@/app/(app)/work-orders/actions";
+import { CloseJobAction } from "@/components/close-job-dialog";
 import { GenerateInvoiceButton } from "@/components/generate-invoice-button";
 import { EmailSentNotice } from "@/components/email-sent-notice";
 import type { WorkOrderStatus } from "@/lib/work-orders";
@@ -99,7 +99,7 @@ function MarkCompleteAction({
   return (
     <div>
       <button onClick={handleClick} disabled={pending} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-        {pending ? "Working…" : "Mark Repair Completed"}
+        {pending ? "Working…" : "Mark ready for pickup"}
       </button>
       {error && (
         <p className="text-xs font-semibold mt-2" style={{ color: "var(--color-error-solid)" }}>
@@ -120,7 +120,7 @@ function MarkCompleteAction({
               </svg>
             </span>
             <h3 className="text-lg font-extrabold mb-1.5" style={{ color: "var(--text-primary)" }}>
-              Repair marked complete
+              Marked ready for pickup
             </h3>
             <p className="text-sm mb-5" style={{ color: "var(--text-secondary)" }}>
               Ready to bill this out?
@@ -359,6 +359,7 @@ export function WorkOrderStatusPanel({
   hasDiagnosticFee,
   showDeliveryFee,
   deliveryFeeDefault,
+  draftInvoiceId,
 }: {
   workOrderId: string;
   status: WorkOrderStatus;
@@ -367,6 +368,8 @@ export function WorkOrderStatusPanel({
   hasDiagnosticFee: boolean;
   showDeliveryFee: boolean;
   deliveryFeeDefault: string;
+  /** The job's invoice, when it is still a draft -- closing the job then offers to mark it sent too. */
+  draftInvoiceId: string | null;
 }) {
   switch (status) {
     case "droppedOff":
@@ -405,7 +408,7 @@ export function WorkOrderStatusPanel({
     case "inRepair":
       return <MarkCompleteAction workOrderId={workOrderId} hasDiagnosticFee={hasDiagnosticFee} showDeliveryFee={showDeliveryFee} deliveryFeeDefault={deliveryFeeDefault} />;
     case "readyForPickup":
-      return <SimpleAction label="Mark Picked Up / Close" action={() => closeWorkOrder(workOrderId)} />;
+      return <CloseJobAction workOrderId={workOrderId} draftInvoiceId={draftInvoiceId} />;
     case "closed":
       return (
         <p className="text-xs font-semibold" style={{ color: "var(--color-success-solid)" }}>

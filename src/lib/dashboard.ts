@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
-import { BOARD_STATUSES } from "@/lib/work-orders";
+import { BOARD_STATUSES, NEEDS_BILLING_WHERE } from "@/lib/work-orders";
 
 /**
  * Every dashboard number as its own small, targeted query -- never "fetch
@@ -21,10 +21,12 @@ export interface ShopFloorCounts {
   repairCompletedAging: number;
   unpaidTotal: number;
   unpaidCount: number;
+  /** Jobs that are done but whose invoice has not gone out (see NEEDS_BILLING_WHERE). */
+  needsBilling: number;
 }
 
 export async function getShopFloorCounts(organizationId: string, agingDays: number): Promise<ShopFloorCounts> {
-  const [woRows, invRows] = await Promise.all([
+  const [woRows, invRows, needsBilling] = await Promise.all([
     prisma.$queryRaw<{ on_bench: bigint; awaiting_approval: bigint; awaiting_2d: bigint; repair_completed: bigint; repair_completed_aging: bigint }[]>(Prisma.sql`
       SELECT
         count(*) FILTER (WHERE status IN ('diagnosing','inRepair')) AS on_bench,
@@ -40,6 +42,7 @@ export async function getShopFloorCounts(organizationId: string, agingDays: numb
       FROM "Invoice"
       WHERE "organizationId" = ${organizationId} AND status IN ('sent', 'viewed')
     `),
+    prisma.workOrder.count({ where: { organizationId, ...NEEDS_BILLING_WHERE } }),
   ]);
   const wo = woRows[0];
   const inv = invRows[0];
@@ -51,6 +54,7 @@ export async function getShopFloorCounts(organizationId: string, agingDays: numb
     repairCompletedAging: Number(wo?.repair_completed_aging ?? 0),
     unpaidTotal: Number(inv?.total ?? 0),
     unpaidCount: Number(inv?.cnt ?? 0),
+    needsBilling,
   };
 }
 

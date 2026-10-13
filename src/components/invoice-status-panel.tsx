@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { sendInvoice, previewInvoiceEmail, markInvoicePaid, voidInvoice, closeInvoiceWorkOrders } from "@/app/(app)/invoices/actions";
 import { PAYMENT_METHODS } from "@/lib/invoices";
 import { EmailSentNotice } from "@/components/email-sent-notice";
+import { MarkInvoiceSentButton } from "@/components/mark-invoice-sent-button";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -21,6 +22,7 @@ function SendForm({
   isWarranty,
   isResend,
   isPaid,
+  isDraft,
 }: {
   invoiceId: string;
   hasRecipient: boolean;
@@ -28,6 +30,7 @@ function SendForm({
   isWarranty: boolean;
   isResend: boolean;
   isPaid: boolean;
+  isDraft: boolean;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -69,20 +72,23 @@ function SendForm({
 
   return (
     <div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={handlePreview} disabled={pendingPreview || !hasRecipientEmail} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
+          {pendingPreview ? "Loading Preview…" : isPaid ? "Preview & Send Receipt" : isResend ? "Preview & Resend" : "Preview Email"}
+        </button>
+        {isDraft && <MarkInvoiceSentButton invoiceId={invoiceId} warranty={isWarranty} className="px-4 py-2 rounded-lg text-xs font-semibold disabled:opacity-60 whitespace-nowrap" label={isWarranty ? "Mark as submitted" : "Mark as sent"} />}
+      </div>
       {!hasRecipientEmail && (
-        <p className="text-xs font-semibold mb-2" style={{ color: "var(--color-warning-solid)" }}>
+        <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>
           {hasRecipient
             ? isWarranty
-              ? "This warranty provider has no billing email on file — add one before you can send this claim."
-              : "This customer has no email on file — add one before you can send this invoice."
+              ? "No billing email on file for this warranty provider, so the email option is off. You can still mark it as submitted."
+              : "No email on file for this customer, so the email option is off. Download the PDF, send it on WhatsApp, or mark it as sent."
             : isWarranty
-              ? "This invoice has no warranty provider attached — nothing to email it to. Download the PDF instead."
-              : "This invoice has no customer attached — nothing to email it to. Download the PDF instead, or hand it over in person."}
+              ? "No warranty provider attached, so there is nothing to email. Download the PDF or mark it as submitted."
+              : "No customer attached, so there is nothing to email. Download the PDF or hand it over in person."}
         </p>
       )}
-      <button onClick={handlePreview} disabled={pendingPreview || !hasRecipientEmail} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-        {pendingPreview ? "Loading Preview…" : isPaid ? "Preview & Send Receipt" : isResend ? "Preview & Resend" : "Preview Email"}
-      </button>
       {error && (
         <p className="text-xs font-semibold mt-2" style={{ color: "var(--color-error-solid)" }}>
           {error}
@@ -299,7 +305,7 @@ export function InvoiceStatusPanel({
     <div className="space-y-3">
       {/* Sendable at any status except Void — including Paid, so a shop can hand over a fresh copy after the fact (lost the email, wants it for their records). sendInvoice itself only ever advances status forward from Draft, never backward on a resend. */}
       {status !== "void" && (
-        <SendForm invoiceId={invoiceId} hasRecipient={hasRecipient} hasRecipientEmail={hasRecipientEmail} isWarranty={isWarranty} isResend={status !== "draft"} isPaid={status === "paid"} />
+        <SendForm invoiceId={invoiceId} hasRecipient={hasRecipient} hasRecipientEmail={hasRecipientEmail} isWarranty={isWarranty} isResend={status !== "draft"} isPaid={status === "paid"} isDraft={status === "draft"} />
       )}
       {/* Draft is included here too, not just Sent/Viewed — a walk-in cash sale with no customer to email needs a way to close out that doesn't go through Send Invoice at all. */}
       {(status === "draft" || status === "sent" || status === "viewed") && (

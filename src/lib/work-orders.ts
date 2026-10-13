@@ -13,9 +13,20 @@ export const STATUS_LABELS: Record<WorkOrderStatus, string> = {
   diagnosing: "Diagnosing",
   awaitingApproval: "Awaiting Approval",
   inRepair: "In Repair",
-  readyForPickup: "Repair Completed",
-  closed: "Picked Up / Closed",
+  readyForPickup: "Ready for pickup",
+  closed: "Picked up / Delivered",
   declined: "Declined",
+};
+
+/**
+ * Jobs that are done but whose invoice has not gone out: ready for pickup with no invoice at all, or ready for
+ * pickup / picked up with the invoice still a draft (directly, or as part of a combined invoice).
+ */
+export const NEEDS_BILLING_WHERE = {
+  OR: [
+    { status: "readyForPickup", invoice: null, combinedInto: null },
+    { status: { in: ["readyForPickup", "closed"] }, OR: [{ invoice: { is: { status: "draft" } } }, { combinedInto: { is: { invoice: { status: "draft" } } } }] },
+  ],
 };
 
 export const DROP_OFF_METHODS = ["customerDropOff", "pickupDelivery"] as const;

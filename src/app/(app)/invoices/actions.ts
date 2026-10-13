@@ -9,7 +9,8 @@ import { sendMail } from "@/lib/email";
 import { loadEmailTemplate, renderTemplate } from "@/lib/email-templates";
 import { claimInvoiceNumber, generateViewToken, computeTotals, classifyInvoiceType, isEditable, PAYMENT_METHODS, type LineItemInput } from "@/lib/invoices";
 import { applyStockAdjustment } from "@/lib/inventory";
-import { readFeeOptions, buildWorkOrderInvoiceLines } from "@/lib/invoice-lines";
+import { unitPriceFor } from "@/lib/pricing";
+import { readFeeOptions, readBilling, buildWorkOrderInvoiceLines, buildInvoiceFromBilling } from "@/lib/invoice-lines";
 import { renderInvoicePdfFromRecord } from "@/lib/invoice-pdf";
 
 async function requireCanManageInvoices(action: "create" | "update" | "void" | "delete" = "update") {
@@ -127,7 +128,7 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
   });
   if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
   if (workOrder.status !== "readyForPickup" && workOrder.status !== "closed") {
-    return { error: "This work order isn't ready to invoice yet — mark it Repair Completed first." };
+    return { error: "This work order isn't ready to invoice yet — mark it Ready for pickup first." };
   }
   if (workOrder.invoice || workOrder.combinedInto) return { error: "This work order already has an invoice." };
 
@@ -205,11 +206,9 @@ export async function completeAndCollect(workOrderId: string, formData: FormData
   if ("error" in fees) return { error: fees.error };
 
   const shopProfile = await prisma.shopProfile.findUnique({ where: { organizationId } });
-  const lines = buildWorkOrderInvoiceLines({ labourHours, parts: workOrder.parts }, shopProfile, fees);
-  const totals = computeTotals(
-    lines.map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), taxable: l.taxable })),
-    Number(shopProfile?.taxRate ?? 0)
-  );
+  const billing = readBilling(formData, (repairNotes ?? "").split("\n")[0].slice(0, 80));
+  if ("error" in billing) return { error: billing.error };
+  const { lines, totals } = buildInvoiceFromBilling({ billing, labourHours, parts: workOrder.parts, shopProfile, fees });
 
   const now = new Date();
   const invoice = await prisma.$transaction(async (tx) => {
@@ -300,7 +299,7 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
   if (workOrders.length !== workOrderIds.length) return { error: "One of those work orders no longer exists." };
   for (const wo of workOrders) {
     if (wo.organizationId !== organizationId || wo.customerId !== customerId) return { error: "Every work order must belong to this customer." };
-    if (wo.status !== "readyForPickup" && wo.status !== "closed") return { error: "Every work order must be Repair Completed or Closed first." };
+    if (wo.status !== "readyForPickup" && wo.status !== "closed") return { error: "Every work order must be Ready for pickup, or Picked up / Delivered, first." };
     if (wo.invoice || wo.combinedInto) return { error: "One of those work orders already has an invoice." };
   }
 
@@ -482,13 +481,20 @@ export async function addCustomLineItem(invoiceId: string, formData: FormData) {
   const taxable = formData.get("taxable") === "on";
   const afterHeaderId = String(formData.get("sectionHeaderId") ?? "").trim() || null;
 
+  // "Price includes tax": the owner typed what the customer pays, so store the pre-tax price that adds back up to it.
+  let storedUnitPrice = unitPrice;
+  if (taxable && formData.get("priceIncludesTax") === "on") {
+    const shopProfile = await prisma.shopProfile.findUnique({ where: { organizationId }, select: { taxRate: true } });
+    storedUnitPrice = unitPriceFor(unitPrice, true, Number(shopProfile?.taxRate ?? 0)).unitPrice;
+  }
+
   await insertLineItem(invoiceId, afterHeaderId, {
     type: "custom",
     description,
     quantity: quantity.toFixed(2),
-    unitPrice: unitPrice.toFixed(2),
+    unitPrice: storedUnitPrice.toFixed(2),
     taxable,
-    lineTotal: (quantity * unitPrice).toFixed(2),
+    lineTotal: (quantity * storedUnitPrice).toFixed(2),
   });
   await recalcTotals(invoiceId, organizationId);
 
@@ -822,6 +828,28 @@ export async function markInvoicePaid(invoiceId: string, formData: FormData) {
 
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
+  if (invoice.workOrderId) revalidatePath(`/work-orders/${invoice.workOrderId}`);
+  for (const cwo of invoice.combinedWorkOrders) revalidatePath(`/work-orders/${cwo.workOrderId}`);
+  return { success: true };
+}
+
+/**
+ * Moves a draft invoice to Sent (Submitted, for a warranty claim) without emailing anything -- for an invoice that
+ * was handed over, sent on WhatsApp, or filed with a manufacturer outside the app.
+ */
+export async function markInvoiceSent(invoiceId: string) {
+  const { organizationId } = await requireCanManageInvoices("update");
+  const invoice = await loadOwnInvoice(invoiceId, organizationId);
+  if (!invoice) return { error: "That invoice doesn't exist." };
+  if (invoice.status !== "draft") return { success: true };
+  if (invoice.lineItems.length === 0) return { error: "Add at least one line item before marking this invoice as sent." };
+
+  await prisma.invoice.update({ where: { id: invoiceId }, data: { status: "sent", sentAt: new Date() } });
+
+  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/invoices");
+  revalidatePath("/work-orders");
+  revalidatePath("/dashboard");
   if (invoice.workOrderId) revalidatePath(`/work-orders/${invoice.workOrderId}`);
   for (const cwo of invoice.combinedWorkOrders) revalidatePath(`/work-orders/${cwo.workOrderId}`);
   return { success: true };

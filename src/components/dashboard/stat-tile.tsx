@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 const TONE_STYLES = {
   neutral: { border: "var(--border-subtle)", bg: "var(--bg-surface)", label: "var(--text-muted)", value: "var(--text-primary)", sub: "var(--text-muted)" },
   warning: {
@@ -17,10 +19,10 @@ const TONE_STYLES = {
   },
 } as const;
 
-export function StatTile({ label, value, sub, tone = "neutral" }: { label: string; value: string; sub?: string; tone?: keyof typeof TONE_STYLES }) {
+export function StatTile({ label, value, sub, tone = "neutral", href }: { label: string; value: string; sub?: string; tone?: keyof typeof TONE_STYLES; href?: string }) {
   const t = TONE_STYLES[tone];
-  return (
-    <div className="rounded-xl p-4" style={{ background: t.bg, border: `1px solid ${t.border}` }}>
+  const body = (
+    <div className={`rounded-xl p-4 h-full ${href ? "transition hover:shadow-md hover:-translate-y-px" : ""}`} style={{ background: t.bg, border: `1px solid ${t.border}` }}>
       <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: t.label }}>
         {label}
       </div>
@@ -33,5 +35,13 @@ export function StatTile({ label, value, sub, tone = "neutral" }: { label: strin
         </div>
       )}
     </div>
+  );
+  // A tile that has a list behind it opens that list.
+  return href ? (
+    <Link href={href} className="block" aria-label={`${label}: ${value}. Open the list.`}>
+      {body}
+    </Link>
+  ) : (
+    body
   );
 }

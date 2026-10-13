@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { changeWorkOrderStatus } from "@/app/(app)/work-orders/actions";
 import { STATUS_LABELS, WORK_ORDER_STATUSES, type WorkOrderStatus } from "@/lib/work-orders";
+import { CloseJobDialog } from "@/components/close-job-dialog";
 
 /**
  * "Move to..." -- jump a job straight to any status instead of clicking through each
@@ -17,18 +18,22 @@ export function WorkOrderStatusMover({
   status,
   hasEstimate,
   hasInvoice,
+  draftInvoiceId = null,
   compact = false,
 }: {
   workOrderId: string;
   status: WorkOrderStatus;
   hasEstimate: boolean;
   hasInvoice: boolean;
+  /** Set when the job's invoice is still a draft: closing the job then asks about it first. */
+  draftInvoiceId?: string | null;
   /** Small, label-less version for table rows. */
   compact?: boolean;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [closing, setClosing] = useState(false);
 
   const options = WORK_ORDER_STATUSES.filter((s) => {
     if (s === status) return false;
@@ -41,6 +46,10 @@ export function WorkOrderStatusMover({
     const target = e.target.value;
     e.target.value = "";
     if (!target) return;
+    if (target === "closed" && draftInvoiceId) {
+      setClosing(true);
+      return;
+    }
     if (target === "closed" && !hasInvoice && !confirm("This job has no invoice yet. Mark it picked up / closed anyway?")) return;
     setError(null);
     startTransition(async () => {
@@ -75,6 +84,7 @@ export function WorkOrderStatusMover({
           {error}
         </p>
       )}
+      {closing && draftInvoiceId && <CloseJobDialog workOrderId={workOrderId} draftInvoiceId={draftInvoiceId} onClose={() => setClosing(false)} />}
     </div>
   );
 }

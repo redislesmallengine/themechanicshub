@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { addWorkOrderPart, removeWorkOrderPart } from "@/app/(app)/work-orders/actions";
+import { SearchSelect } from "@/components/search-select";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -22,6 +23,7 @@ function AddPartForm({ workOrderId, availableParts }: { workOrderId: string; ava
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [partId, setPartId] = useState("");
   const bound = addWorkOrderPart.bind(null, workOrderId);
 
   function handleSubmit(formData: FormData) {
@@ -32,6 +34,7 @@ function AddPartForm({ workOrderId, availableParts }: { workOrderId: string; ava
         setError(result.error);
         return;
       }
+      setPartId("");
       router.refresh();
     });
   }
@@ -42,16 +45,15 @@ function AddPartForm({ workOrderId, availableParts }: { workOrderId: string; ava
         <label htmlFor="partId" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
           Part
         </label>
-        <select id="partId" name="partId" required defaultValue="" className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
-          <option value="" disabled>
-            Select…
-          </option>
-          {availableParts.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name} ({p.quantityOnHand} on hand)
-            </option>
-          ))}
-        </select>
+        <SearchSelect
+          id="partId"
+          name="partId"
+          required
+          value={partId}
+          onChange={setPartId}
+          placeholder="Type a part name or number…"
+          options={availableParts.map((p) => ({ value: p.id, label: p.name, hint: `${p.quantityOnHand} on hand` }))}
+        />
       </div>
       <div className="w-20">
         <label htmlFor="quantity" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>

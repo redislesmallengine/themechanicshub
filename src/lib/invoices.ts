@@ -66,6 +66,21 @@ export function classifyInvoiceType(params: { hasEquipment: boolean; hasWorkOrde
   return "repairService";
 }
 
+/**
+ * The money chip shown next to a job's own status: plain words for where the invoice stands. A warranty
+ * claim says "submitted" rather than "sent", and "not submitted" rather than "draft", because that is what
+ * actually happens to it (it goes to the manufacturer, not to the customer).
+ */
+export function invoiceChip(status: string, dueDate: Date | null, payerType: string | null, now: number = Date.now()): { label: string; badge: "success" | "warning" | "error" | "info" } {
+  const warranty = payerType === "warranty";
+  if (status === "void") return { label: "Void", badge: "error" };
+  if (status === "paid") return { label: warranty ? "Warranty paid" : "Paid", badge: "success" };
+  if (dueDate && (status === "sent" || status === "viewed") && dueDate.getTime() < now) return { label: "Overdue", badge: "error" };
+  if (status === "viewed") return { label: "Viewed", badge: "warning" };
+  if (status === "sent") return { label: warranty ? "Submitted" : "Sent", badge: "warning" };
+  return { label: warranty ? "Not submitted" : "Draft", badge: "info" };
+}
+
 /** Line items are still editable while in any of these — locked once Paid or Void. */
 export function isEditable(status: string): boolean {
   return status === "draft" || status === "sent" || status === "viewed";

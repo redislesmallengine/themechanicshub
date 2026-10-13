@@ -34,7 +34,7 @@ export function GenerateInvoiceButton({
     <form action={handleSubmit} className="space-y-3">
       {hasDiagnosticFee && (
         <label className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
-          <input type="checkbox" name="includeDiagnosticFee" defaultChecked className="rounded" style={{ accentColor: "#0F52BA" }} />
+          <input type="checkbox" name="includeDiagnosticFee" className="rounded" style={{ accentColor: "#0F52BA" }} />
           Include diagnostic fee
         </label>
       )}

@@ -5,7 +5,8 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { STATUS_LABELS, STATUS_BADGE, DROP_OFF_METHOD_LABELS, type WorkOrderStatus } from "@/lib/work-orders";
-import { STATUS_LABELS as INVOICE_STATUS_LABELS, STATUS_BADGE as INVOICE_STATUS_BADGE, isOverdue, type InvoiceStatus } from "@/lib/invoices";
+import { STATUS_LABELS as INVOICE_STATUS_LABELS, STATUS_BADGE as INVOICE_STATUS_BADGE, isOverdue, invoiceChip, type InvoiceStatus } from "@/lib/invoices";
+import { MarkInvoiceSentButton } from "@/components/mark-invoice-sent-button";
 import { WorkOrderStatusPanel } from "@/components/work-order-status-panel";
 import { WorkOrderDiagnosisForm } from "@/components/work-order-diagnosis-form";
 import { WorkOrderPartsPanel } from "@/components/work-order-parts-panel";
@@ -47,6 +48,11 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   const isOwner = membership?.role === "owner";
 
   const status = workOrder.status as WorkOrderStatus;
+  // The money side of this job, in plain words, so the job and its invoice are never read as contradicting each other.
+  const linkedInvoice = workOrder.invoice ?? workOrder.combinedInto?.invoice ?? null;
+  const draftInvoiceId = linkedInvoice?.status === "draft" ? linkedInvoice.id : null;
+  const moneyChip = linkedInvoice ? invoiceChip(linkedInvoice.status, linkedInvoice.dueDate, linkedInvoice.payerType) : null;
+  const jobIsDone = status === "readyForPickup" || status === "closed";
   const equipmentLabel = [workOrder.equipment.make, workOrder.equipment.model].filter(Boolean).join(" / ") || workOrder.equipment.equipmentType?.name || "Equipment";
   // The option shows whenever this work order was marked Shop
   // Pickup/Delivery at intake -- independent of whether Shop Profile has a
@@ -103,6 +109,19 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
                 <span className="dt-badge-dot" />
                 {STATUS_LABELS[status]}
               </span>
+              {moneyChip && linkedInvoice ? (
+                <Link href={`/invoices/${linkedInvoice.id}`} className={`dt-badge dt-badge--${moneyChip.badge}`} title="Open the invoice">
+                  <span className="dt-badge-dot" />
+                  Invoice: {moneyChip.label}
+                </Link>
+              ) : (
+                jobIsDone && (
+                  <span className="dt-badge dt-badge--warning">
+                    <span className="dt-badge-dot" />
+                    Invoice: none yet
+                  </span>
+                )
+              )}
               {workOrder.dropOffMethod === "pickupDelivery" && (
                 <span className="dt-badge dt-badge--info">
                   <span className="dt-badge-dot" />
@@ -147,6 +166,28 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           )}
         </div>
       </div>
+
+      {jobIsDone && draftInvoiceId && linkedInvoice && (
+        <div className="rounded-xl px-5 py-3 flex items-center gap-3 flex-wrap" style={{ background: "var(--color-warning-subtle)", border: "1px solid var(--color-warning-border)" }}>
+          <p className="text-sm font-semibold flex-1 min-w-[14rem]" style={{ color: "var(--color-warning-text)" }}>
+            This job is {status === "closed" ? "picked up" : "ready for pickup"}, but its invoice ({linkedInvoice.invoiceNumber}) is still a draft.
+          </p>
+          <MarkInvoiceSentButton invoiceId={draftInvoiceId} warranty={linkedInvoice.payerType === "warranty"} />
+          <Link href={`/invoices/${draftInvoiceId}`} className="text-xs font-bold text-brand-600">
+            Open the invoice
+          </Link>
+        </div>
+      )}
+      {status === "readyForPickup" && !linkedInvoice && (
+        <div className="rounded-xl px-5 py-3 flex items-center gap-3 flex-wrap" style={{ background: "var(--color-warning-subtle)", border: "1px solid var(--color-warning-border)" }}>
+          <p className="text-sm font-semibold flex-1 min-w-[14rem]" style={{ color: "var(--color-warning-text)" }}>
+            This job is ready for pickup, but there is no invoice yet.
+          </p>
+          <a href="#invoice-card" className="text-xs font-bold text-brand-600">
+            Go to Invoice
+          </a>
+        </div>
+      )}
 
       <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
         <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
@@ -194,7 +235,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
             Complete &amp; Collect
           </h2>
           <p className="text-[11px] mt-0.5 mb-3" style={{ color: "var(--text-muted)" }}>
-            Customer at the counter? Finish the repair, bill it, take payment and close the job in one step. Not ready to bill yet? Use <b>Mark Repair Completed</b> in Status below.
+            Customer at the counter? Finish the repair, bill it, take payment and close the job in one step. Not ready to bill yet? Use <b>Mark ready for pickup</b> in Status below.
           </p>
           <CompleteCollectForm
             workOrderId={workOrder.id}
@@ -206,6 +247,8 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
             showDeliveryFee={showDeliveryFee}
             deliveryFeeDefault={deliveryFeeDefault}
             customerEmail={workOrder.customer.email}
+            taxRate={shopProfile?.taxRate ? Number(shopProfile.taxRate) : 0}
+            taxLabel={shopProfile?.taxLabel ?? "Tax"}
           />
         </div>
       )}
@@ -220,6 +263,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
             status={status}
             hasEstimate={!!workOrder.estimateAmount}
             hasInvoice={!!(workOrder.invoice || workOrder.combinedInto)}
+            draftInvoiceId={draftInvoiceId}
           />
         </div>
         <WorkOrderStatusPanel
@@ -230,6 +274,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           hasDiagnosticFee={!!shopProfile?.diagnosticFee}
           showDeliveryFee={showDeliveryFee}
           deliveryFeeDefault={deliveryFeeDefault}
+          draftInvoiceId={draftInvoiceId}
         />
         {workOrder.status === "awaitingApproval" && workOrder.estimateAmount && (
           <div className="mt-3 pt-3 text-xs" style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-muted)" }}>
@@ -282,7 +327,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         />
       </div>
 
-      <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+      <div id="invoice-card" className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
         <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
           Invoice
         </h2>
@@ -326,7 +371,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           </>
         ) : (
           <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-            Available once this work order reaches Repair Completed.
+            Available once this work order is Ready for pickup.
           </p>
         )}
       </div>

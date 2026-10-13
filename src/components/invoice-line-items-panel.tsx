@@ -1,5 +1,6 @@
 "use client";
 
+import { SearchSelect } from "@/components/search-select";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addCustomLineItem, addInventoryLineItem, removeLineItem } from "@/app/(app)/invoices/actions";
@@ -56,6 +57,7 @@ function AddInventoryLineForm({ invoiceId, availableParts, headerLines }: { invo
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [partId, setPartId] = useState("");
   const bound = addInventoryLineItem.bind(null, invoiceId);
 
   function handleSubmit(formData: FormData) {
@@ -66,6 +68,7 @@ function AddInventoryLineForm({ invoiceId, availableParts, headerLines }: { invo
         setError(result.error);
         return;
       }
+      setPartId("");
       router.refresh();
     });
   }
@@ -77,16 +80,16 @@ function AddInventoryLineForm({ invoiceId, availableParts, headerLines }: { invo
         <label htmlFor="partId" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
           Part
         </label>
-        <select id="partId" name="partId" required defaultValue="" className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
-          <option value="" disabled>
-            {availableParts.length === 0 ? "No parts in stock" : "Select…"}
-          </option>
-          {availableParts.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name} — ${p.sellPrice ?? "0.00"} ({p.quantityOnHand} on hand)
-            </option>
-          ))}
-        </select>
+        <SearchSelect
+          id="partId"
+          name="partId"
+          required
+          value={partId}
+          onChange={setPartId}
+          disabled={availableParts.length === 0}
+          placeholder={availableParts.length === 0 ? "No parts in stock" : "Type a part name or number…"}
+          options={availableParts.map((p) => ({ value: p.id, label: p.name, hint: `$${p.sellPrice ?? "0.00"} · ${p.quantityOnHand} on hand` }))}
+        />
       </div>
       <div className="w-20">
         <label htmlFor="quantity" className="block font-bold mb-1 text-xs" style={{ color: "var(--text-secondary)" }}>
@@ -156,6 +159,10 @@ function AddCustomLineForm({ invoiceId, headerLines }: { invoiceId: string; head
         <input type="checkbox" name="taxable" defaultChecked className="rounded" style={{ accentColor: "#0F52BA" }} />
         Taxable
       </label>
+      <label className="flex items-center gap-1.5 text-[11px] font-semibold pb-2" style={{ color: "var(--text-secondary)" }} title="Tick this if the price you typed already has tax in it. The invoice works out the pre-tax price.">
+        <input type="checkbox" name="priceIncludesTax" className="rounded" style={{ accentColor: "#0F52BA" }} />
+        Price includes tax
+      </label>
       <button type="submit" disabled={pending} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
         {pending ? "Adding…" : "Add Line"}
       </button>
@@ -205,8 +212,8 @@ function LineRow({ line, showMargins }: { line: InvoiceLine; showMargins: boolea
   const [pending, startTransition] = useTransition();
 
   function handleRemove() {
-    const stockNote = line.partId ? ` This will also restore ${line.quantity} to stock.` : "";
-    if (!confirm(`Remove "${line.description}" from this invoice?${stockNote}`)) return;
+    // Removing a line is one click. Only a part line asks first, because removing it also puts stock back.
+    if (line.partId && !confirm(`Remove "${line.description}" from this invoice? This will also restore ${line.quantity} to stock.`)) return;
     startTransition(async () => {
       const result = await removeLineItem(line.id);
       if (result?.error) {

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createQuickJob } from "@/app/(app)/work-orders/quick/actions";
 import { PAYMENT_METHODS } from "@/lib/invoices";
+import { flatPriceTotals } from "@/lib/pricing";
+import { SearchSelect } from "@/components/search-select";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -37,8 +39,8 @@ interface ShopRates {
 }
 
 const STEP_NAMES = ["diagnosed", "approved", "repaired", "billed", "paid", "pickedUp"] as const;
-const STEP_TITLES = ["Diagnosed", "Customer OK'd it", "Repaired", "Billed", "Paid", "Picked up"];
-const STEP_HINTS = ["technician · hours · notes", "in person, no written estimate", "work performed · parts", "creates the invoice", "method · reference", "closes the work order"];
+const STEP_TITLES = ["Diagnosed", "Customer OK'd it", "Repaired", "Billed", "Paid", "Picked up / delivered"];
+const STEP_HINTS = ["technician · hours · notes", "in person, no written estimate", "work performed · parts", "creates the invoice", "method · reference", "closes the job"];
 
 const money = (n: number) => `$${n.toFixed(2)}`;
 const lastTenDigits = (s: string | null) => (s ?? "").replace(/\D/g, "").slice(-10);
@@ -79,7 +81,16 @@ export function QuickJobForm({
   const [usedParts, setUsedParts] = useState<{ partId: string; name: string; quantity: number; price: number }[]>([]);
   const [pickPartId, setPickPartId] = useState("");
   const [pickQty, setPickQty] = useState("1");
-  const [feeDiag, setFeeDiag] = useState(true);
+  // The diagnostic fee starts unticked: the owner adds it only when it applies.
+  const [feeDiag, setFeeDiag] = useState(false);
+  const [billingMode, setBillingMode] = useState<"flat" | "hours">("flat");
+  const [flatAmount, setFlatAmount] = useState("");
+  const [flatTax, setFlatTax] = useState<"included" | "extra">("included");
+  const [flatDescription, setFlatDescription] = useState("");
+  // Steps the screen ticked on his behalf (because a later step was ticked) fold up to one line.
+  const [autoTicked, setAutoTicked] = useState<Set<number>>(new Set());
+  const [openAuto, setOpenAuto] = useState<Set<number>>(new Set());
+  const [tickNote, setTickNote] = useState<string | null>(null);
   const [feeDelivery, setFeeDelivery] = useState(false);
   const [deliveryAmount, setDeliveryAmount] = useState(shop.deliveryFeeDefault);
   const [emailReceipt, setEmailReceipt] = useState(false);
@@ -99,19 +110,47 @@ export function QuickJobForm({
   }, [customerMode, newPhone, customers]);
 
   // Ticking a step ticks the ones before it; unticking clears the ones after it. Paid and Picked up are
-  // separate branches after Billed, so a customer can take the machine and pay later.
+  // separate branches after Billed, so a customer can pay now and collect later, or the reverse.
   function toggleStep(i: number) {
-    setSteps((prev) => {
-      const next = [...prev];
-      if (!prev[i]) {
-        const upTo = i === 5 ? 3 : i;
-        for (let k = 0; k <= upTo; k++) next[k] = true;
-        next[i] = true;
-      } else if (i <= 3) {
-        for (let k = i; k < 6; k++) next[k] = false;
-      } else {
-        next[i] = false;
+    const next = [...steps];
+    const auto = new Set(autoTicked);
+    const open = new Set(openAuto);
+    if (!steps[i]) {
+      // Picked up usually means paid too, so it ticks Paid as well; untick Paid afterwards for a customer who pays later.
+      const upTo = i === 5 ? 4 : i;
+      const added: number[] = [];
+      for (let k = 0; k <= upTo; k++) {
+        if (!next[k]) {
+          next[k] = true;
+          if (k !== i) {
+            auto.add(k);
+            added.push(k);
+          }
+        }
       }
+      next[i] = true;
+      auto.delete(i);
+      // Say what just happened, so a tick that moves other boxes is never a surprise.
+      setTickNote(added.length > 0 ? `Also ticked ${added.map((k) => STEP_TITLES[k]).join(", ")} for you.` : null);
+    } else {
+      const to = i <= 3 ? 6 : i + 1;
+      for (let k = i; k < to; k++) {
+        next[k] = false;
+        auto.delete(k);
+        open.delete(k);
+      }
+      setTickNote(null);
+    }
+    setSteps(next);
+    setAutoTicked(auto);
+    setOpenAuto(open);
+  }
+
+  function toggleAutoOpen(i: number) {
+    setOpenAuto((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
       return next;
     });
   }
@@ -134,18 +173,35 @@ export function QuickJobForm({
   // An estimate of the invoice -- the real numbers are worked out when the job is saved.
   const preview = useMemo(() => {
     const lines: { label: string; amount: number }[] = [];
+    const feeLines: { label: string; amount: number }[] = [];
+    if (feeDiag && shop.diagnosticFee) feeLines.push({ label: "Diagnostic fee", amount: shop.diagnosticFee });
+    const delivery = Number(deliveryAmount);
+    if (feeDelivery && Number.isFinite(delivery) && delivery > 0) feeLines.push({ label: "Pickup/delivery fee", amount: delivery });
+    const feeSubtotal = feeLines.reduce((sum, l) => sum + l.amount, 0);
+    const feeTax = Math.round(feeSubtotal * shop.taxRate) / 100;
+
+    if (billingMode === "flat") {
+      const amount = Number(flatAmount);
+      if (!Number.isFinite(amount) || amount <= 0) return { lines: feeLines, tax: feeTax, total: feeSubtotal + feeTax, taxIncluded: false };
+      const flat = flatPriceTotals(amount, flatTax === "included", shop.taxRate);
+      return {
+        lines: [{ label: flatDescription.trim() || "Repair service", amount: Number(flat.subtotal) }, ...feeLines],
+        tax: Number(flat.taxAmount) + feeTax,
+        total: Number(flat.total) + feeSubtotal + feeTax,
+        taxIncluded: flatTax === "included",
+      };
+    }
+
     const hoursNum = Number(hours);
     if (shop.labourRate && Number.isFinite(hoursNum) && hoursNum > 0) lines.push({ label: `Labour ${hoursNum} hr × ${money(shop.labourRate)}`, amount: hoursNum * shop.labourRate });
     for (const p of usedParts) lines.push({ label: `${p.name} × ${p.quantity}`, amount: p.price * p.quantity });
-    if (feeDiag && shop.diagnosticFee) lines.push({ label: "Diagnostic fee", amount: shop.diagnosticFee });
-    const delivery = Number(deliveryAmount);
-    if (feeDelivery && Number.isFinite(delivery) && delivery > 0) lines.push({ label: "Pickup/delivery fee", amount: delivery });
+    lines.push(...feeLines);
     const subtotal = lines.reduce((sum, l) => sum + l.amount, 0);
     const tax = Math.round(subtotal * shop.taxRate) / 100;
-    return { lines, tax, total: subtotal + tax };
-  }, [hours, usedParts, feeDiag, feeDelivery, deliveryAmount, shop]);
+    return { lines, tax, total: subtotal + tax, taxIncluded: false };
+  }, [hours, usedParts, feeDiag, feeDelivery, deliveryAmount, shop, billingMode, flatAmount, flatTax, flatDescription]);
 
-  const status = pickedUp ? "Picked Up / Closed" : repaired ? "Repair Completed" : approved ? "In Repair" : diagnosed ? "Diagnosing" : "Pending";
+  const status = pickedUp ? "Picked up / Delivered" : repaired ? "Ready for pickup" : approved ? "In Repair" : diagnosed ? "Diagnosing" : "Pending";
   const summary: string[] = [
     customerMode === "new" ? "Registers the new customer" : null,
     equipmentMode === "new" ? "Registers the new equipment" : null,
@@ -155,7 +211,7 @@ export function QuickJobForm({
     repaired ? `Saves the work performed${usedParts.length ? " and takes the parts out of stock" : ""}` : null,
     billed ? "Creates the invoice, numbered in sequence" : null,
     paid ? `Marks the invoice paid${emailReceipt ? " and emails a receipt" : ""}` : null,
-    pickedUp ? "Closes the work order as picked up" : null,
+    pickedUp ? "Closes the job as picked up / delivered" : null,
   ].filter((l): l is string => l !== null);
 
   // onSubmit rather than <form action>: React 19 resets the fields after an action finishes, and a
@@ -195,25 +251,18 @@ export function QuickJobForm({
                   <label htmlFor="customerId" className="block font-bold mb-1" style={labelStyle}>
                     Customer <span style={{ color: "var(--color-error-solid)" }}>*</span>
                   </label>
-                  <select
+                  <SearchSelect
                     id="customerId"
                     name="customerId"
                     value={customerId}
-                    onChange={(e) => {
-                      setCustomerId(e.target.value);
+                    onChange={(v) => {
+                      setCustomerId(v);
                       setEquipmentId("");
                       setAddNewEquipment(false);
                     }}
-                    className="w-full px-3 py-2 rounded-lg text-xs font-semibold"
-                    style={inputStyle}
-                  >
-                    <option value="">Select…</option>
-                    {customers.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} {c.phone ? `— ${c.phone}` : c.email ? `— ${c.email}` : ""}
-                      </option>
-                    ))}
-                  </select>
+                    placeholder="Type a name, phone or email…"
+                    options={customers.map((c) => ({ value: c.id, label: c.name, hint: c.phone ?? c.email ?? "", keywords: `${c.email ?? ""} ${c.phone ?? ""}` }))}
+                  />
                   <button type="button" onClick={() => setCustomerMode("new")} className="mt-1 text-[11px] font-bold text-brand-600">
                     + New customer
                   </button>
@@ -378,8 +427,14 @@ export function QuickJobForm({
             What has happened so far?
           </h2>
           <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-            Tick every step that is already done. Nothing ticked just drops the machine off as Pending.
+            Tick every step that is already done. Ticking a step also ticks the ones before it. Nothing ticked just drops the machine off as Pending.
           </p>
+
+          {tickNote && (
+            <p className="text-[11px] font-semibold rounded-lg px-3 py-1.5" style={{ background: "var(--bg-surface-subtle)", color: "var(--color-brand-600)" }} role="status">
+              {tickNote}
+            </p>
+          )}
 
           {STEP_NAMES.map((name, i) => (
             <div
@@ -387,18 +442,25 @@ export function QuickJobForm({
               className="rounded-lg"
               style={{ border: `1px solid ${steps[i] ? "var(--color-brand-600)" : "var(--border-subtle)"}`, background: steps[i] ? "var(--color-brand-50, var(--bg-surface-subtle))" : "var(--bg-surface)" }}
             >
-              <label className="flex items-center gap-2.5 px-3 py-2.5 cursor-pointer">
-                <input type="checkbox" name={`step_${name}`} checked={steps[i]} onChange={() => toggleStep(i)} className="w-4 h-4" style={{ accentColor: "#0F52BA" }} />
-                <span className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                  {STEP_TITLES[i]}
-                </span>
-                <span className="ml-auto text-[10px] text-right" style={{ color: "var(--text-muted)" }}>
-                  {STEP_HINTS[i]}
-                </span>
-              </label>
+              <div className="flex items-center">
+                <label className="flex flex-1 items-center gap-2.5 px-3 py-2.5 cursor-pointer min-w-0">
+                  <input type="checkbox" name={`step_${name}`} checked={steps[i]} onChange={() => toggleStep(i)} className="w-4 h-4" style={{ accentColor: "#0F52BA" }} />
+                  <span className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+                    {STEP_TITLES[i]}
+                  </span>
+                  <span className="ml-auto text-[10px] text-right" style={{ color: "var(--text-muted)" }}>
+                    {steps[i] && autoTicked.has(i) && !openAuto.has(i) ? "ticked for you" : STEP_HINTS[i]}
+                  </span>
+                </label>
+                {steps[i] && autoTicked.has(i) && (
+                  <button type="button" onClick={() => toggleAutoOpen(i)} className="mr-3 text-[11px] font-bold text-brand-600 whitespace-nowrap">
+                    {openAuto.has(i) ? "Fold" : "Edit"}
+                  </button>
+                )}
+              </div>
 
-              {/* Detail fields stay mounted (just hidden) so unticking and re-ticking doesn't lose what was typed. */}
-              <div hidden={!steps[i]} className="px-3 pb-3 sm:pl-10 space-y-2 text-xs">
+              {/* Detail fields stay mounted (just hidden) so unticking and re-ticking, or folding a step, doesn't lose what was typed. */}
+              <div hidden={!steps[i] || (autoTicked.has(i) && !openAuto.has(i))} className="px-3 pb-3 sm:pl-10 space-y-2 text-xs">
                 {name === "diagnosed" && (
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -497,14 +559,14 @@ export function QuickJobForm({
                         </div>
                       )}
                       <div className="flex gap-2 flex-wrap">
-                        <select aria-label="Part" value={pickPartId} onChange={(e) => setPickPartId(e.target.value)} className="flex-1 min-w-[10rem] px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
-                          <option value="">Add a part from inventory…</option>
-                          {parts.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} ({p.quantityOnHand} on hand){p.sellPrice ? ` — ${money(p.sellPrice)}` : ""}
-                            </option>
-                          ))}
-                        </select>
+                        <SearchSelect
+                          ariaLabel="Part"
+                          value={pickPartId}
+                          onChange={setPickPartId}
+                          className="flex-1 min-w-[10rem]"
+                          placeholder="Type a part name or number…"
+                          options={parts.map((p) => ({ value: p.id, label: p.name, hint: `${p.quantityOnHand} on hand${p.sellPrice ? ` · ${money(p.sellPrice)}` : ""}` }))}
+                        />
                         <input aria-label="Quantity" type="number" min="1" step="1" value={pickQty} onChange={(e) => setPickQty(e.target.value)} className="w-16 px-2 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
                         <button type="button" onClick={addPart} disabled={!pickPartId} className="px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-50" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}>
                           Add
@@ -516,6 +578,67 @@ export function QuickJobForm({
 
                 {name === "billed" && (
                   <>
+                    <input type="hidden" name="billingMode" value={billingMode} />
+                    <div className="inline-flex rounded-lg overflow-hidden" style={{ border: "1px solid var(--border-strong)" }} role="group" aria-label="How to bill this job">
+                      {(
+                        [
+                          ["flat", "One flat price"],
+                          ["hours", "By hours & parts"],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setBillingMode(value)}
+                          aria-pressed={billingMode === value}
+                          className="px-3 py-1.5 text-[11px] font-bold"
+                          style={billingMode === value ? { background: "var(--color-brand-600)", color: "#fff" } : { background: "var(--bg-surface)", color: "var(--text-secondary)" }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {billingMode === "flat" && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div>
+                          <label htmlFor="flatAmount" className="block font-bold mb-1" style={labelStyle}>
+                            Amount charged ($)
+                          </label>
+                          <input id="flatAmount" name="flatAmount" type="number" step="0.01" min="0" inputMode="decimal" value={flatAmount} onChange={(e) => setFlatAmount(e.target.value)} placeholder="207.00" className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
+                        </div>
+                        <div>
+                          <div className="font-bold mb-1" style={labelStyle}>
+                            Tax
+                          </div>
+                          <div className="inline-flex rounded-lg overflow-hidden" style={{ border: "1px solid var(--border-strong)" }} role="group" aria-label="Does the amount include tax?">
+                            {(
+                              [
+                                ["included", "Included"],
+                                ["extra", "Add tax"],
+                              ] as const
+                            ).map(([value, label]) => (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => setFlatTax(value)}
+                                aria-pressed={flatTax === value}
+                                className="px-3 py-2 text-[11px] font-bold"
+                                style={flatTax === value ? { background: "var(--color-brand-600)", color: "#fff" } : { background: "var(--bg-surface)", color: "var(--text-secondary)" }}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                          <input type="hidden" name="flatTax" value={flatTax} />
+                        </div>
+                        <div>
+                          <label htmlFor="flatDescription" className="block font-bold mb-1" style={labelStyle}>
+                            Shown on the invoice as
+                          </label>
+                          <input id="flatDescription" name="flatDescription" type="text" value={flatDescription} onChange={(e) => setFlatDescription(e.target.value)} placeholder={repairNotes.split("\n")[0].slice(0, 40) || "Repair service"} className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+                        </div>
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-x-5 gap-y-1.5">
                       {shop.diagnosticFee ? (
                         <label className="flex items-center gap-1.5 font-semibold" style={labelStyle}>
@@ -537,7 +660,7 @@ export function QuickJobForm({
                     <div className="rounded-lg p-2.5 space-y-0.5 tabular-nums" style={{ border: "1px dashed var(--border-strong)", background: "var(--bg-surface)" }}>
                       {preview.lines.length === 0 && (
                         <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-                          Nothing to bill yet — add labour hours or parts.
+                          {billingMode === "flat" ? "Nothing to bill yet — type the amount charged." : "Nothing to bill yet — add labour hours or parts."}
                         </div>
                       )}
                       {preview.lines.map((l) => (
@@ -549,7 +672,7 @@ export function QuickJobForm({
                       {shop.taxRate > 0 && preview.lines.length > 0 && (
                         <div className="flex justify-between gap-3">
                           <span style={{ color: "var(--text-secondary)" }}>
-                            {shop.taxLabel} {shop.taxRate}%
+                            {shop.taxLabel} {shop.taxRate}%{preview.taxIncluded ? " (included)" : ""}
                           </span>
                           <span style={{ color: "var(--text-primary)" }}>{money(preview.tax)}</span>
                         </div>
@@ -633,18 +756,44 @@ export function QuickJobForm({
             The invoice is created but not paid. Send it or take payment later from the invoice page.
           </p>
         )}
-        {error && (
-          <p className="text-xs font-semibold rounded-lg px-3 py-2" style={{ background: "var(--color-error-subtle)", color: "var(--color-error-solid)" }}>
-            {error}
-          </p>
-        )}
-        <button type="submit" disabled={pending} className="w-full px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-          {pending ? "Saving…" : "Save quick job"}
-        </button>
-        <Link href="/work-orders" className="block text-center text-[11px] font-semibold" style={{ color: "var(--text-muted)" }}>
+      </aside>
+
+      {/* Pinned to the bottom of the screen so Save, and what it will do, are always in view however far he has scrolled. */}
+      <div
+        className="lg:col-span-2 sticky bottom-0 z-10 rounded-xl px-4 py-3 flex items-center gap-3 flex-wrap shadow-lg"
+        style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)" }}
+        aria-live="polite"
+      >
+        <div className="flex-1 min-w-[14rem] text-xs" style={{ color: "var(--text-secondary)" }}>
+          <span className="font-bold" style={{ color: "var(--text-primary)" }}>
+            Save will:
+          </span>{" "}
+          {summary.join(" · ")}
+          {billed && preview.total > 0 ? (
+            <>
+              {" "}
+              <span className="font-bold" style={{ color: "var(--text-primary)" }}>
+                Invoice total {money(preview.total)}.
+              </span>
+            </>
+          ) : null}
+          {error && (
+            <p className="mt-1 font-semibold" style={{ color: "var(--color-error-solid)" }} role="alert">
+              {error}
+            </p>
+          )}
+        </div>
+        <span className="dt-badge dt-badge--info">
+          <span className="dt-badge-dot" />
+          {status}
+        </span>
+        <Link href="/work-orders" className="text-[11px] font-semibold" style={{ color: "var(--text-muted)" }}>
           Cancel
         </Link>
-      </aside>
+        <button type="submit" disabled={pending} className="px-5 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
+          {pending ? "Saving…" : "Save quick job"}
+        </button>
+      </div>
     </form>
   );
 }

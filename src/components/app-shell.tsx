@@ -116,7 +116,10 @@ const CONFIG_NAV: NavItem[] = [
 // One entry today (a customer's full history — equipment, work orders,
 // invoices, activity, all in one place) but its own top-level menu since
 // more reports land here later, same as Configuration.
-const REPORTS_NAV: NavItem[] = [{ href: "/reports/customer-360", label: "Customer 360", icon: CustomersIcon, color: "text-emerald-400" }];
+const REPORTS_NAV: NavItem[] = [
+  { href: "/reports/sales", label: "Sales & Tax", icon: ReportIcon, color: "text-orange-400" },
+  { href: "/reports/customer-360", label: "Customer 360", icon: CustomersIcon, color: "text-emerald-400" },
+];
 
 // Parts-lookup sites technicians use to find diagrams/order parts for a
 // specific machine — open in a new tab so the shop's own data stays put.
@@ -529,7 +532,7 @@ export function AppShell({
         </aside>
 
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="flex-1 overflow-x-auto">{children}</div>
+          <div className="flex-1 overflow-x-clip">{children}</div>
         </div>
       </div>
     </div>
