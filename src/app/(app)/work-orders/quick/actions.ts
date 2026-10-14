@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { claimInvoiceNumber, generateViewToken, classifyInvoiceType, PAYMENT_METHODS } from "@/lib/invoices";
 import { applyStockAdjustment } from "@/lib/inventory";
+import { partLineName } from "@/lib/parts";
 import { readFeeOptions, readBilling, buildInvoiceFromBilling, type Billing } from "@/lib/invoice-lines";
 import { sendInvoice } from "@/app/(app)/invoices/actions";
 
@@ -157,7 +158,7 @@ export async function createQuickJob(formData: FormData) {
       const part = await prisma.part.findUnique({ where: { id: partId } });
       if (!part || part.organizationId !== organizationId) return { error: "One of the parts doesn't exist." };
       if (quantity > part.quantityOnHand) return { error: `Not enough "${part.name}" in stock (${part.quantityOnHand} on hand).` };
-      partRows.push({ partId, name: part.name, quantity, unitCostPrice: part.costPrice?.toString() ?? null, unitSellPrice: part.sellPrice?.toString() ?? null });
+      partRows.push({ partId, name: partLineName(part.name, part.sku), quantity, unitCostPrice: part.costPrice?.toString() ?? null, unitSellPrice: part.sellPrice?.toString() ?? null });
     }
   }
 

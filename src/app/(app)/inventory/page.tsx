@@ -224,7 +224,7 @@ export default async function InventoryPage({
             type="text"
             name="q"
             defaultValue={q ?? ""}
-            placeholder="Search by name, SKU, or barcode…"
+            placeholder="Search by name, part #, or barcode…"
             className="w-full pl-9 pr-3 py-2 rounded-lg text-xs font-medium"
             style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)", color: "var(--text-primary)" }}
           />
@@ -254,7 +254,7 @@ export default async function InventoryPage({
               <tr>
                 <SortTh label="Part" field="name" sort={sort.field} dir={sort.dir} basePath="/inventory" params={filterParams} />
                 <SortTh label="Category" field="category" sort={sort.field} dir={sort.dir} basePath="/inventory" params={filterParams} />
-                <SortTh label="SKU" field="sku" sort={sort.field} dir={sort.dir} basePath="/inventory" params={filterParams} />
+                <SortTh label="Part #" field="sku" sort={sort.field} dir={sort.dir} basePath="/inventory" params={filterParams} />
                 <SortTh label="On Hand" field="onHand" sort={sort.field} dir={sort.dir} basePath="/inventory" params={filterParams} />
                 <SortTh label="Sell Price" field="sellPrice" sort={sort.field} dir={sort.dir} basePath="/inventory" params={filterParams} firstDir="desc" />
                 <th className="dt-th text-right">Actions</th>

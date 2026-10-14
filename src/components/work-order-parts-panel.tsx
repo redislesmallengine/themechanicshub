@@ -19,7 +19,7 @@ interface PartLine {
   unitSellPrice: string | null;
 }
 
-function AddPartForm({ workOrderId, availableParts }: { workOrderId: string; availableParts: { id: string; name: string; quantityOnHand: number }[] }) {
+function AddPartForm({ workOrderId, availableParts }: { workOrderId: string; availableParts: { id: string; name: string; sku: string | null; barcode: string | null; quantityOnHand: number }[] }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -52,7 +52,7 @@ function AddPartForm({ workOrderId, availableParts }: { workOrderId: string; ava
           value={partId}
           onChange={setPartId}
           placeholder="Type a part name or number…"
-          options={availableParts.map((p) => ({ value: p.id, label: p.name, hint: `${p.quantityOnHand} on hand` }))}
+          options={availableParts.map((p) => ({ value: p.id, label: p.name, code: p.sku ?? undefined, keywords: p.barcode ?? "", hint: `${p.quantityOnHand} on hand` }))}
         />
       </div>
       <div className="w-20">
@@ -116,7 +116,7 @@ export function WorkOrderPartsPanel({
 }: {
   workOrderId: string;
   parts: PartLine[];
-  availableParts: { id: string; name: string; quantityOnHand: number }[];
+  availableParts: { id: string; name: string; sku: string | null; barcode: string | null; quantityOnHand: number }[];
 }) {
   return (
     <div className="space-y-3">

@@ -7,6 +7,8 @@ export interface SearchSelectOption {
   label: string;
   /** Shown after the label in a quieter colour (a phone number, stock on hand, a price). */
   hint?: string;
+  /** A part number or similar code: shown in a monospace face after the label, and matched when typed (dashes and spaces ignored). */
+  code?: string;
   /** Extra text that should also match what is typed, without being shown. */
   keywords?: string;
 }
@@ -18,6 +20,7 @@ const inputStyle = {
 };
 
 const digits = (s: string) => s.replace(/\D/g, "");
+const alnum = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 const MAX_SHOWN = 40;
 
 /**
@@ -64,8 +67,10 @@ export function SearchSelect({
     if (!q) return options;
     const qDigits = digits(q);
     return options.filter((o) => {
-      const hay = `${o.label} ${o.hint ?? ""} ${o.keywords ?? ""}`.toLowerCase();
+      const hay = `${o.label} ${o.code ?? ""} ${o.hint ?? ""} ${o.keywords ?? ""}`.toLowerCase();
       if (q.split(/\s+/).every((word) => hay.includes(word))) return true;
+      // "bkr 6e" or "BKR-6E" should still find BKR6E
+      if (alnum(q).length >= 3 && alnum(hay).includes(alnum(q))) return true;
       // "555 0148" should still find (902) 555-0148
       return qDigits.length >= 3 && digits(hay).includes(qDigits);
     });
@@ -114,8 +119,8 @@ export function SearchSelect({
         autoComplete="off"
         disabled={disabled}
         required={required && !value}
-        value={open ? query : (selected?.label ?? "")}
-        placeholder={selected ? selected.label : placeholder}
+        value={open ? query : selected ? `${selected.label}${selected.code ? ` · ${selected.code}` : ""}` : ""}
+        placeholder={selected ? `${selected.label}${selected.code ? ` · ${selected.code}` : ""}` : placeholder}
         onFocus={() => {
           setOpen(true);
           setActive(0);
@@ -177,7 +182,14 @@ export function SearchSelect({
               className="px-3 py-1.5 cursor-pointer flex items-baseline justify-between gap-3"
               style={{ background: i === active ? "var(--bg-surface-subtle)" : undefined, color: "var(--text-primary)", fontWeight: o.value === value ? 700 : 500 }}
             >
-              <span>{o.label}</span>
+              <span>
+                {o.label}
+                {o.code && (
+                  <span className="ml-2 font-mono text-[11px] font-semibold" style={{ color: "var(--color-brand-600)" }}>
+                    {o.code}
+                  </span>
+                )}
+              </span>
               {o.hint && (
                 <span className="text-[11px] whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
                   {o.hint}

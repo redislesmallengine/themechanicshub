@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { STATUS_LABELS, STATUS_BADGE, DROP_OFF_METHOD_LABELS, type WorkOrderStatus } from "@/lib/work-orders";
 import { invoiceChip } from "@/lib/invoices";
+import { partLineName } from "@/lib/parts";
 import { MarkInvoiceSentButton } from "@/components/mark-invoice-sent-button";
 import { WorkOrderDiagnosisForm } from "@/components/work-order-diagnosis-form";
 import { JobStepper } from "@/components/job-stepper";
@@ -53,7 +54,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
       customer: true,
       equipment: { include: { equipmentType: true } },
       assignedTo: true,
-      parts: { orderBy: { createdAt: "asc" } },
+      parts: { orderBy: { createdAt: "asc" }, include: { part: { select: { sku: true } } } },
       invoice: { include: { warrantyProvider: true } },
       combinedInto: { include: { invoice: { include: { warrantyProvider: true } } } },
     },
@@ -326,7 +327,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
             initialRepairNotes={workOrder.repairNotes ?? workOrder.diagnosisNotes ?? ""}
             notesPrefilledFromDiagnosis={!workOrder.repairNotes && !!workOrder.diagnosisNotes}
             initialLabourHours={workOrder.labourHours?.toString() ?? ""}
-            parts={workOrder.parts.map((p) => ({ name: p.name, quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
+            parts={workOrder.parts.map((p) => ({ name: partLineName(p.name, p.part?.sku), quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
             labourRate={shopProfile?.labourRate ? Number(shopProfile.labourRate) : null}
             services={services.map((sv) => ({ id: sv.id, name: sv.name, price: Number(sv.price), taxable: sv.taxable, description: sv.description }))}
             diagnosticFee={shopProfile?.diagnosticFee ? Number(shopProfile.diagnosticFee) : null}
@@ -352,8 +353,8 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
       <Collapsible title="Parts Needed" summary={workOrder.parts.length === 0 ? "none yet" : `${workOrder.parts.length} used`}>
         <WorkOrderPartsPanel
           workOrderId={workOrder.id}
-          parts={workOrder.parts.map((p) => ({ id: p.id, name: p.name, quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
-          availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, quantityOnHand: p.quantityOnHand }))}
+          parts={workOrder.parts.map((p) => ({ id: p.id, name: partLineName(p.name, p.part?.sku), quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
+          availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, sku: p.sku, barcode: p.barcode, quantityOnHand: p.quantityOnHand }))}
         />
       </Collapsible>
 

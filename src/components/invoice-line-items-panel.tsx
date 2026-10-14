@@ -26,6 +26,8 @@ export interface InvoiceLine {
 export interface AvailablePart {
   id: string;
   name: string;
+  sku: string | null;
+  barcode: string | null;
   quantityOnHand: number;
   sellPrice: string | null;
 }
@@ -95,7 +97,7 @@ function AddInventoryLineForm({ invoiceId, availableParts, headerLines }: { invo
           onChange={setPartId}
           disabled={availableParts.length === 0}
           placeholder={availableParts.length === 0 ? "No parts in stock" : "Type a part name or number…"}
-          options={availableParts.map((p) => ({ value: p.id, label: p.name, hint: `$${p.sellPrice ?? "0.00"} · ${p.quantityOnHand} on hand` }))}
+          options={availableParts.map((p) => ({ value: p.id, label: p.name, code: p.sku ?? undefined, keywords: p.barcode ?? "", hint: `$${p.sellPrice ?? "0.00"} · ${p.quantityOnHand} on hand` }))}
         />
       </div>
       <div className="w-20">

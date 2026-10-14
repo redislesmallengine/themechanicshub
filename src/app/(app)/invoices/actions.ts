@@ -10,6 +10,7 @@ import { loadEmailTemplate, renderTemplate } from "@/lib/email-templates";
 import { claimInvoiceNumber, generateViewToken, computeTotals, classifyInvoiceType, isEditable, PAYMENT_METHODS, type LineItemInput } from "@/lib/invoices";
 import { applyStockAdjustment } from "@/lib/inventory";
 import { unitPriceFor } from "@/lib/pricing";
+import { partLineName } from "@/lib/parts";
 import { readFeeOptions, readBilling, buildWorkOrderInvoiceLines, buildInvoiceFromBilling } from "@/lib/invoice-lines";
 import { renderInvoicePdfFromRecord } from "@/lib/invoice-pdf";
 
@@ -124,7 +125,7 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
 
   const workOrder = await prisma.workOrder.findUnique({
     where: { id: workOrderId },
-    include: { parts: true, invoice: true, combinedInto: true },
+    include: { parts: { include: { part: { select: { sku: true } } } }, invoice: true, combinedInto: true },
   });
   if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
   if (workOrder.status !== "readyForPickup" && workOrder.status !== "closed") {
@@ -190,7 +191,7 @@ export async function finishJob(workOrderId: string, formData: FormData) {
 
   const workOrder = await prisma.workOrder.findUnique({
     where: { id: workOrderId },
-    include: { parts: true, invoice: true, combinedInto: true, customer: { select: { email: true } } },
+    include: { parts: { include: { part: { select: { sku: true } } } }, invoice: true, combinedInto: true, customer: { select: { email: true } } },
   });
   if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
   if (workOrder.status !== "inRepair" && workOrder.status !== "readyForPickup") return { error: "Only a job that is Repairing or Ready can be finished and billed." };
@@ -310,7 +311,7 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
 
   const workOrders = await prisma.workOrder.findMany({
     where: { id: { in: workOrderIds } },
-    include: { parts: true, equipment: { include: { equipmentType: true } }, invoice: true, combinedInto: true },
+    include: { parts: { include: { part: { select: { sku: true } } } }, equipment: { include: { equipmentType: true } }, invoice: true, combinedInto: true },
   });
   if (workOrders.length !== workOrderIds.length) return { error: "One of those work orders no longer exists." };
   for (const wo of workOrders) {
@@ -348,7 +349,7 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
       const unitPrice = Number(part.unitSellPrice ?? 0);
       lines.push({
         type: "part",
-        description: part.name,
+        description: partLineName(part.name, part.part?.sku),
         quantity: part.quantity.toFixed(2),
         unitPrice: unitPrice.toFixed(2),
         unitCost: part.unitCostPrice?.toString() ?? null,
@@ -594,7 +595,7 @@ export async function addInventoryLineItem(invoiceId: string, formData: FormData
   await insertLineItem(invoiceId, afterHeaderId, {
     type: "part",
     partId,
-    description: part.name,
+    description: partLineName(part.name, part.sku),
     quantity: quantity.toFixed(2),
     unitPrice: unitPrice.toFixed(2),
     unitCost: part.costPrice?.toString() ?? null,

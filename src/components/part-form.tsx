@@ -91,9 +91,12 @@ export function PartForm({
 
         <div>
           <label htmlFor="sku" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-            SKU
+            Part #
           </label>
-          <input id="sku" name="sku" type="text" defaultValue={initialSku} className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
+          <input id="sku" name="sku" type="text" defaultValue={initialSku} placeholder="e.g. BKR6E" className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
+          <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
+            The maker&apos;s number. It shows next to the name in every part list, you can search by it, and it prints on invoices. Each number is its own part.
+          </p>
         </div>
         <div>
           <label htmlFor="barcode" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>

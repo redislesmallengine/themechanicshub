@@ -3,6 +3,7 @@
 
 import { computeTotals } from "./invoices.ts";
 import { flatPriceTotals } from "./pricing.ts";
+import { partLineName } from "./parts.ts";
 
 export type WorkOrderInvoiceLine = { type: string; description: string; quantity: string; unitPrice: string; unitCost: string | null; taxable: boolean; lineTotal: string; sortOrder: number };
 
@@ -22,7 +23,7 @@ export function readFeeOptions(formData: FormData): { includeDiagnosticFee: bool
 
 /** Labour, parts and the optional fees for one work order -- shared by Generate Invoice and Finish & collect. */
 export function buildWorkOrderInvoiceLines(
-  workOrder: { labourHours: { toString(): string } | null; parts: { name: string; quantity: number; unitSellPrice: { toString(): string } | null; unitCostPrice: { toString(): string } | null }[] },
+  workOrder: { labourHours: { toString(): string } | null; parts: { name: string; quantity: number; unitSellPrice: { toString(): string } | null; unitCostPrice: { toString(): string } | null; part?: { sku: string | null } | null }[] },
   shopProfile: { labourRate: { toString(): string } | null; diagnosticFee: { toString(): string } | null } | null,
   fees: { includeDiagnosticFee: boolean; deliveryFee: number | null }
 ): WorkOrderInvoiceLine[] {
@@ -48,7 +49,7 @@ export function buildWorkOrderInvoiceLines(
     const unitPrice = Number(part.unitSellPrice ?? 0);
     lines.push({
       type: "part",
-      description: part.name,
+      description: partLineName(part.name, part.part?.sku),
       quantity: part.quantity.toFixed(2),
       unitPrice: unitPrice.toFixed(2),
       unitCost: part.unitCostPrice?.toString() ?? null,
@@ -103,7 +104,7 @@ function addTotals(a: Totals, b: Totals): Totals {
 export function buildInvoiceFromBilling(params: {
   billing: Billing;
   labourHours: { toString(): string } | null;
-  parts: { name: string; quantity: number; unitSellPrice: { toString(): string } | null; unitCostPrice: { toString(): string } | null }[];
+  parts: { name: string; quantity: number; unitSellPrice: { toString(): string } | null; unitCostPrice: { toString(): string } | null; part?: { sku: string | null } | null }[];
   shopProfile: { labourRate: { toString(): string } | null; diagnosticFee: { toString(): string } | null; taxRate: { toString(): string } | null } | null;
   fees: { includeDiagnosticFee: boolean; deliveryFee: number | null };
 }): { lines: WorkOrderInvoiceLine[]; totals: Totals } {

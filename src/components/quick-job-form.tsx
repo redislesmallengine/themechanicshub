@@ -7,6 +7,7 @@ import { createQuickJob } from "@/app/(app)/work-orders/quick/actions";
 import { PAYMENT_METHODS } from "@/lib/invoices";
 import { flatPriceTotals } from "@/lib/pricing";
 import { SearchSelect } from "@/components/search-select";
+import { partLineName } from "@/lib/parts";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -26,6 +27,8 @@ interface CustomerOption {
 interface PartOption {
   id: string;
   name: string;
+  sku: string | null;
+  barcode: string | null;
   quantityOnHand: number;
   sellPrice: number;
 }
@@ -187,7 +190,7 @@ export function QuickJobForm({
     setUsedParts((prev) => {
       const existing = prev.find((p) => p.partId === part.id);
       if (existing) return prev.map((p) => (p.partId === part.id ? { ...p, quantity: p.quantity + quantity } : p));
-      return [...prev, { partId: part.id, name: part.name, quantity, price: part.sellPrice }];
+      return [...prev, { partId: part.id, name: partLineName(part.name, part.sku), quantity, price: part.sellPrice }];
     });
     setPickPartId("");
     setPickQty("1");
@@ -590,7 +593,7 @@ export function QuickJobForm({
                           onChange={setPickPartId}
                           className="flex-1 min-w-[10rem]"
                           placeholder="Type a part name or number…"
-                          options={parts.map((p) => ({ value: p.id, label: p.name, hint: `${p.quantityOnHand} on hand${p.sellPrice ? ` · ${money(p.sellPrice)}` : ""}` }))}
+                          options={parts.map((p) => ({ value: p.id, label: p.name, code: p.sku ?? undefined, keywords: p.barcode ?? "", hint: `${p.quantityOnHand} on hand${p.sellPrice ? ` · ${money(p.sellPrice)}` : ""}` }))}
                         />
                         <input aria-label="Quantity" type="number" min="1" step="1" value={pickQty} onChange={(e) => setPickQty(e.target.value)} className="w-16 px-2 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
                         <button type="button" onClick={addPart} disabled={!pickPartId} className="px-3 py-2 rounded-lg text-xs font-semibold disabled:opacity-50" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}>

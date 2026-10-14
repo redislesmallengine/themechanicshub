@@ -120,14 +120,14 @@ export const EMAIL_TEMPLATE_META: Record<EmailTemplateKey, EmailTemplateMeta> = 
     description: "Sent to the shop Owner whenever a part's stock drops to or below its reorder point.",
     tokens: [
       { token: "part_name", description: "Part name" },
-      { token: "sku", description: "Part SKU (shows \"—\" if none is set)" },
+      { token: "sku", description: "Part # (shows \"—\" if none is set)" },
       { token: "quantity", description: "Current quantity on hand" },
       { token: "reorder_point", description: "Configured reorder point" },
       { token: "shop_name", description: "Your shop's name" },
     ],
     requiredTokens: [],
     defaultSubject: "Low stock: {{part_name}}",
-    defaultHtml: `<p><b>{{part_name}}</b> (SKU: {{sku}}) is down to <b>{{quantity}}</b> — at or below its reorder point of {{reorder_point}}.</p>
+    defaultHtml: `<p><b>{{part_name}}</b> (Part #: {{sku}}) is down to <b>{{quantity}}</b> — at or below its reorder point of {{reorder_point}}.</p>
 <p>Restock when you get a chance.</p>`,
     sampleData: { part_name: "Spark Plug — NGK BPR6ES", sku: "SP-4402", quantity: "2", reorder_point: "5" },
   },

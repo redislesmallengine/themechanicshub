@@ -348,7 +348,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             taxable: l.taxable,
             lineTotal: l.lineTotal.toString(),
           }))}
-          availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, quantityOnHand: p.quantityOnHand, sellPrice: p.sellPrice?.toString() ?? null }))}
+          availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, sku: p.sku, barcode: p.barcode, quantityOnHand: p.quantityOnHand, sellPrice: p.sellPrice?.toString() ?? null }))}
           services={services.map((sv) => ({ id: sv.id, name: sv.name, price: sv.price.toString(), description: sv.description }))}
         />
         <div className="flex justify-end mt-4">

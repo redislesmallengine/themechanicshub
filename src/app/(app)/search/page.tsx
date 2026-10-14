@@ -97,7 +97,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
       {!query ? (
         <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-          Search across customers, equipment, parts, and work orders — by name, phone, email, serial number, SKU, or complaint.
+          Search across customers, equipment, parts, and work orders — by name, phone, email, serial number, part #, or complaint.
         </p>
       ) : (
         <>
@@ -222,7 +222,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                     <div>
                       <div className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
                         {p.name}
-                        {p.sku ? ` — SKU ${p.sku}` : ""}
+                        {p.sku ? ` — Part # ${p.sku}` : ""}
                       </div>
                       <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
                         {p.quantityOnHand} on hand

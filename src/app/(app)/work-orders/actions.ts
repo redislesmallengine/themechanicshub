@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { sendMail } from "@/lib/email";
 import { loadEmailTemplate, renderTemplate } from "@/lib/email-templates";
 import { applyStockAdjustment } from "@/lib/inventory";
+import { partLineName } from "@/lib/parts";
 
 async function requireCanManageWorkOrders(action: "create" | "update" | "delete" = "create") {
   const reqHeaders = await headers();
@@ -507,7 +508,7 @@ export async function addWorkOrderPart(workOrderId: string, formData: FormData) 
   if ("error" in adjustment) return { error: adjustment.error };
 
   await prisma.workOrderPart.create({
-    data: { workOrderId, partId, name: part.name, quantity, unitCostPrice: part.costPrice, unitSellPrice: part.sellPrice },
+    data: { workOrderId, partId, name: partLineName(part.name, part.sku), quantity, unitCostPrice: part.costPrice, unitSellPrice: part.sellPrice },
   });
 
   revalidatePath(`/work-orders/${workOrderId}`);

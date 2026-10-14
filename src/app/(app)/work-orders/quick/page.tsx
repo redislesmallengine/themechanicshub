@@ -52,7 +52,7 @@ export default async function QuickJobPage({ searchParams }: { searchParams: Pro
         makes={makes.map((m) => m.name)}
         members={members.filter((m) => m.user).map((m) => ({ userId: m.userId, name: m.user!.name }))}
         currentUserId={session.user.id}
-        parts={parts.map((p) => ({ id: p.id, name: p.name, quantityOnHand: p.quantityOnHand, sellPrice: p.sellPrice ? Number(p.sellPrice) : 0 }))}
+        parts={parts.map((p) => ({ id: p.id, name: p.name, sku: p.sku, barcode: p.barcode, quantityOnHand: p.quantityOnHand, sellPrice: p.sellPrice ? Number(p.sellPrice) : 0 }))}
         services={services.map((sv) => ({ id: sv.id, name: sv.name, price: Number(sv.price), taxable: sv.taxable, description: sv.description }))}
         shop={{
           labourRate: shopProfile?.labourRate ? Number(shopProfile.labourRate) : null,

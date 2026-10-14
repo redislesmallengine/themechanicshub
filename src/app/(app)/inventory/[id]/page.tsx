@@ -54,7 +54,7 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
               </h1>
               <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                 {part.category?.name ?? "Uncategorized"}
-                {part.sku ? ` · SKU ${part.sku}` : ""}
+                {part.sku ? ` · Part # ${part.sku}` : ""}
               </p>
             </div>
           </div>

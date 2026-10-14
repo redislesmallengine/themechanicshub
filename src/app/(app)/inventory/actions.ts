@@ -74,7 +74,7 @@ export async function createPart(formData: FormData) {
 
   if (fields.sku) {
     const clash = await prisma.part.findUnique({ where: { organizationId_sku: { organizationId, sku: fields.sku } } });
-    if (clash) return { error: `SKU "${fields.sku}" is already in use.` };
+    if (clash) return { error: `Part # "${fields.sku}" is already in use.` };
   }
 
   const startingQtyRaw = String(formData.get("startingQuantity") ?? "0").trim();
@@ -109,7 +109,7 @@ export async function updatePart(partId: string, formData: FormData) {
 
   if (fields.sku) {
     const clash = await prisma.part.findUnique({ where: { organizationId_sku: { organizationId, sku: fields.sku } } });
-    if (clash && clash.id !== partId) return { error: `SKU "${fields.sku}" is already in use.` };
+    if (clash && clash.id !== partId) return { error: `Part # "${fields.sku}" is already in use.` };
   }
 
   await prisma.part.update({ where: { id: partId }, data: fields });
