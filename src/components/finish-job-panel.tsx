@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { finishJob } from "@/app/(app)/invoices/actions";
 import { markReadyForPickup } from "@/app/(app)/work-orders/actions";
+import { offerUndo } from "@/lib/job-undo";
 import { PAYMENT_METHODS } from "@/lib/invoices";
 import { flatPriceTotals } from "@/lib/pricing";
 import { SearchSelect } from "@/components/search-select";
@@ -139,6 +140,7 @@ export function FinishJobPanel({
         setError(result.error);
         return;
       }
+      offerUndo(workOrderId, "Marked ready", result.previous);
       router.refresh();
     });
   }

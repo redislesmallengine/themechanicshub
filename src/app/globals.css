@@ -214,3 +214,17 @@ body {
 .dt-badge--info .dt-badge-dot {
   background: var(--color-info-solid);
 }
+
+/* The 10-second bar under the "Undo" toast. */
+@keyframes undo-shrink {
+  from { width: 100%; }
+  to { width: 0; }
+}
+.undo-timer {
+  animation-name: undo-shrink;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .undo-timer { display: none; }
+}

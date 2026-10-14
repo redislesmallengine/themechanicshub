@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { AppShell } from "@/components/app-shell";
+import { UndoToastHost } from "@/components/undo-toast";
 import { OWNER_ROLE } from "@/lib/rbac";
 
 // Real enforcement lives here, in the Server Component — not in proxy.ts.
@@ -68,6 +69,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   return (
     <AppShell user={session.user} roleLabel={roleLabel} canManageSettings={canManageSettings} canViewReports={canViewReports} isSiteAdmin={isSiteAdmin} pendingShopCount={pendingShopCount}>
       {children}
+      <UndoToastHost />
     </AppShell>
   );
 }

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { closeWorkOrder } from "@/app/(app)/work-orders/actions";
 import { markInvoiceSent } from "@/app/(app)/invoices/actions";
+import { offerUndo } from "@/lib/job-undo";
 
 /**
  * Asks before marking a job picked up when its invoice is still a draft, with "also mark the invoice
@@ -30,6 +31,7 @@ export function CloseJobDialog({ workOrderId, draftInvoiceId, onClose }: { workO
         setError(closed.error);
         return;
       }
+      offerUndo(workOrderId, "Marked done, picked up", closed.previous);
       onClose();
       router.refresh();
     });
@@ -74,7 +76,7 @@ export function CloseJobDialog({ workOrderId, draftInvoiceId, onClose }: { workO
 }
 
 /** "Mark Picked Up / Delivered" -- closes straight away, unless the invoice is still a draft, in which case it asks first. */
-export function CloseJobAction({ workOrderId, draftInvoiceId }: { workOrderId: string; draftInvoiceId: string | null }) {
+export function CloseJobAction({ workOrderId, draftInvoiceId, label = "Mark Picked Up / Delivered" }: { workOrderId: string; draftInvoiceId: string | null; label?: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,14 +94,15 @@ export function CloseJobAction({ workOrderId, draftInvoiceId }: { workOrderId: s
         setError(result.error);
         return;
       }
+      offerUndo(workOrderId, "Marked done, picked up", result.previous);
       router.refresh();
     });
   }
 
   return (
     <div>
-      <button type="button" onClick={handleClick} disabled={pending} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-        {pending ? "Working…" : "Mark Picked Up / Delivered"}
+      <button type="button" onClick={handleClick} disabled={pending} className="px-5 py-3 rounded-lg text-sm font-extrabold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
+        {pending ? "Working…" : label}
       </button>
       {error && (
         <p className="text-xs font-semibold mt-2" style={{ color: "var(--color-error-solid)" }}>

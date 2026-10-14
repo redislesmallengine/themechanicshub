@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { changeWorkOrderStatus } from "@/app/(app)/work-orders/actions";
-import { STATUS_LABELS, WORK_ORDER_STATUSES, type WorkOrderStatus } from "@/lib/work-orders";
+import { STATUS_LABELS, moveTargets, type WorkOrderStatus } from "@/lib/work-orders";
+import { offerUndo } from "@/lib/job-undo";
 import { CloseJobDialog } from "@/components/close-job-dialog";
 
 /**
@@ -35,12 +36,7 @@ export function WorkOrderStatusMover({
   const [pending, startTransition] = useTransition();
   const [closing, setClosing] = useState(false);
 
-  const options = WORK_ORDER_STATUSES.filter((s) => {
-    if (s === status) return false;
-    if (s === "awaitingApproval" && !hasEstimate) return false;
-    if (hasInvoice && (s === "droppedOff" || s === "diagnosing" || s === "awaitingApproval" || s === "inRepair" || s === "declined")) return false;
-    return true;
-  });
+  const options = moveTargets(status, hasEstimate, hasInvoice);
 
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const target = e.target.value;
@@ -58,6 +54,7 @@ export function WorkOrderStatusMover({
         setError(result.error);
         return;
       }
+      offerUndo(workOrderId, `Moved to ${STATUS_LABELS[target as WorkOrderStatus]}`, result.previous);
       router.refresh();
     });
   }

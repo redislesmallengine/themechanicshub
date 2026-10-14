@@ -128,7 +128,7 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
   });
   if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
   if (workOrder.status !== "readyForPickup" && workOrder.status !== "closed") {
-    return { error: "This work order isn't ready to invoice yet — mark it Ready for pickup first." };
+    return { error: "This work order isn't ready to invoice yet — move it to Ready first." };
   }
   if (workOrder.invoice || workOrder.combinedInto) return { error: "This work order already has an invoice." };
 
@@ -193,7 +193,7 @@ export async function finishJob(workOrderId: string, formData: FormData) {
     include: { parts: true, invoice: true, combinedInto: true, customer: { select: { email: true } } },
   });
   if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
-  if (workOrder.status !== "inRepair" && workOrder.status !== "readyForPickup") return { error: "Only a job that is In Repair or Ready for pickup can be finished and billed." };
+  if (workOrder.status !== "inRepair" && workOrder.status !== "readyForPickup") return { error: "Only a job that is Repairing or Ready can be finished and billed." };
   if (workOrder.invoice || workOrder.combinedInto) return { error: "This work order already has an invoice." };
 
   let paymentMethod = "";
@@ -315,7 +315,7 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
   if (workOrders.length !== workOrderIds.length) return { error: "One of those work orders no longer exists." };
   for (const wo of workOrders) {
     if (wo.organizationId !== organizationId || wo.customerId !== customerId) return { error: "Every work order must belong to this customer." };
-    if (wo.status !== "readyForPickup" && wo.status !== "closed") return { error: "Every work order must be Ready for pickup, or Picked up / Delivered, first." };
+    if (wo.status !== "readyForPickup" && wo.status !== "closed") return { error: "Every work order must be Ready, or Done, first." };
     if (wo.invoice || wo.combinedInto) return { error: "One of those work orders already has an invoice." };
   }
 

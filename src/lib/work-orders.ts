@@ -9,14 +9,44 @@ export const WORK_ORDER_STATUSES = ["droppedOff", "diagnosing", "awaitingApprova
 export type WorkOrderStatus = (typeof WORK_ORDER_STATUSES)[number];
 
 export const STATUS_LABELS: Record<WorkOrderStatus, string> = {
-  droppedOff: "Pending",
+  droppedOff: "Waiting",
   diagnosing: "Diagnosing",
-  awaitingApproval: "Awaiting Approval",
-  inRepair: "In Repair",
-  readyForPickup: "Ready for pickup",
-  closed: "Picked up / Delivered",
-  declined: "Declined",
+  awaitingApproval: "Waiting on customer",
+  inRepair: "Repairing",
+  readyForPickup: "Ready",
+  closed: "Done",
+  declined: "Customer said no",
 };
+
+/**
+ * The six steps shown across the top of a job. A declined job sits on the last step ("Done") marked
+ * "Customer said no", so the bar stays six long. `target` is the status a click on that step moves to.
+ */
+export const STEP_ROW: { target: WorkOrderStatus; label: string }[] = [
+  { target: "droppedOff", label: STATUS_LABELS.droppedOff },
+  { target: "diagnosing", label: STATUS_LABELS.diagnosing },
+  { target: "awaitingApproval", label: STATUS_LABELS.awaitingApproval },
+  { target: "inRepair", label: STATUS_LABELS.inRepair },
+  { target: "readyForPickup", label: STATUS_LABELS.readyForPickup },
+  { target: "closed", label: STATUS_LABELS.closed },
+];
+
+export function stepIndex(status: WorkOrderStatus): number {
+  return status === "declined" ? STEP_ROW.length - 1 : STEP_ROW.findIndex((s) => s.target === status);
+}
+
+/**
+ * Where a job can be moved to from where it is. Options that would contradict the job are left out:
+ * Awaiting Approval needs an estimate that was sent; once invoiced a job can't go back before Ready.
+ */
+export function moveTargets(status: WorkOrderStatus, hasEstimate: boolean, hasInvoice: boolean): WorkOrderStatus[] {
+  return WORK_ORDER_STATUSES.filter((s) => {
+    if (s === status) return false;
+    if (s === "awaitingApproval" && !hasEstimate) return false;
+    if (hasInvoice && (s === "droppedOff" || s === "diagnosing" || s === "awaitingApproval" || s === "inRepair" || s === "declined")) return false;
+    return true;
+  });
+}
 
 /**
  * Jobs that are done but whose invoice has not gone out: ready for pickup with no invoice at all, or ready for

@@ -30,6 +30,68 @@ async function loadOwnWorkOrder(workOrderId: string, organizationId: string) {
   return workOrder;
 }
 
+/**
+ * What a status move overwrites, kept so the move can be undone: the status itself, what the step recorded
+ * (who approved, and how) and the timestamps the rest of the app measures from. Returned by every move.
+ */
+export interface StatusSnapshot {
+  status: string;
+  approvalMethod: string | null;
+  decidedByName: string | null;
+  decidedAt: string | null;
+  awaitingApprovalAt: string | null;
+  readyForPickupAt: string | null;
+  closedAt: string | null;
+}
+
+function snapshotOf(w: { status: string; approvalMethod: string | null; decidedByName: string | null; decidedAt: Date | null; awaitingApprovalAt: Date | null; readyForPickupAt: Date | null; closedAt: Date | null }): StatusSnapshot {
+  return {
+    status: w.status,
+    approvalMethod: w.approvalMethod,
+    decidedByName: w.decidedByName,
+    decidedAt: w.decidedAt?.toISOString() ?? null,
+    awaitingApprovalAt: w.awaitingApprovalAt?.toISOString() ?? null,
+    readyForPickupAt: w.readyForPickupAt?.toISOString() ?? null,
+    closedAt: w.closedAt?.toISOString() ?? null,
+  };
+}
+
+function revalidateJob(workOrderId: string) {
+  revalidatePath(`/work-orders/${workOrderId}`);
+  revalidatePath("/work-orders");
+  revalidatePath("/dashboard");
+}
+
+/**
+ * Undo: puts a job back exactly as `previous` describes (see StatusSnapshot), including what the undone
+ * step had recorded. Refused if the job has been invoiced since in a way that would contradict itself.
+ */
+export async function restoreWorkOrderState(workOrderId: string, previous: StatusSnapshot) {
+  const { organizationId } = await requireCanManageWorkOrders("update");
+  const workOrder = await prisma.workOrder.findUnique({ where: { id: workOrderId }, include: { invoice: { select: { id: true } }, combinedInto: { select: { id: true } } } });
+  if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
+  if (!STATUS_ORDER.includes(previous.status)) return { error: "That isn't a valid status." };
+  const hasInvoice = !!(workOrder.invoice || workOrder.combinedInto);
+  if (hasInvoice && STATUS_ORDER.indexOf(previous.status) < STATUS_ORDER.indexOf("readyForPickup")) {
+    return { error: "This job has an invoice now, so it can't go back that far." };
+  }
+  const date = (v: string | null) => (v ? new Date(v) : null);
+  await prisma.workOrder.update({
+    where: { id: workOrderId },
+    data: {
+      status: previous.status,
+      approvalMethod: previous.approvalMethod,
+      decidedByName: previous.decidedByName,
+      decidedAt: date(previous.decidedAt),
+      awaitingApprovalAt: date(previous.awaitingApprovalAt),
+      readyForPickupAt: date(previous.readyForPickupAt),
+      closedAt: date(previous.closedAt),
+    },
+  });
+  revalidateJob(workOrderId);
+  return { success: true };
+}
+
 export async function createWorkOrder(formData: FormData) {
   const { organizationId } = await requireCanManageWorkOrders("create");
 
@@ -74,16 +136,21 @@ export async function createWorkOrder(formData: FormData) {
   redirect(`/work-orders/${workOrder.id}`);
 }
 
-export async function startDiagnosis(workOrderId: string) {
+export async function startDiagnosis(workOrderId: string, assignedToUserId?: string) {
   const { organizationId } = await requireCanManageWorkOrders("update");
   const workOrder = await loadOwnWorkOrder(workOrderId, organizationId);
   if (!workOrder) return { error: "That work order doesn't exist." };
   if (workOrder.status !== "droppedOff") return { error: "Already past intake." };
 
-  await prisma.workOrder.update({ where: { id: workOrderId }, data: { status: "diagnosing" } });
-  revalidatePath(`/work-orders/${workOrderId}`);
-  revalidatePath("/work-orders");
-  return { success: true };
+  const technician = assignedToUserId?.trim() || null;
+  if (technician) {
+    const member = await prisma.member.findUnique({ where: { organizationId_userId: { organizationId, userId: technician } } });
+    if (!member) return { error: "That staff member isn't part of this shop." };
+  }
+
+  await prisma.workOrder.update({ where: { id: workOrderId }, data: { status: "diagnosing", ...(technician ? { assignedToUserId: technician } : {}) } });
+  revalidateJob(workOrderId);
+  return { success: true, previous: snapshotOf(workOrder) };
 }
 
 export async function updateDiagnosis(workOrderId: string, formData: FormData) {
@@ -120,13 +187,13 @@ export async function updateDiagnosis(workOrderId: string, formData: FormData) {
   };
   if (workOrder.status === "droppedOff" || workOrder.status === "diagnosing") {
     if (outcome === "repair") Object.assign(data, await inPersonRepairData(workOrder.customerId));
-    else if (outcome !== "estimate" && workOrder.status === "droppedOff") data.status = "diagnosing";
+    else if (outcome !== "estimate" && outcome !== "stay" && workOrder.status === "droppedOff") data.status = "diagnosing";
   }
 
   await prisma.workOrder.update({ where: { id: workOrderId }, data });
   revalidatePath(`/work-orders/${workOrderId}`);
   revalidatePath("/work-orders");
-  return { success: true };
+  return { success: true, previous: outcome === "repair" ? snapshotOf(workOrder) : undefined };
 }
 
 /** "Work performed" -- how it was fixed. Kept with the diagnosis and estimate so the whole story reads on one page, and pre-filled onto the invoice notes. */
@@ -257,9 +324,8 @@ export async function startRepair(workOrderId: string) {
 
   await prisma.workOrder.update({ where: { id: workOrderId }, data: await inPersonRepairData(workOrder.customerId) });
 
-  revalidatePath(`/work-orders/${workOrderId}`);
-  revalidatePath("/work-orders");
-  return { success: true };
+  revalidateJob(workOrderId);
+  return { success: true, previous: snapshotOf(workOrder) };
 }
 
 /** Staff-recorded phone approval/decline — the fallback for customers who call in instead of using the link. */
@@ -285,9 +351,8 @@ export async function recordPhoneDecision(workOrderId: string, formData: FormDat
     },
   });
 
-  revalidatePath(`/work-orders/${workOrderId}`);
-  revalidatePath("/work-orders");
-  return { success: true };
+  revalidateJob(workOrderId);
+  return { success: true, previous: snapshotOf(workOrder) };
 }
 
 export async function markReadyForPickup(workOrderId: string) {
@@ -297,9 +362,8 @@ export async function markReadyForPickup(workOrderId: string) {
   if (workOrder.status !== "inRepair") return { error: "This work order isn't in repair." };
 
   await prisma.workOrder.update({ where: { id: workOrderId }, data: { status: "readyForPickup", readyForPickupAt: new Date() } });
-  revalidatePath(`/work-orders/${workOrderId}`);
-  revalidatePath("/work-orders");
-  return { success: true };
+  revalidateJob(workOrderId);
+  return { success: true, previous: snapshotOf(workOrder) };
 }
 
 export async function closeWorkOrder(workOrderId: string) {
@@ -309,9 +373,8 @@ export async function closeWorkOrder(workOrderId: string) {
   if (workOrder.status !== "readyForPickup") return { error: "This work order isn't ready for pickup yet." };
 
   await prisma.workOrder.update({ where: { id: workOrderId }, data: { status: "closed", closedAt: new Date() } });
-  revalidatePath(`/work-orders/${workOrderId}`);
-  revalidatePath("/work-orders");
-  return { success: true };
+  revalidateJob(workOrderId);
+  return { success: true, previous: snapshotOf(workOrder) };
 }
 
 // Pipeline order, used to tell a move forward from a move back.
@@ -334,17 +397,25 @@ export async function changeWorkOrderStatus(workOrderId: string, target: string)
 
   const hasInvoice = !!(workOrder.invoice || workOrder.combinedInto);
   if (hasInvoice && STATUS_ORDER.indexOf(target) < STATUS_ORDER.indexOf("readyForPickup")) {
-    return { error: "This job already has an invoice, so it can't go back before Ready for Pickup." };
+    return { error: "This job already has an invoice, so it can't go back before Ready." };
   }
   if (hasInvoice && target === "declined") return { error: "This job already has an invoice, so it can't be marked Declined." };
-  if (target === "awaitingApproval" && !workOrder.estimateAmount) return { error: "Send an estimate first — Awaiting Approval means an estimate is out with the customer." };
+  if (target === "awaitingApproval" && !workOrder.estimateAmount) return { error: "Send an estimate first — Waiting on customer means an estimate is out with the customer." };
 
   const now = new Date();
-  const data: { status: string; approvalMethod?: string; decidedByName?: string; decidedAt?: Date; awaitingApprovalAt?: Date; readyForPickupAt?: Date | null; closedAt?: Date | null } = { status: target };
+  const data: { status: string; approvalMethod?: string | null; decidedByName?: string | null; decidedAt?: Date | null; awaitingApprovalAt?: Date; readyForPickupAt?: Date | null; closedAt?: Date | null } = { status: target };
   const rank = STATUS_ORDER.indexOf(target);
 
   if (target === "awaitingApproval") data.awaitingApprovalAt = now;
-  if (target === "inRepair" && !workOrder.decidedAt) Object.assign(data, await inPersonRepairData(workOrder.customerId));
+  // Going back before the customer's answer clears the answer ("approved in person", a phone yes, a decline) so it is
+  // asked for again, rather than leaving an old approval attached to a job that has not been approved.
+  if (rank <= STATUS_ORDER.indexOf("awaitingApproval")) {
+    data.approvalMethod = null;
+    data.decidedByName = null;
+    data.decidedAt = null;
+  }
+  // Reopening a job the customer turned down is a fresh go-ahead, not the old "no".
+  if (target === "inRepair" && (!workOrder.decidedAt || workOrder.status === "declined")) Object.assign(data, await inPersonRepairData(workOrder.customerId));
   if (target === "readyForPickup") data.readyForPickupAt = workOrder.readyForPickupAt ?? now;
   if (target === "closed") {
     data.closedAt = now;
@@ -355,10 +426,8 @@ export async function changeWorkOrderStatus(workOrderId: string, target: string)
   if (rank < STATUS_ORDER.indexOf("readyForPickup") || target === "declined") data.readyForPickupAt = null;
 
   await prisma.workOrder.update({ where: { id: workOrderId }, data });
-  revalidatePath(`/work-orders/${workOrderId}`);
-  revalidatePath("/work-orders");
-  revalidatePath("/dashboard");
-  return { success: true };
+  revalidateJob(workOrderId);
+  return { success: true, previous: snapshotOf(workOrder) };
 }
 
 /**

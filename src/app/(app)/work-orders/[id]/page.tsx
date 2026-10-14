@@ -7,8 +7,10 @@ import { prisma } from "@/lib/prisma";
 import { STATUS_LABELS, STATUS_BADGE, DROP_OFF_METHOD_LABELS, type WorkOrderStatus } from "@/lib/work-orders";
 import { invoiceChip } from "@/lib/invoices";
 import { MarkInvoiceSentButton } from "@/components/mark-invoice-sent-button";
-import { WorkOrderStatusPanel } from "@/components/work-order-status-panel";
 import { WorkOrderDiagnosisForm } from "@/components/work-order-diagnosis-form";
+import { JobStepper } from "@/components/job-stepper";
+import { JobStageCard } from "@/components/job-stage-card";
+import { CloseJobAction } from "@/components/close-job-dialog";
 import { WorkOrderPartsPanel } from "@/components/work-order-parts-panel";
 import { GenerateInvoiceButton } from "@/components/generate-invoice-button";
 import { SentEmailsPanel } from "@/components/sent-emails-panel";
@@ -87,29 +89,20 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   const showDeliveryFee = workOrder.dropOffMethod === "pickupDelivery";
   const deliveryFeeDefault = shopProfile?.deliveryFee?.toString() ?? "";
 
-  // Pending / Diagnosing: the Diagnosis form comes first -- it is where the next move
-  // (send an estimate, repair later, start repair) is chosen. Later on it drops below Status.
+  // Pending / Diagnosing: the stage card above is where diagnosing happens. The folded Diagnosis section below is for editing it later.
   const earlyStage = status === "droppedOff" || status === "diagnosing";
+  const memberOptions = members.filter((m) => m.user).map((m) => ({ userId: m.userId, name: m.user!.name }));
   const diagnosisForm = (
     <WorkOrderDiagnosisForm
       workOrderId={workOrder.id}
-      status={status}
-      preApprovalRequired={workOrder.preApprovalRequired}
-      members={members.filter((m) => m.user).map((m) => ({ userId: m.userId, name: m.user!.name }))}
+      members={memberOptions}
       currentUserId={session.user.id}
       initialDiagnosisNotes={workOrder.diagnosisNotes ?? ""}
       initialLabourHours={workOrder.labourHours?.toString() ?? ""}
       initialAssignedToUserId={workOrder.assignedToUserId ?? ""}
     />
   );
-  const diagnosisCard = (
-    <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-      <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
-        Diagnosis
-      </h2>
-      {diagnosisForm}
-    </div>
-  );
+  const stageCardShows = status === "droppedOff" || status === "diagnosing" || status === "awaitingApproval" || status === "declined" || status === "closed";
 
   // "The story so far" -- problem (the complaint card above), diagnosis, what the
   // customer was told, and how it was fixed, together once work is underway.
@@ -140,7 +133,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
               {moneyChip && linkedInvoice ? (
                 <Link href={`/invoices/${linkedInvoice.id}`} className={`dt-badge dt-badge--${moneyChip.badge}`} title="Open the invoice">
                   <span className="dt-badge-dot" />
-                  Invoice: {moneyChip.label}
+                  Invoice: {moneyChip.label} · ${linkedInvoice.total.toString()}
                 </Link>
               ) : (
                 jobIsDone && (
@@ -181,6 +174,12 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
                 </>
               )}
             </p>
+            <p className="text-sm mt-1.5 max-w-3xl whitespace-pre-wrap" style={{ color: "var(--text-secondary)" }}>
+              <span className="text-[10px] font-bold uppercase tracking-wide mr-1.5" style={{ color: "var(--text-muted)" }}>
+                Complaint
+              </span>
+              {workOrder.complaint}
+            </p>
           </div>
           <CallButton phone={workOrder.customer.phone} name={workOrder.customer.name} />
           {(status === "droppedOff" || status === "declined" || isOwner) && !workOrder.invoice && !workOrder.combinedInto && canDelete.success && (
@@ -195,6 +194,10 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         </div>
       </div>
 
+      <div className="rounded-xl px-5 py-4" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+        <JobStepper workOrderId={workOrder.id} status={status} hasEstimate={!!workOrder.estimateAmount} hasInvoice={!!linkedInvoice} />
+      </div>
+
       {jobIsDone && draftInvoiceId && linkedInvoice && (
         <div className="rounded-xl px-5 py-3 flex items-center gap-3 flex-wrap" style={{ background: "var(--color-warning-subtle)", border: "1px solid var(--color-warning-border)" }}>
           <p className="text-sm font-semibold flex-1 min-w-[14rem]" style={{ color: "var(--color-warning-text)" }}>
@@ -206,27 +209,27 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           </Link>
         </div>
       )}
-      {status === "readyForPickup" && !linkedInvoice && (
-        <div className="rounded-xl px-5 py-3 flex items-center gap-3 flex-wrap" style={{ background: "var(--color-warning-subtle)", border: "1px solid var(--color-warning-border)" }}>
-          <p className="text-sm font-semibold flex-1 min-w-[14rem]" style={{ color: "var(--color-warning-text)" }}>
-            This job is ready for pickup, but there is no invoice yet.
-          </p>
-          <a href="#invoice-card" className="text-xs font-bold text-brand-600">
-            Go to Invoice
-          </a>
-        </div>
+      {stageCardShows && (
+        <JobStageCard
+          workOrderId={workOrder.id}
+          status={status}
+          customerName={workOrder.customer.name}
+          hasCustomerEmail={!!workOrder.customer.email}
+          preApprovalRequired={workOrder.preApprovalRequired}
+          members={memberOptions}
+          currentUserId={session.user.id}
+          initialDiagnosisNotes={workOrder.diagnosisNotes ?? ""}
+          initialLabourHours={workOrder.labourHours?.toString() ?? ""}
+          initialAssignedToUserId={workOrder.assignedToUserId ?? ""}
+          estimate={
+            workOrder.estimateAmount
+              ? { amount: workOrder.estimateAmount.toString(), notes: workOrder.estimateNotes ?? "", sentOn: workOrder.awaitingApprovalAt?.toLocaleDateString() ?? null, sentTo: workOrder.customer.email }
+              : null
+          }
+          decisionLine={workOrder.decidedByName ? `${workOrder.decidedByName} said no ${approvalMethodText}${workOrder.decidedAt ? ` on ${workOrder.decidedAt.toLocaleDateString()}` : ""}.` : null}
+          closedOn={workOrder.closedAt?.toLocaleDateString() ?? null}
+        />
       )}
-
-      <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-        <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
-          Complaint
-        </div>
-        <p className="text-sm" style={{ color: "var(--text-primary)" }}>
-          {workOrder.complaint}
-        </p>
-      </div>
-
-      {earlyStage && diagnosisCard}
 
       {/* Billed: the invoice is the next step, with sending and payment right here. */}
       {linkedInvoice && (
@@ -258,6 +261,18 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
             canVoid={canVoid.success}
             awaitingPickupCount={status === "readyForPickup" ? 1 : 0}
           />
+        </div>
+      )}
+
+      {status === "readyForPickup" && linkedInvoice && (
+        <div className="rounded-xl p-5 space-y-3" style={{ background: "var(--bg-surface)", border: "2px solid var(--color-brand-600)" }}>
+          <h2 className="text-base font-extrabold tracking-tight" style={{ color: "var(--text-primary)" }}>
+            Ready for the customer
+          </h2>
+          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+            Press this when they have collected it.
+          </p>
+          <CloseJobAction workOrderId={workOrder.id} draftInvoiceId={draftInvoiceId} label="The customer picked it up" />
         </div>
       )}
 
@@ -331,67 +346,14 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         </div>
       )}
 
-      {/* Parts first when they are still needed for the price; folded away once the job is billed. */}
-      {earlyStage || status === "inRepair" || status === "awaitingApproval" ? (
-        <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-          <h2 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>
-            Parts Needed
-          </h2>
-          <WorkOrderPartsPanel
-            workOrderId={workOrder.id}
-            parts={workOrder.parts.map((p) => ({ id: p.id, name: p.name, quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
-            availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, quantityOnHand: p.quantityOnHand }))}
-          />
-        </div>
-      ) : (
-        <Collapsible title="Parts Needed" summary={workOrder.parts.length === 0 ? "none" : `${workOrder.parts.length} used`}>
-          <WorkOrderPartsPanel
-            workOrderId={workOrder.id}
-            parts={workOrder.parts.map((p) => ({ id: p.id, name: p.name, quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
-            availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, quantityOnHand: p.quantityOnHand }))}
-          />
-        </Collapsible>
-      )}
-
-      <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-            Status
-          </h2>
-          <WorkOrderStatusMover
-            workOrderId={workOrder.id}
-            status={status}
-            hasEstimate={!!workOrder.estimateAmount}
-            hasInvoice={!!(workOrder.invoice || workOrder.combinedInto)}
-            draftInvoiceId={draftInvoiceId}
-          />
-        </div>
-        <WorkOrderStatusPanel
+      {/* The finer details sit folded below, so the screen shows only the current step. */}
+      <Collapsible title="Parts Needed" summary={workOrder.parts.length === 0 ? "none yet" : `${workOrder.parts.length} used`}>
+        <WorkOrderPartsPanel
           workOrderId={workOrder.id}
-          status={status}
-          hasCustomerEmail={!!workOrder.customer.email}
-          preApprovalRequired={workOrder.preApprovalRequired}
-          draftInvoiceId={draftInvoiceId}
+          parts={workOrder.parts.map((p) => ({ id: p.id, name: p.name, quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
+          availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, quantityOnHand: p.quantityOnHand }))}
         />
-        {workOrder.status === "awaitingApproval" && workOrder.estimateAmount && (
-          <div className="mt-3 pt-3 text-xs" style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-muted)" }}>
-            Estimate sent: <b style={{ color: "var(--text-secondary)" }}>${workOrder.estimateAmount.toString()}</b> — {workOrder.estimateNotes}
-          </div>
-        )}
-        {workOrder.decidedByName && (
-          <div className="mt-3 pt-3 text-xs" style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-muted)" }}>
-            {status === "declined" ? "Declined" : "Approved"} by <b style={{ color: "var(--text-secondary)" }}>{workOrder.decidedByName}</b> via{" "}
-            {workOrder.approvalMethod === "phone" ? "phone" : workOrder.approvalMethod === "in-person" ? "drop-off — no formal estimate" : "the online link"}{" "}
-            on {workOrder.decidedAt?.toLocaleString()}
-            {workOrder.notToExceedAmount && (
-              <>
-                {" "}
-                — not to exceed <b style={{ color: "var(--text-secondary)" }}>${workOrder.notToExceedAmount.toString()}</b>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+      </Collapsible>
 
       {/* Closed with no invoice (an older job): billing is still possible from here. */}
       {status === "closed" && !linkedInvoice && (
@@ -404,6 +366,27 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
       )}
 
       {!earlyStage && <Collapsible title="Diagnosis" summary={diagnosisSub || undefined}>{diagnosisForm}</Collapsible>}
+
+      <Collapsible title="Move to another stage" summary="skip ahead or go back">
+        <div className="space-y-3">
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            The steps above and the big button are the normal way. This jumps straight to any stage; the Undo bar appears after.
+          </p>
+          <WorkOrderStatusMover workOrderId={workOrder.id} status={status} hasEstimate={!!workOrder.estimateAmount} hasInvoice={!!linkedInvoice} draftInvoiceId={draftInvoiceId} />
+          {workOrder.decidedByName && (
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+              {status === "declined" ? "Declined" : "Approved"} by <b style={{ color: "var(--text-secondary)" }}>{workOrder.decidedByName}</b> via{" "}
+              {workOrder.approvalMethod === "phone" ? "phone" : workOrder.approvalMethod === "in-person" ? "drop-off, no formal estimate" : "the online link"} on {workOrder.decidedAt?.toLocaleString()}
+              {workOrder.notToExceedAmount && (
+                <>
+                  {" "}
+                  — not to exceed <b style={{ color: "var(--text-secondary)" }}>${workOrder.notToExceedAmount.toString()}</b>
+                </>
+              )}
+            </p>
+          )}
+        </div>
+      </Collapsible>
 
       <Collapsible title="Emails Sent" summary={sentEmails.length === 0 ? "nothing yet" : `${sentEmails.length} sent`}>
         <SentEmailsPanel
