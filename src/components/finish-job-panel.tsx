@@ -164,7 +164,7 @@ export function FinishJobPanel({
   const buttonLabel = pending
     ? "Saving…"
     : payment === "now"
-      ? flat
+      ? billingMode === "flat" && flat
         ? `Finish & collect $${flat.total}`
         : "Finish & collect"
       : "Finish & create invoice";
