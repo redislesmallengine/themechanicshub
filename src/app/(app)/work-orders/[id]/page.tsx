@@ -264,7 +264,8 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         </div>
       )}
 
-      {status === "readyForPickup" && linkedInvoice && (
+      {/* Once the invoice is paid its own card already has the pickup button, so this one is only for unpaid jobs. */}
+      {status === "readyForPickup" && linkedInvoice && linkedInvoice.status !== "paid" && (
         <div className="rounded-xl p-5 space-y-3" style={{ background: "var(--bg-surface)", border: "2px solid var(--color-brand-600)" }}>
           <h2 className="text-base font-extrabold tracking-tight" style={{ color: "var(--text-primary)" }}>
             Ready for the customer
