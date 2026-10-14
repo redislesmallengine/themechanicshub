@@ -502,6 +502,7 @@ model WorkOrder {
   customerId          String
   equipmentId         String
   status              String    @default("droppedOff")
+  source              String? // "quick" (Quick Job) | "standard" (New Work Order); null on jobs created before this existed -- reports treat null as standard
   dropOffMethod       String? // "customerDropOff" | "pickupDelivery" -- captured at intake; drives whether Generate Invoice suggests the delivery fee
   preApprovalRequired Boolean? // answered at intake: true = a written estimate must be approved first, false = customer already said go ahead; null on jobs created before this existed
   repairNotes         String? // "Work performed" -- how it was fixed; shown with the diagnosis and estimate so the whole story is on one page, and pre-filled onto the invoice notes

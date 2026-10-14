@@ -204,6 +204,7 @@ export async function createQuickJob(formData: FormData) {
         complaint,
         // Ticked on the form, or implied by billing a pickup/delivery fee.
         dropOffMethod: formData.get("dropOffMethod") === "pickupDelivery" || fees.deliveryFee !== null ? "pickupDelivery" : "customerDropOff",
+        source: "quick",
         // A quick job has no written-estimate step.
         preApprovalRequired: false,
         notToExceedAmount,

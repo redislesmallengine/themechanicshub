@@ -130,7 +130,7 @@ export async function createWorkOrder(formData: FormData) {
   }
 
   const workOrder = await prisma.workOrder.create({
-    data: { organizationId, customerId, equipmentId, complaint, dropOffMethod, preApprovalRequired, notToExceedAmount },
+    data: { organizationId, customerId, equipmentId, complaint, dropOffMethod, preApprovalRequired, notToExceedAmount, source: "standard" },
   });
 
   revalidatePath("/work-orders");

@@ -266,7 +266,7 @@ function Header({
 
   return (
     <header
-      className="h-16 px-4 md:px-6 flex items-center justify-between gap-4 shrink-0 z-30"
+      className="h-16 px-4 md:px-6 flex items-center justify-between gap-4 shrink-0 z-30 print:hidden"
       style={{ background: "var(--bg-surface)", borderBottom: "1px solid var(--border-subtle)" }}
     >
       <div className="flex items-center gap-3 shrink-0">
@@ -663,7 +663,7 @@ export function AppShell({
         {mobileOpen && <div className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={closeMobileMenu} />}
 
         <aside
-          className={`fixed md:static inset-y-0 left-0 md:inset-auto z-40 p-3 flex flex-col shrink-0 overflow-y-auto transform md:transform-none transition-transform md:transition-[width] duration-200 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 w-64 ${collapsed ? "md:w-16" : "md:w-64"}`}
+          className={`print:hidden fixed md:static inset-y-0 left-0 md:inset-auto z-40 p-3 flex flex-col shrink-0 overflow-y-auto transform md:transform-none transition-transform md:transition-[width] duration-200 ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 w-64 ${collapsed ? "md:w-16" : "md:w-64"}`}
           style={{ background: "#0F172A", borderRight: "1px solid #1E293B" }}
         >
           {menuStyle === "classic" ? (
