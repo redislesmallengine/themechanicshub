@@ -81,13 +81,7 @@ export function JobStageCard(props: JobStageCardProps) {
     case "declined":
       return <DeclinedCard {...props} />;
     case "closed":
-      return (
-        <Shell title="Done" tone="plain">
-          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-            {props.closedOn ? `Picked up on ${props.closedOn}.` : "Picked up."} Nothing more to do. To reopen it, click <b>Ready</b> above.
-          </p>
-        </Shell>
-      );
+      return <DoneCard {...props} />;
     default:
       return null;
   }
@@ -311,6 +305,39 @@ function CustomerCard({ workOrderId, customerName, estimate }: JobStageCardProps
         </BigButton>
         <LinkButton onClick={() => decide("declined")} disabled={pending} danger>
           The customer said no
+        </LinkButton>
+      </div>
+    </Shell>
+  );
+}
+
+function DoneCard({ workOrderId, closedOn }: JobStageCardProps) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function reopen() {
+    setError(null);
+    startTransition(async () => {
+      const result = await changeWorkOrderStatus(workOrderId, "readyForPickup");
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      offerUndo(workOrderId, "Moved back to Ready", result.previous);
+      router.refresh();
+    });
+  }
+
+  return (
+    <Shell title="Done" tone="plain">
+      <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+        {closedOn ? `Picked up on ${closedOn}.` : "Picked up."} Nothing more to do.
+      </p>
+      <ErrorLine error={error} />
+      <div>
+        <LinkButton onClick={reopen} disabled={pending}>
+          {pending ? "Working…" : "Not picked up after all? Move it back to Ready"}
         </LinkButton>
       </div>
     </Shell>

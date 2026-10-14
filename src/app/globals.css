@@ -215,6 +215,12 @@ body {
   background: var(--color-info-solid);
 }
 
+/* A done step on the job's step row that can be clicked to go back: its dot lights up under the pointer. */
+.job-step-link:hover > span:first-child,
+.job-step-link:focus-visible > span:first-child {
+  box-shadow: 0 0 0 4px var(--color-success-subtle);
+}
+
 /* The 10-second bar under the "Undo" toast. */
 @keyframes undo-shrink {
   from { width: 100%; }

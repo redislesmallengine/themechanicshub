@@ -17,6 +17,7 @@ export function JobStepper({ workOrderId, status, hasEstimate, hasInvoice }: { w
   const current = stepIndex(status);
   const allowed = new Set(moveTargets(status, hasEstimate, hasInvoice));
   const declined = status === "declined";
+  const anyClickable = STEP_ROW.some((step, i) => i < current && allowed.has(step.target) && (!declined || i <= 3));
 
   function goBack(target: WorkOrderStatus) {
     setError(null);
@@ -43,6 +44,7 @@ export function JobStepper({ workOrderId, status, hasEstimate, hasInvoice }: { w
           // A done step is clickable when the job can really go back there (a declined job can reopen only as far as Repairing).
           const clickable = done && allowed.has(step.target) && (!declined || i <= 3);
           const label = now && declined ? STATUS_LABELS.declined : step.label;
+          const stepClickable = clickable;
           const dot = (
             <span
               className="relative z-10 grid place-items-center w-7 h-7 rounded-full text-xs font-extrabold"
@@ -58,14 +60,14 @@ export function JobStepper({ workOrderId, status, hasEstimate, hasInvoice }: { w
             </span>
           );
           const text = (
-            <span className="text-[11px] sm:text-xs font-bold text-center leading-tight" style={{ color: done ? "var(--color-success-solid)" : now ? (declined ? "var(--color-error-solid)" : "var(--color-brand-600)") : "var(--text-muted)" }}>
+            <span className={`text-[11px] sm:text-xs font-bold text-center leading-tight${stepClickable ? " underline decoration-dotted underline-offset-4" : ""}`} style={{ color: done ? "var(--color-success-solid)" : now ? (declined ? "var(--color-error-solid)" : "var(--color-brand-600)") : "var(--text-muted)" }}>
               {label}
             </span>
           );
           return (
             <li key={step.target} className="flex" aria-current={now ? "step" : undefined}>
               {clickable ? (
-                <button type="button" onClick={() => goBack(step.target)} disabled={pending} title={`Go back to ${step.label}`} className="group w-full flex flex-col items-center gap-1.5 rounded-lg cursor-pointer disabled:opacity-60 hover:opacity-80">
+                <button type="button" onClick={() => goBack(step.target)} disabled={pending} title={`Go back to ${step.label}`} className="job-step-link w-full flex flex-col items-center gap-1.5 rounded-lg cursor-pointer disabled:opacity-60">
                   {dot}
                   {text}
                 </button>
@@ -80,7 +82,7 @@ export function JobStepper({ workOrderId, status, hasEstimate, hasInvoice }: { w
         })}
       </ol>
       <p className="text-[11px] mt-2" style={{ color: error ? "var(--color-error-solid)" : "var(--text-muted)" }}>
-        {error ?? (current > 0 ? "Changed your mind? Click a green step to go back to it." : "The blue step is where this job is now.")}
+        {error ?? (anyClickable ? "Changed your mind? Click an underlined green step to go back to it." : "The blue step is where this job is now.")}
       </p>
     </div>
   );
