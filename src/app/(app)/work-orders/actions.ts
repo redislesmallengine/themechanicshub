@@ -334,7 +334,7 @@ export async function recordPhoneDecision(workOrderId: string, formData: FormDat
   const { organizationId } = await requireCanManageWorkOrders("update");
   const workOrder = await loadOwnWorkOrder(workOrderId, organizationId);
   if (!workOrder) return { error: "That work order doesn't exist." };
-  if (workOrder.status !== "awaitingApproval") return { error: "This work order isn't awaiting approval." };
+  if (workOrder.status !== "awaitingApproval") return { error: "This work order isn't waiting on the customer." };
 
   const decision = String(formData.get("decision") ?? "").trim();
   if (decision !== "approved" && decision !== "declined") return { error: "Choose approved or declined." };
@@ -360,7 +360,7 @@ export async function markReadyForPickup(workOrderId: string) {
   const { organizationId } = await requireCanManageWorkOrders("update");
   const workOrder = await loadOwnWorkOrder(workOrderId, organizationId);
   if (!workOrder) return { error: "That work order doesn't exist." };
-  if (workOrder.status !== "inRepair") return { error: "This work order isn't in repair." };
+  if (workOrder.status !== "inRepair") return { error: "This work order isn't in Repairing." };
 
   await prisma.workOrder.update({ where: { id: workOrderId }, data: { status: "readyForPickup", readyForPickupAt: new Date() } });
   revalidateJob(workOrderId);
@@ -371,7 +371,7 @@ export async function closeWorkOrder(workOrderId: string) {
   const { organizationId } = await requireCanManageWorkOrders("update");
   const workOrder = await loadOwnWorkOrder(workOrderId, organizationId);
   if (!workOrder) return { error: "That work order doesn't exist." };
-  if (workOrder.status !== "readyForPickup") return { error: "This work order isn't ready for pickup yet." };
+  if (workOrder.status !== "readyForPickup") return { error: "This work order isn't Ready yet." };
 
   await prisma.workOrder.update({ where: { id: workOrderId }, data: { status: "closed", closedAt: new Date() } });
   revalidateJob(workOrderId);

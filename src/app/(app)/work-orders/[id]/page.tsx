@@ -202,7 +202,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
       {jobIsDone && draftInvoiceId && linkedInvoice && (
         <div className="rounded-xl px-5 py-3 flex items-center gap-3 flex-wrap" style={{ background: "var(--color-warning-subtle)", border: "1px solid var(--color-warning-border)" }}>
           <p className="text-sm font-semibold flex-1 min-w-[14rem]" style={{ color: "var(--color-warning-text)" }}>
-            This job is {status === "closed" ? "picked up" : "ready for pickup"}, but its invoice ({linkedInvoice.invoiceNumber}) is still a draft.
+            This job is {status === "closed" ? "Done" : "Ready"}, but its invoice ({linkedInvoice.invoiceNumber}) is still a draft.
           </p>
           <MarkInvoiceSentButton invoiceId={draftInvoiceId} warranty={linkedInvoice.payerType === "warranty"} />
           <Link href={`/invoices/${draftInvoiceId}`} className="text-xs font-bold text-brand-600">

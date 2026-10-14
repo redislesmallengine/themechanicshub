@@ -328,7 +328,7 @@ function CombineWorkOrdersForm({
             </p>
           ) : workOrders.length === 0 ? (
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              This customer has no finished work orders (Ready for pickup, or Picked up / Delivered) waiting to be invoiced.
+              This customer has no finished work orders (Ready or Done) waiting to be invoiced.
             </p>
           ) : workOrders.length === 1 ? (
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>

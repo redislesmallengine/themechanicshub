@@ -2,13 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { startDiagnosis, startRepair } from "@/app/(app)/work-orders/actions";
+import { startDiagnosis, startRepair, type StatusSnapshot } from "@/app/(app)/work-orders/actions";
+import { offerUndo } from "@/lib/job-undo";
 
-type ActionResult = { success?: boolean; error?: string } | undefined;
+type ActionResult = { success?: boolean; error?: string; previous?: StatusSnapshot } | undefined;
 
 /**
  * The Work Orders list's "Next step" for the stages where the step is just a click
- * (Pending -> Diagnosing -> In Repair): it runs in place, so the
+ * (Waiting -> Diagnosing -> Repairing): it runs in place, so the
  * owner never has to open the job. Steps that need decisions (an estimate, invoice
  * fees) stay links to the job page.
  */
@@ -17,8 +18,10 @@ export function WorkOrderQuickAction({ workOrderId, status }: { workOrderId: str
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const step: { label: string; run: () => Promise<ActionResult> } =
-    status === "droppedOff" ? { label: "Start diagnosis", run: () => startDiagnosis(workOrderId) } : { label: "Start repair", run: () => startRepair(workOrderId) };
+  const step: { label: string; done: string; run: () => Promise<ActionResult> } =
+    status === "droppedOff"
+      ? { label: "Start diagnosis", done: "Started diagnosing", run: () => startDiagnosis(workOrderId) }
+      : { label: "Start repair", done: "Repair started, approved in person", run: () => startRepair(workOrderId) };
 
   function handleClick() {
     setError(null);
@@ -28,6 +31,7 @@ export function WorkOrderQuickAction({ workOrderId, status }: { workOrderId: str
         setError(result.error);
         return;
       }
+      offerUndo(workOrderId, step.done, result?.previous);
       router.refresh();
     });
   }

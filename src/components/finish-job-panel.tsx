@@ -414,7 +414,7 @@ export function FinishJobPanel({
       </div>
       <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
         {payment === "now" ? "Creates the invoice already paid" : "Creates the invoice as a draft"}
-        {pickedUp ? " and closes the job as picked up / delivered." : " and leaves the job Ready for pickup."}
+        {pickedUp ? " and moves the job to Done." : " and leaves the job Ready."}
       </p>
     </form>
   );

@@ -8,6 +8,7 @@ import { PAYMENT_METHODS } from "@/lib/invoices";
 import { flatPriceTotals } from "@/lib/pricing";
 import { SearchSelect } from "@/components/search-select";
 import { partLineName } from "@/lib/parts";
+import { STATUS_LABELS } from "@/lib/work-orders";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -107,6 +108,7 @@ export function QuickJobForm({
   const [openAuto, setOpenAuto] = useState<Set<number>>(new Set());
   const [tickNote, setTickNote] = useState<string | null>(null);
   const [feeDelivery, setFeeDelivery] = useState(false);
+  const [shopDelivery, setShopDelivery] = useState(false);
   const [deliveryAmount, setDeliveryAmount] = useState(shop.deliveryFeeDefault);
   const [emailReceipt, setEmailReceipt] = useState(false);
 
@@ -229,7 +231,7 @@ export function QuickJobForm({
     return { lines, tax, total: subtotal + tax, taxIncluded: false };
   }, [hours, usedParts, feeDiag, feeDelivery, deliveryAmount, shop, billingMode, flatAmount, flatTax, flatTaxable, flatDescription]);
 
-  const status = pickedUp ? "Picked up / Delivered" : repaired ? "Ready for pickup" : approved ? "In Repair" : diagnosed ? "Diagnosing" : "Pending";
+  const status = STATUS_LABELS[pickedUp ? "closed" : repaired ? "readyForPickup" : approved ? "inRepair" : diagnosed ? "diagnosing" : "droppedOff"];
   const summary: string[] = [
     customerMode === "new" ? "Registers the new customer" : null,
     equipmentMode === "new" ? "Registers the new equipment" : null,
@@ -447,6 +449,22 @@ export function QuickJobForm({
             </label>
             <textarea id="complaint" name="complaint" rows={2} placeholder="What the customer says is wrong" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
           </div>
+
+          <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer" style={labelStyle}>
+            <input
+              type="checkbox"
+              name="dropOffMethod"
+              value="pickupDelivery"
+              checked={shopDelivery}
+              onChange={(e) => {
+                setShopDelivery(e.target.checked);
+                // a pickup/delivery job usually carries the fee; it can still be unticked under Billed
+                setFeeDelivery(e.target.checked);
+              }}
+              style={{ accentColor: "#0F52BA" }}
+            />
+            The shop picked this up, or will deliver it (not dropped off by the customer)
+          </label>
         </div>
 
         {/* ---- what has happened */}
@@ -455,7 +473,7 @@ export function QuickJobForm({
             What has happened so far?
           </h2>
           <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-            Tick every step that is already done. Ticking a step also ticks the ones before it. Nothing ticked just drops the machine off as Pending.
+            Tick every step that is already done. Ticking a step also ticks the ones before it. Nothing ticked just drops the machine off as Waiting.
           </p>
 
           {tickNote && (

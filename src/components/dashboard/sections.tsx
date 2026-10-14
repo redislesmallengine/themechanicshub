@@ -69,16 +69,16 @@ export async function ShopFloorTiles({ organizationId, agingDays }: { organizati
   const c = await getShopFloorCounts(organizationId, agingDays);
   return (
     <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-      <StatTile label="On the Bench" value={c.onBench.toString()} sub="diagnosing + in repair" href="/work-orders?status=bench" />
+      <StatTile label="On the Bench" value={c.onBench.toString()} sub="diagnosing + repairing" href="/work-orders?status=bench" />
       <StatTile
-        label="Awaiting Approval"
+        label="Waiting on Customer"
         value={c.awaitingApproval.toString()}
         sub={c.awaitingApproval2Days > 0 ? `${c.awaitingApproval2Days} waiting 2+ days` : "all recent"}
         tone={c.awaitingApproval2Days > 0 ? "warning" : "neutral"}
         href="/work-orders?status=awaitingApproval"
       />
       <StatTile
-        label="Ready for Pickup"
+        label="Ready"
         value={c.repairCompleted.toString()}
         sub={c.repairCompletedAging > 0 ? `${c.repairCompletedAging} over ${agingDays} days` : "all within range"}
         tone={c.repairCompletedAging > 0 ? "error" : "neutral"}
