@@ -7,6 +7,7 @@ import { markReadyForPickup } from "@/app/(app)/work-orders/actions";
 import { offerUndo } from "@/lib/job-undo";
 import { PAYMENT_METHODS } from "@/lib/invoices";
 import { flatPriceTotals } from "@/lib/pricing";
+import { buildInvoiceFromBilling } from "@/lib/invoice-lines";
 import { SearchSelect } from "@/components/search-select";
 
 const inputStyle = {
@@ -55,6 +56,7 @@ export function FinishJobPanel({
   notesPrefilledFromDiagnosis,
   initialLabourHours,
   parts,
+  labourRate,
   services,
   diagnosticFee,
   showDeliveryFee,
@@ -68,7 +70,9 @@ export function FinishJobPanel({
   initialRepairNotes: string;
   notesPrefilledFromDiagnosis: boolean;
   initialLabourHours: string;
-  parts: { name: string; quantity: number }[];
+  parts: { name: string; quantity: number; unitSellPrice: string | null }[];
+  /** The shop's hourly rate; with none set, labour hours add nothing to the bill. */
+  labourRate: number | null;
   services: ServiceOption[];
   diagnosticFee: number | null;
   showDeliveryFee: boolean;
@@ -90,12 +94,29 @@ export function FinishJobPanel({
   const [flatDescription, setFlatDescription] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [includeDelivery, setIncludeDelivery] = useState(showDeliveryFee);
+  const [deliveryAmount, setDeliveryAmount] = useState(deliveryFeeDefault);
+  const [includeDiagnostic, setIncludeDiagnostic] = useState(false);
+  const [labourHours, setLabourHours] = useState(initialLabourHours);
   const [payment, setPayment] = useState<"now" | "later">("now");
   const [pickedUp, setPickedUp] = useState(true);
 
   const flat = (() => {
     const amount = Number(flatAmount);
     return Number.isFinite(amount) && amount > 0 ? flatPriceTotals(amount, flatTax === "included", taxRate, flatTaxable) : null;
+  })();
+
+  // The by-hours-and-parts total, worked out with the same function the server bills with, so what the
+  // button says is what the invoice will total.
+  const hoursBill = (() => {
+    const fee = Number(deliveryAmount);
+    const built = buildInvoiceFromBilling({
+      billing: { mode: "hours" },
+      labourHours: labourHours.trim() ? labourHours : null,
+      parts: parts.map((p) => ({ name: p.name, quantity: p.quantity, unitSellPrice: p.unitSellPrice, unitCostPrice: null })),
+      shopProfile: { labourRate: labourRate === null ? null : String(labourRate), diagnosticFee: diagnosticFee === null ? null : String(diagnosticFee), taxRate: String(taxRate) },
+      fees: { includeDiagnosticFee: includeDiagnostic, deliveryFee: includeDelivery && deliveryAmount.trim() && Number.isFinite(fee) && fee >= 0 ? fee : null },
+    });
+    return built.lines.length > 0 ? built : null;
   })();
 
   function pickService(id: string) {
@@ -166,7 +187,9 @@ export function FinishJobPanel({
     : payment === "now"
       ? billingMode === "flat" && flat
         ? `Finish & collect $${flat.total}`
-        : "Finish & collect"
+        : billingMode === "hours" && hoursBill
+          ? `Finish & collect $${hoursBill.totals.total}`
+          : "Finish & collect"
       : "Finish & create invoice";
 
   return (
@@ -266,19 +289,38 @@ export function FinishJobPanel({
               <label htmlFor="fj-labourHours" className="block font-bold mb-1" style={labelStyle}>
                 Labour hours
               </label>
-              <input id="fj-labourHours" name="labourHours" type="number" step="0.25" min="0" defaultValue={initialLabourHours} className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
+              <input id="fj-labourHours" name="labourHours" type="number" step="0.25" min="0" value={labourHours} onChange={(e) => setLabourHours(e.target.value)} className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
             </div>
             <div className="sm:col-span-2 self-end text-[11px]" style={labelStyle}>
               <span className="font-bold">Parts on this job: </span>
               {parts.length === 0 ? <span style={{ color: "var(--text-muted)" }}>none — add any in Parts Needed below first.</span> : parts.map((p) => `${p.name} × ${p.quantity}`).join(", ")}
             </div>
+            {hoursBill && (
+              <div className="sm:col-span-3 space-y-0.5 text-[11px] font-semibold tabular-nums" style={labelStyle}>
+                {hoursBill.lines.map((l) => (
+                  <div key={l.sortOrder} className="flex justify-between gap-3 max-w-md">
+                    <span>{l.description}</span>
+                    <span>${l.lineTotal}</span>
+                  </div>
+                ))}
+                <p className="pt-1">
+                  ${hoursBill.totals.subtotal}
+                  {taxRate > 0 ? ` + ${taxLabel} $${hoursBill.totals.taxAmount}` : ""} = <span style={{ color: "var(--text-primary)" }}>${hoursBill.totals.total}</span>
+                </p>
+              </div>
+            )}
+            {Number(labourHours) > 0 && labourRate === null && (
+              <p className="sm:col-span-3 text-[11px] font-semibold" style={{ color: "var(--color-warning-solid)" }}>
+                No hourly rate is set in Shop Profile, so labour hours add nothing to this bill.
+              </p>
+            )}
           </div>
         )}
         {(diagnosticFee || showDeliveryFee) && (
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs">
             {diagnosticFee ? (
               <label className="flex items-center gap-1.5 font-semibold" style={labelStyle}>
-                <input type="checkbox" name="includeDiagnosticFee" className="rounded" style={{ accentColor: "#0F52BA" }} />
+                <input type="checkbox" name="includeDiagnosticFee" checked={includeDiagnostic} onChange={(e) => setIncludeDiagnostic(e.target.checked)} className="rounded" style={{ accentColor: "#0F52BA" }} />
                 Add the diagnostic fee (${diagnosticFee.toFixed(2)})
               </label>
             ) : null}
@@ -291,7 +333,7 @@ export function FinishJobPanel({
                 {includeDelivery && (
                   <span className="flex items-center gap-1">
                     <span style={{ color: "var(--text-muted)" }}>$</span>
-                    <input aria-label="Delivery fee amount" name="deliveryFeeAmount" type="number" step="0.01" min="0" required defaultValue={deliveryFeeDefault} placeholder="0.00" className="w-24 px-2 py-1 rounded-lg text-xs font-mono" style={inputStyle} />
+                    <input aria-label="Delivery fee amount" name="deliveryFeeAmount" type="number" step="0.01" min="0" required value={deliveryAmount} onChange={(e) => setDeliveryAmount(e.target.value)} placeholder="0.00" className="w-24 px-2 py-1 rounded-lg text-xs font-mono" style={inputStyle} />
                   </span>
                 )}
               </>

@@ -325,7 +325,8 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
             initialRepairNotes={workOrder.repairNotes ?? workOrder.diagnosisNotes ?? ""}
             notesPrefilledFromDiagnosis={!workOrder.repairNotes && !!workOrder.diagnosisNotes}
             initialLabourHours={workOrder.labourHours?.toString() ?? ""}
-            parts={workOrder.parts.map((p) => ({ name: p.name, quantity: p.quantity }))}
+            parts={workOrder.parts.map((p) => ({ name: p.name, quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
+            labourRate={shopProfile?.labourRate ? Number(shopProfile.labourRate) : null}
             services={services.map((sv) => ({ id: sv.id, name: sv.name, price: Number(sv.price), taxable: sv.taxable, description: sv.description }))}
             diagnosticFee={shopProfile?.diagnosticFee ? Number(shopProfile.diagnosticFee) : null}
             showDeliveryFee={showDeliveryFee}
