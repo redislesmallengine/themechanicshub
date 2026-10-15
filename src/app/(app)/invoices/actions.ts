@@ -206,6 +206,19 @@ export async function finishJob(workOrderId: string, formData: FormData) {
   }
   const pickedUp = formData.get("pickedUp") === "on";
 
+  // A warranty claim is paid by the provider later, so it is always billed, never marked paid at the counter.
+  const warranty = formData.get("payerType") === "warranty";
+  let warrantyProviderId: string | null = null;
+  let claimNumber: string | null = null;
+  if (warranty) {
+    if (payNow) return { error: "A warranty claim is paid by the provider later. Choose one of the claim options instead." };
+    warrantyProviderId = String(formData.get("warrantyProviderId") ?? "").trim();
+    if (!warrantyProviderId) return { error: "Choose which warranty provider this claim goes to." };
+    const provider = await prisma.warrantyProvider.findUnique({ where: { id: warrantyProviderId } });
+    if (!provider || provider.organizationId !== organizationId) return { error: "That warranty provider doesn't exist." };
+    claimNumber = String(formData.get("claimNumber") ?? "").trim() || null;
+  }
+
   const labourRaw = String(formData.get("labourHours") ?? "").trim();
   let labourHours = workOrder.labourHours;
   if (labourRaw) {
@@ -249,6 +262,7 @@ export async function finishJob(workOrderId: string, formData: FormData) {
         invoiceNumber,
         viewToken: generateViewToken(),
         ...(payNow ? { status: "paid", paidAt: now, paymentMethod, paymentReference } : {}),
+        ...(warranty ? { payerType: "warranty", warrantyProviderId, claimNumber } : {}),
         notes: repairNotes,
         ...totals,
         lineItems: { create: lines },
@@ -905,6 +919,25 @@ export async function markInvoiceSent(invoiceId: string) {
   revalidatePath("/dashboard");
   if (invoice.workOrderId) revalidatePath(`/work-orders/${invoice.workOrderId}`);
   for (const cwo of invoice.combinedWorkOrders) revalidatePath(`/work-orders/${cwo.workOrderId}`);
+  return { success: true };
+}
+
+/** Saves an email address on the invoice's customer, so the invoice can be emailed without leaving the page. */
+export async function saveCustomerEmailForInvoice(invoiceId: string, emailRaw: string) {
+  const { organizationId } = await requireCanManageInvoices("update");
+  const reqHeaders = await headers();
+  const canEditCustomer = await auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { customer: ["update"] } } });
+  if (!canEditCustomer.success) return { error: "You don't have permission to change customers." };
+  const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId }, select: { organizationId: true, customerId: true } });
+  if (!invoice || invoice.organizationId !== organizationId) return { error: "That invoice doesn't exist." };
+  if (!invoice.customerId) return { error: "This invoice has no customer to save an email on." };
+  const email = emailRaw.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "That doesn't look like an email address. Check it and try again." };
+
+  await prisma.customer.update({ where: { id: invoice.customerId }, data: { email } });
+  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/work-orders");
+  revalidatePath(`/customers/${invoice.customerId}`);
   return { success: true };
 }
 

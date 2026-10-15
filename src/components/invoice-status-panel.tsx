@@ -2,10 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { sendInvoice, previewInvoiceEmail, markInvoicePaid, voidInvoice, closeInvoiceWorkOrders } from "@/app/(app)/invoices/actions";
+import { sendInvoice, previewInvoiceEmail, markInvoicePaid, voidInvoice, closeInvoiceWorkOrders, saveCustomerEmailForInvoice } from "@/app/(app)/invoices/actions";
 import { PAYMENT_METHODS } from "@/lib/invoices";
 import { EmailSentNotice } from "@/components/email-sent-notice";
 import { MarkInvoiceSentButton } from "@/components/mark-invoice-sent-button";
+import { SendWhatsAppButton } from "@/components/send-whatsapp-button";
+import { CloseJobAction } from "@/components/close-job-dialog";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -15,23 +17,7 @@ const inputStyle = {
 
 type ActionResult = { success?: boolean; error?: string } | undefined;
 
-function SendForm({
-  invoiceId,
-  hasRecipient,
-  hasRecipientEmail,
-  isWarranty,
-  isResend,
-  isPaid,
-  isDraft,
-}: {
-  invoiceId: string;
-  hasRecipient: boolean;
-  hasRecipientEmail: boolean;
-  isWarranty: boolean;
-  isResend: boolean;
-  isPaid: boolean;
-  isDraft: boolean;
-}) {
+function SendForm({ invoiceId, isResend, isPaid }: { invoiceId: string; isResend: boolean; isPaid: boolean }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ subject: string; html: string; replyTo: string | null; to: string | null } | null>(null);
@@ -72,23 +58,9 @@ function SendForm({
 
   return (
     <div>
-      <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={handlePreview} disabled={pendingPreview || !hasRecipientEmail} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-          {pendingPreview ? "Loading Preview…" : isPaid ? "Preview & Send Receipt" : isResend ? "Preview & Resend" : "Preview Email"}
-        </button>
-        {isDraft && <MarkInvoiceSentButton invoiceId={invoiceId} warranty={isWarranty} className="px-4 py-2 rounded-lg text-xs font-semibold disabled:opacity-60 whitespace-nowrap" label={isWarranty ? "Mark as submitted" : "Mark as sent"} />}
-      </div>
-      {!hasRecipientEmail && (
-        <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>
-          {hasRecipient
-            ? isWarranty
-              ? "No billing email on file for this warranty provider, so the email option is off. You can still mark it as submitted."
-              : "No email on file for this customer, so the email option is off. Download the PDF, send it on WhatsApp, or mark it as sent."
-            : isWarranty
-              ? "No warranty provider attached, so there is nothing to email. Download the PDF or mark it as submitted."
-              : "No customer attached, so there is nothing to email. Download the PDF or hand it over in person."}
-        </p>
-      )}
+      <button type="button" onClick={handlePreview} disabled={pendingPreview} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
+        {pendingPreview ? "Loading preview…" : isPaid ? "Preview and send the receipt" : isResend ? "Preview and send it again" : "Preview and send the email"}
+      </button>
       {error && (
         <p className="text-xs font-semibold mt-2" style={{ color: "var(--color-error-solid)" }}>
           {error}
@@ -251,7 +223,7 @@ function VoidForm({ invoiceId }: { invoiceId: string }) {
   );
 }
 
-/** Paid but the machine hasn't gone out yet: one button to record the pickup without leaving the invoice. */
+/** Paid but the machine hasn't gone out yet: one big button to record the pickup without leaving the invoice. */
 function PickupAction({ invoiceId, count }: { invoiceId: string; count: number }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -270,9 +242,9 @@ function PickupAction({ invoiceId, count }: { invoiceId: string; count: number }
   }
 
   return (
-    <div className="pt-1">
-      <button type="button" onClick={handleClick} disabled={pending} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-        {pending ? "Closing…" : count > 1 ? "Customer Picked Up — Close Work Orders" : "Customer Picked Up — Close Work Order"}
+    <div>
+      <button type="button" onClick={handleClick} disabled={pending} className="px-5 py-3 rounded-lg text-sm font-extrabold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
+        {pending ? "Saving…" : count > 1 ? "The customer picked them up" : "The customer picked it up"}
       </button>
       {error && (
         <p className="text-xs font-semibold mt-2" style={{ color: "var(--color-error-solid)" }}>
@@ -283,6 +255,110 @@ function PickupAction({ invoiceId, count }: { invoiceId: string; count: number }
   );
 }
 
+/** No email on file: type one here, save it to the customer, and the email option switches on. */
+function AddEmailForm({ invoiceId }: { invoiceId: string }) {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    startTransition(async () => {
+      const result = await saveCustomerEmailForInvoice(invoiceId, email);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex items-end gap-2 flex-wrap">
+      <label className="flex-1 min-w-[12rem] text-[11px] font-bold" style={{ color: "var(--text-secondary)" }}>
+        This customer has no email yet. Type it here to email the invoice.
+        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" className="mt-1 w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+      </label>
+      <button type="submit" disabled={pending} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
+        {pending ? "Saving…" : "Save email"}
+      </button>
+      {error && (
+        <p className="w-full text-xs font-semibold" style={{ color: "var(--color-error-solid)" }}>
+          {error}
+        </p>
+      )}
+    </form>
+  );
+}
+
+export interface InvoiceSendInfo {
+  customerName: string | null;
+  customerPhone: string | null;
+  invoiceNumber: string;
+  shopName: string;
+  shareUrl: string;
+  pdfHref: string;
+}
+
+const optionBox = { background: "var(--bg-surface-subtle)", border: "1px solid var(--border-subtle)" };
+
+/** Every way to get the invoice to the customer, in one place: email, WhatsApp, the PDF, or "I handed it over". */
+function SendChooser({ invoiceId, status, isWarranty, hasRecipient, hasRecipientEmail, send }: { invoiceId: string; status: string; isWarranty: boolean; hasRecipient: boolean; hasRecipientEmail: boolean; send: InvoiceSendInfo }) {
+  const isDraft = status === "draft";
+  const isPaid = status === "paid";
+  return (
+    <div className="rounded-lg p-3 space-y-3" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)" }}>
+      <div className="text-xs font-extrabold" style={{ color: "var(--text-primary)" }}>
+        {isPaid ? "Send a receipt" : "How do you want to send it?"}
+      </div>
+      <div className="rounded-lg p-3 space-y-2" style={optionBox}>
+        <div className="text-[11px] font-bold" style={{ color: "var(--text-secondary)" }}>
+          Email
+        </div>
+        {hasRecipientEmail ? (
+          <SendForm invoiceId={invoiceId} isResend={!isDraft} isPaid={isPaid} />
+        ) : isWarranty ? (
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            {hasRecipient ? "This warranty provider has no billing email. Add one under Warranty providers in Settings." : "No warranty provider is attached to this invoice yet, so there is nothing to email."}
+          </p>
+        ) : hasRecipient ? (
+          <AddEmailForm invoiceId={invoiceId} />
+        ) : (
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            No customer is attached to this invoice, so there is nothing to email.
+          </p>
+        )}
+      </div>
+      {!isWarranty && (
+        <div className="rounded-lg p-3 space-y-2" style={optionBox}>
+          <div className="text-[11px] font-bold" style={{ color: "var(--text-secondary)" }}>
+            WhatsApp
+          </div>
+          <SendWhatsAppButton initialPhone={send.customerPhone} customerName={send.customerName} invoiceNumber={send.invoiceNumber} shopName={send.shopName} shareUrl={send.shareUrl} />
+        </div>
+      )}
+      <div className="rounded-lg p-3 space-y-2" style={optionBox}>
+        <div className="text-[11px] font-bold" style={{ color: "var(--text-secondary)" }}>
+          Print or hand it over
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <a href={send.pdfHref} className="px-3.5 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}>
+            Download PDF
+          </a>
+          {isDraft && <MarkInvoiceSentButton invoiceId={invoiceId} warranty={isWarranty} className="text-xs font-bold text-brand-600 disabled:opacity-60" label={isWarranty ? "I submitted it another way" : "I handed it over or sent it another way"} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The invoice, with the one thing to do next as the big button: Draft -> Send invoice, Sent -> Record payment,
+ * Paid -> The customer picked it up. Everything else (resend, the other ways to settle up, voiding) is a quiet
+ * link under it, so the page never shows three competing buttons.
+ */
 export function InvoiceStatusPanel({
   invoiceId,
   status,
@@ -291,6 +367,8 @@ export function InvoiceStatusPanel({
   hasRecipientEmail,
   canVoid,
   awaitingPickupCount,
+  send,
+  closeableWorkOrderId = null,
 }: {
   invoiceId: string;
   status: string;
@@ -298,32 +376,78 @@ export function InvoiceStatusPanel({
   hasRecipient: boolean;
   hasRecipientEmail: boolean;
   canVoid: boolean;
-  /** Linked work orders still sitting at Ready for Pickup. */
+  /** Linked work orders still sitting at Ready. */
   awaitingPickupCount: number;
+  send: InvoiceSendInfo;
+  /** A single job that is Ready and not yet picked up, so an unpaid invoice can still record the pickup. */
+  closeableWorkOrderId?: string | null;
 }) {
+  const [chooser, setChooser] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const open = status === "draft" || status === "sent" || status === "viewed";
+  const big = "px-5 py-3 rounded-lg text-sm font-extrabold bg-brand-600 hover:bg-brand-700 text-white";
+  const link = "text-xs font-bold text-brand-600 text-left";
+
   return (
     <div className="space-y-3">
-      {/* Sendable at any status except Void — including Paid, so a shop can hand over a fresh copy after the fact (lost the email, wants it for their records). sendInvoice itself only ever advances status forward from Draft, never backward on a resend. */}
-      {status !== "void" && (
-        <SendForm invoiceId={invoiceId} hasRecipient={hasRecipient} hasRecipientEmail={hasRecipientEmail} isWarranty={isWarranty} isResend={status !== "draft"} isPaid={status === "paid"} isDraft={status === "draft"} />
+      {status === "draft" && (
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          This invoice has not gone to the customer yet.
+        </p>
       )}
-      {/* Draft is included here too, not just Sent/Viewed — a walk-in cash sale with no customer to email needs a way to close out that doesn't go through Send Invoice at all. */}
-      {(status === "draft" || status === "sent" || status === "viewed") && (
-        <>
-          <MarkPaidForm invoiceId={invoiceId} awaitingPickupCount={awaitingPickupCount} />
-          {canVoid && <VoidForm invoiceId={invoiceId} />}
-        </>
+      {(status === "sent" || status === "viewed") && (
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          Sent to the customer and not paid yet.
+        </p>
       )}
       {status === "paid" && (
         <p className="text-xs font-semibold" style={{ color: "var(--color-success-solid)" }}>
           Paid.
         </p>
       )}
-      {status === "paid" && awaitingPickupCount > 0 && <PickupAction invoiceId={invoiceId} count={awaitingPickupCount} />}
       {status === "void" && (
         <p className="text-xs font-semibold" style={{ color: "var(--color-error-solid)" }}>
           Voided.
         </p>
+      )}
+
+      <div className="flex items-center gap-x-5 gap-y-2 flex-wrap">
+        {status === "draft" && (
+          <button type="button" onClick={() => setChooser((v) => !v)} className={big}>
+            Send invoice
+          </button>
+        )}
+        {(status === "sent" || status === "viewed") && (
+          <button type="button" onClick={() => setPaying((v) => !v)} className={big}>
+            Record payment
+          </button>
+        )}
+        {status === "paid" && awaitingPickupCount > 0 && <PickupAction invoiceId={invoiceId} count={awaitingPickupCount} />}
+        {status === "draft" && (
+          <button type="button" onClick={() => setPaying((v) => !v)} className={link}>
+            The customer already paid
+          </button>
+        )}
+        {(status === "sent" || status === "viewed" || status === "paid") && (
+          <button type="button" onClick={() => setChooser((v) => !v)} className={link}>
+            {status === "paid" ? "Send a receipt" : "Send it again"}
+          </button>
+        )}
+        {open && closeableWorkOrderId && awaitingPickupCount > 0 && <CloseJobAction workOrderId={closeableWorkOrderId} draftInvoiceId={status === "draft" ? invoiceId : null} label="The customer picked it up (invoice stays open)" variant="link" />}
+      </div>
+
+      {chooser && status !== "void" && <SendChooser invoiceId={invoiceId} status={status} isWarranty={isWarranty} hasRecipient={hasRecipient} hasRecipientEmail={hasRecipientEmail} send={send} />}
+      {paying && open && <MarkPaidForm invoiceId={invoiceId} awaitingPickupCount={awaitingPickupCount} />}
+
+      {open && canVoid && (
+        <details>
+          <summary className="text-xs font-bold cursor-pointer" style={{ color: "var(--text-muted)" }}>
+            Void this invoice
+          </summary>
+          <div className="mt-2">
+            <VoidForm invoiceId={invoiceId} />
+          </div>
+        </details>
       )}
     </div>
   );

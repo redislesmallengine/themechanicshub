@@ -194,7 +194,8 @@ export async function updateDiagnosis(workOrderId: string, formData: FormData) {
   await prisma.workOrder.update({ where: { id: workOrderId }, data });
   revalidatePath(`/work-orders/${workOrderId}`);
   revalidatePath("/work-orders");
-  return { success: true, previous: outcome === "repair" ? snapshotOf(workOrder) : undefined };
+  // a move (to Diagnosing or to Repairing) can be undone; a plain save cannot
+  return { success: true, previous: outcome === "repair" || data.status ? snapshotOf(workOrder) : undefined };
 }
 
 /** "Work performed" -- how it was fixed. Kept with the diagnosis and estimate so the whole story reads on one page, and pre-filled onto the invoice notes. */

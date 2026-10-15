@@ -76,7 +76,7 @@ export function CloseJobDialog({ workOrderId, draftInvoiceId, onClose }: { workO
 }
 
 /** "Mark Picked Up / Delivered" -- closes straight away, unless the invoice is still a draft, in which case it asks first. */
-export function CloseJobAction({ workOrderId, draftInvoiceId, label = "Mark Picked Up / Delivered" }: { workOrderId: string; draftInvoiceId: string | null; label?: string }) {
+export function CloseJobAction({ workOrderId, draftInvoiceId, label = "Mark Picked Up / Delivered", variant = "button" }: { workOrderId: string; draftInvoiceId: string | null; label?: string; variant?: "button" | "link" }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +101,7 @@ export function CloseJobAction({ workOrderId, draftInvoiceId, label = "Mark Pick
 
   return (
     <div>
-      <button type="button" onClick={handleClick} disabled={pending} className="px-5 py-3 rounded-lg text-sm font-extrabold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
+      <button type="button" onClick={handleClick} disabled={pending} className={variant === "link" ? "text-xs font-bold text-brand-600 text-left disabled:opacity-60" : "px-5 py-3 rounded-lg text-sm font-extrabold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60"}>
         {pending ? "Working…" : label}
       </button>
       {error && (

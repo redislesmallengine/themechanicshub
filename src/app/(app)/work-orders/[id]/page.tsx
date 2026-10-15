@@ -6,12 +6,11 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { STATUS_LABELS, STATUS_BADGE, DROP_OFF_METHOD_LABELS, type WorkOrderStatus } from "@/lib/work-orders";
 import { invoiceChip } from "@/lib/invoices";
+import { ensureInvoiceShortCode } from "@/lib/invoice-short-link";
 import { partLineName } from "@/lib/parts";
-import { MarkInvoiceSentButton } from "@/components/mark-invoice-sent-button";
 import { WorkOrderDiagnosisForm } from "@/components/work-order-diagnosis-form";
 import { JobStepper } from "@/components/job-stepper";
 import { JobStageCard } from "@/components/job-stage-card";
-import { CloseJobAction } from "@/components/close-job-dialog";
 import { WorkOrderPartsPanel } from "@/components/work-order-parts-panel";
 import { GenerateInvoiceButton } from "@/components/generate-invoice-button";
 import { SentEmailsPanel } from "@/components/sent-emails-panel";
@@ -61,7 +60,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   });
   if (!workOrder || workOrder.organizationId !== organizationId) notFound();
 
-  const [{ members }, availableParts, shopProfile, sentEmails, canDelete, membership, services, canVoid] = await Promise.all([
+  const [{ members }, availableParts, shopProfile, sentEmails, canDelete, membership, services, canVoid, organization, warrantyProviders] = await Promise.all([
     auth.api.listMembers({ headers: reqHeaders }),
     prisma.part.findMany({ where: { organizationId, quantityOnHand: { gt: 0 } }, orderBy: { name: "asc" } }),
     prisma.shopProfile.findUnique({ where: { organizationId } }),
@@ -70,6 +69,8 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
     prisma.member.findFirst({ where: { organizationId, userId: session.user.id } }),
     prisma.service.findMany({ where: { organizationId, active: true }, orderBy: { name: "asc" } }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { invoice: ["void"] } } }),
+    prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
+    prisma.warrantyProvider.findMany({ where: { organizationId }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   const isOwner = membership?.role === "owner";
 
@@ -77,6 +78,8 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   // The money side of this job, in plain words, so the job and its invoice are never read as contradicting each other.
   const linkedInvoice = workOrder.invoice ?? workOrder.combinedInto?.invoice ?? null;
   const draftInvoiceId = linkedInvoice?.status === "draft" ? linkedInvoice.id : null;
+  const shortCode = linkedInvoice ? await ensureInvoiceShortCode(linkedInvoice.id) : null;
+  const shareUrl = linkedInvoice ? (shortCode ? `${process.env.BETTER_AUTH_URL}/i/${shortCode}` : `${process.env.BETTER_AUTH_URL}/invoice/${linkedInvoice.viewToken}`) : "";
   const moneyChip = linkedInvoice ? invoiceChip(linkedInvoice.status, linkedInvoice.dueDate, linkedInvoice.payerType) : null;
   const jobIsDone = status === "readyForPickup" || status === "closed";
   // Not billed yet and ready for it: the Finish panel is this job's next step.
@@ -199,17 +202,6 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         <JobStepper workOrderId={workOrder.id} status={status} hasEstimate={!!workOrder.estimateAmount} hasInvoice={!!linkedInvoice} />
       </div>
 
-      {jobIsDone && draftInvoiceId && linkedInvoice && (
-        <div className="rounded-xl px-5 py-3 flex items-center gap-3 flex-wrap" style={{ background: "var(--color-warning-subtle)", border: "1px solid var(--color-warning-border)" }}>
-          <p className="text-sm font-semibold flex-1 min-w-[14rem]" style={{ color: "var(--color-warning-text)" }}>
-            This job is {status === "closed" ? "Done" : "Ready"}, but its invoice ({linkedInvoice.invoiceNumber}) is still a draft.
-          </p>
-          <MarkInvoiceSentButton invoiceId={draftInvoiceId} warranty={linkedInvoice.payerType === "warranty"} />
-          <Link href={`/invoices/${draftInvoiceId}`} className="text-xs font-bold text-brand-600">
-            Open the invoice
-          </Link>
-        </div>
-      )}
       {stageCardShows && (
         <JobStageCard
           workOrderId={workOrder.id}
@@ -261,31 +253,20 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
             hasRecipientEmail={linkedInvoice.payerType === "warranty" ? !!linkedInvoice.warrantyProvider?.billingEmail : !!workOrder.customer.email}
             canVoid={canVoid.success}
             awaitingPickupCount={status === "readyForPickup" ? 1 : 0}
+            send={{ customerName: workOrder.customer.name, customerPhone: workOrder.customer.phone, invoiceNumber: linkedInvoice.invoiceNumber, shopName: organization?.name ?? "the shop", shareUrl, pdfHref: `/api/invoices/${linkedInvoice.id}/pdf` }}
+            closeableWorkOrderId={status === "readyForPickup" && !workOrder.combinedInto ? workOrder.id : null}
           />
-        </div>
-      )}
-
-      {/* Once the invoice is paid its own card already has the pickup button, so this one is only for unpaid jobs. */}
-      {status === "readyForPickup" && linkedInvoice && linkedInvoice.status !== "paid" && (
-        <div className="rounded-xl p-5 space-y-3" style={{ background: "var(--bg-surface)", border: "2px solid var(--color-brand-600)" }}>
-          <h2 className="text-base font-extrabold tracking-tight" style={{ color: "var(--text-primary)" }}>
-            Ready for the customer
-          </h2>
-          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-            Press this when they have collected it.
-          </p>
-          <CloseJobAction workOrderId={workOrder.id} draftInvoiceId={draftInvoiceId} label="The customer picked it up" />
         </div>
       )}
 
       {showStory && (
         <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
           <h2 className="text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>
-            The Story So Far
+            Job summary
           </h2>
           <div>
             {[
-              { label: "Diagnosis", sub: diagnosisSub, body: <p className="text-sm whitespace-pre-wrap" style={{ color: "var(--text-primary)" }}>{workOrder.diagnosisNotes ?? "—"}</p> },
+              { label: "Diagnosis", sub: diagnosisSub, body: diagnosisForm },
               { label: "Told the customer", sub: "estimate and go-ahead", body: <p className="text-sm" style={{ color: "var(--text-primary)" }}>{toldCustomer}</p> },
               // While the Finish panel is open it is the one place to write what was done, so this row waits for it.
               ...(showFinish
@@ -334,6 +315,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
             showDeliveryFee={showDeliveryFee}
             deliveryFeeDefault={deliveryFeeDefault}
             customerEmail={workOrder.customer.email}
+            warrantyProviders={warrantyProviders}
             taxRate={shopProfile?.taxRate ? Number(shopProfile.taxRate) : 0}
             taxLabel={shopProfile?.taxLabel ?? "Tax"}
           />
@@ -368,7 +350,8 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         </div>
       )}
 
-      {!earlyStage && <Collapsible title="Diagnosis" summary={diagnosisSub || undefined}>{diagnosisForm}</Collapsible>}
+      {/* On the stages with no Job summary (waiting on the customer, declined) the diagnosis is edited here. Elsewhere it is edited in the summary. */}
+      {!earlyStage && !showStory && <Collapsible title="Diagnosis" summary={diagnosisSub || undefined}>{diagnosisForm}</Collapsible>}
 
       <Collapsible title="Move to another stage" summary="skip ahead or go back">
         <div className="space-y-3">

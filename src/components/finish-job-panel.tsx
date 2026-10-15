@@ -43,11 +43,15 @@ function Segmented<T extends string>({ value, onChange, options, label }: { valu
   );
 }
 
-type Outcome = "paidTook" | "paidLater" | "billLater";
+type Outcome = "paidTook" | "paidLater" | "billLater" | "claimTook" | "claimShelf";
 const OUTCOMES: { value: Outcome; title: string; text: string }[] = [
   { value: "paidTook", title: "Customer paid and took it", text: "Paid at the counter, machine goes home." },
   { value: "paidLater", title: "Customer paid, will pick it up later", text: "Paid now, machine waits on the shelf." },
   { value: "billLater", title: "Bill the customer later", text: "Make the invoice and send it when you are ready." },
+];
+const CLAIM_OUTCOMES: { value: Outcome; title: string; text: string }[] = [
+  { value: "claimTook", title: "Customer took it", text: "Machine goes home; the claim is sent to the provider." },
+  { value: "claimShelf", title: "Customer will pick it up later", text: "Machine waits on the shelf; the claim is sent to the provider." },
 ];
 
 const linkButton = "text-xs font-bold text-brand-600 disabled:opacity-60 text-left";
@@ -70,6 +74,7 @@ export function FinishJobPanel({
   showDeliveryFee,
   deliveryFeeDefault,
   customerEmail,
+  warrantyProviders,
   taxRate,
   taxLabel,
 }: {
@@ -86,6 +91,7 @@ export function FinishJobPanel({
   showDeliveryFee: boolean;
   deliveryFeeDefault: string;
   customerEmail: string | null;
+  warrantyProviders: { id: string; name: string }[];
   taxRate: number;
   taxLabel: string;
 }) {
@@ -109,11 +115,15 @@ export function FinishJobPanel({
   const [labourHours, setLabourHours] = useState(initialLabourHours);
   const [extras, setExtras] = useState<{ description: string; amount: string }[]>([]);
   const [outcome, setOutcome] = useState<Outcome>("paidTook");
+  const [payer, setPayer] = useState<"customer" | "warranty">("customer");
+  const [providerId, setProviderId] = useState("");
+  const [claimNumber, setClaimNumber] = useState("");
   const [method, setMethod] = useState("");
   const [reference, setReference] = useState("");
   const [emailReceipt, setEmailReceipt] = useState(false);
 
-  const paidNow = outcome !== "billLater";
+  const paidNow = outcome === "paidTook" || outcome === "paidLater";
+  const tookIt = outcome === "paidTook" || outcome === "claimTook";
   const extraItems: ExtraCharge[] = extras
     .filter((e) => e.description.trim() && Number.isFinite(Number(e.amount)) && Number(e.amount) > 0)
     .map((e) => ({ description: e.description.trim(), amount: Number(e.amount) }));
@@ -163,6 +173,10 @@ export function FinishJobPanel({
       setError("Pick how the customer paid.");
       return;
     }
+    if (payer === "warranty" && !providerId) {
+      setError("Choose which warranty provider this claim goes to.");
+      return;
+    }
     const formData = new FormData(e.currentTarget);
     startTransition(async () => {
       const result = await finishJob(workOrderId, formData);
@@ -207,7 +221,10 @@ export function FinishJobPanel({
     );
   }
 
-  const summary = !paidNow
+  const providerName = warrantyProviders.find((w) => w.id === providerId)?.name;
+  const summary = payer === "warranty"
+    ? `We'll make a warranty claim for ${total ?? "this job"}${providerName ? ` to send to ${providerName}` : ""}, and ${outcome === "claimTook" ? "move the job to Done" : "leave the job Ready until the customer collects it"}.`
+    : !paidNow
     ? `We'll make an invoice for ${total ?? "this job"} to send later, and leave the job Ready.`
     : outcome === "paidTook"
       ? `We'll record ${total ?? "the amount"} as paid${method ? ` by ${method.toLowerCase()}` : ""} and move the job to Done.`
@@ -428,9 +445,50 @@ export function FinishJobPanel({
               What happened with the customer?
             </div>
             <input type="hidden" name="payment" value={paidNow ? "now" : "later"} />
-            {outcome === "paidTook" && <input type="hidden" name="pickedUp" value="on" />}
-            <div role="radiogroup" aria-label="What happened with the customer" className="grid gap-2 sm:grid-cols-3">
-              {OUTCOMES.map((o) => {
+            {tookIt && <input type="hidden" name="pickedUp" value="on" />}
+            {warrantyProviders.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                <span className="font-bold" style={labelStyle}>
+                  Who pays?
+                </span>
+                <Segmented
+                  value={payer}
+                  onChange={(v) => {
+                    setPayer(v);
+                    setOutcome(v === "warranty" ? "claimTook" : "paidTook");
+                  }}
+                  label="Who pays for this job?"
+                  options={[
+                    { value: "customer", label: "The customer" },
+                    { value: "warranty", label: "A warranty provider" },
+                  ]}
+                />
+              </div>
+            )}
+            {payer === "warranty" && (
+              <>
+                <input type="hidden" name="payerType" value="warranty" />
+                <div className="grid gap-2 sm:grid-cols-2 text-xs">
+                  <label className="font-bold" style={labelStyle}>
+                    Warranty provider
+                    <select name="warrantyProviderId" value={providerId} onChange={(e) => setProviderId(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
+                      <option value="">Choose…</option>
+                      {warrantyProviders.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="font-bold" style={labelStyle}>
+                    Claim number (optional)
+                    <input name="claimNumber" value={claimNumber} onChange={(e) => setClaimNumber(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+                  </label>
+                </div>
+              </>
+            )}
+            <div role="radiogroup" aria-label="What happened with the customer" className={`grid gap-2 ${payer === "warranty" ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
+              {(payer === "warranty" ? CLAIM_OUTCOMES : OUTCOMES).map((o) => {
                 const on = outcome === o.value;
                 return (
                   <button

@@ -204,6 +204,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           hasRecipientEmail={invoice.payerType === "warranty" ? !!invoice.warrantyProvider?.billingEmail : !!invoice.customer?.email}
           canVoid={canVoid.success}
           awaitingPickupCount={[invoice.workOrder, ...invoice.combinedWorkOrders.map((c) => c.workOrder)].filter((wo) => wo?.status === "readyForPickup").length}
+          send={{ customerName: invoice.customer?.name ?? null, customerPhone: invoice.customer?.phone ?? null, invoiceNumber: invoice.invoiceNumber, shopName: invoice.organization.name, shareUrl, pdfHref: `/api/invoices/${invoice.id}/pdf` }}
         />
         {invoice.status === "paid" && invoice.paymentReference && (
           <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>

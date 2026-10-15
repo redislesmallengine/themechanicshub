@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { startDiagnosis, updateDiagnosis, recordPhoneDecision, changeWorkOrderStatus } from "@/app/(app)/work-orders/actions";
+import { updateDiagnosis, recordPhoneDecision, changeWorkOrderStatus } from "@/app/(app)/work-orders/actions";
 import { EstimateForm } from "@/components/estimate-form";
 import { offerUndo } from "@/lib/job-undo";
 import type { WorkOrderStatus } from "@/lib/work-orders";
@@ -73,7 +73,6 @@ export interface JobStageCardProps {
 export function JobStageCard(props: JobStageCardProps) {
   switch (props.status) {
     case "droppedOff":
-      return <WaitingCard {...props} />;
     case "diagnosing":
       return <DiagnosingCard {...props} />;
     case "awaitingApproval":
@@ -87,55 +86,7 @@ export function JobStageCard(props: JobStageCardProps) {
   }
 }
 
-function WaitingCard({ workOrderId, members, currentUserId, initialAssignedToUserId }: JobStageCardProps) {
-  const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-  const defaultTech = initialAssignedToUserId || (members.some((m) => m.userId === currentUserId) ? currentUserId : "");
-  const [tech, setTech] = useState(members.length === 1 ? members[0].userId : defaultTech);
-
-  function start() {
-    setError(null);
-    startTransition(async () => {
-      const result = await startDiagnosis(workOrderId, tech);
-      if (result?.error) {
-        setError(result.error);
-        return;
-      }
-      offerUndo(workOrderId, "Started diagnosing", result.previous);
-      router.refresh();
-    });
-  }
-
-  return (
-    <Shell title="New job. Nothing has been done yet.">
-      <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-        The machine is in the shop. Start when someone picks it up.
-      </p>
-      {members.length > 1 && (
-        <div className="max-w-xs">
-          <label htmlFor="stage-tech" className="block text-xs font-bold mb-1" style={labelStyle}>
-            Who is working on it?
-          </label>
-          <select id="stage-tech" value={tech} onChange={(e) => setTech(e.target.value)} className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
-            <option value="">Not decided</option>
-            {members.map((m) => (
-              <option key={m.userId} value={m.userId}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-      <ErrorLine error={error} />
-      <BigButton onClick={start} pending={pending}>
-        Start diagnosing
-      </BigButton>
-    </Shell>
-  );
-}
-
-function DiagnosingCard({ workOrderId, hasCustomerEmail, preApprovalRequired, members, currentUserId, initialDiagnosisNotes, initialLabourHours, initialAssignedToUserId }: JobStageCardProps) {
+function DiagnosingCard({ workOrderId, status, hasCustomerEmail, preApprovalRequired, members, currentUserId, initialDiagnosisNotes, initialLabourHours, initialAssignedToUserId }: JobStageCardProps) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [mode, setMode] = useState<"diagnose" | "estimate">("diagnose");
@@ -148,7 +99,9 @@ function DiagnosingCard({ workOrderId, hasCustomerEmail, preApprovalRequired, me
   // The intake answer decides which way leads: customer said "go ahead" -> start the repair; otherwise -> estimate.
   const repairLeads = preApprovalRequired === false;
 
-  function save(outcome: "stay" | "estimate" | "repair") {
+  const isNew = status === "droppedOff";
+
+  function save(outcome: "stay" | "estimate" | "repair" | "later") {
     if (!formRef.current) return;
     setError(null);
     setMessage(null);
@@ -166,6 +119,8 @@ function DiagnosingCard({ workOrderId, hasCustomerEmail, preApprovalRequired, me
       }
       if (outcome === "repair") {
         offerUndo(workOrderId, "Repair started", result.previous);
+      } else if (outcome === "later") {
+        offerUndo(workOrderId, "Started diagnosing", result.previous);
       } else {
         setMessage("Saved.");
       }
@@ -174,11 +129,11 @@ function DiagnosingCard({ workOrderId, hasCustomerEmail, preApprovalRequired, me
   }
 
   return (
-    <Shell title={mode === "estimate" ? "Send the customer an estimate" : "What is wrong with it?"}>
+    <Shell title={mode === "estimate" ? "Send the customer an estimate" : isNew ? "New job. What is wrong with it?" : "What is wrong with it?"}>
       {/* Kept mounted (hidden) while the estimate form is open, so what was typed is not lost by going Back. */}
       <form ref={formRef} onSubmit={(e) => e.preventDefault()} className="space-y-3" hidden={mode === "estimate"}>
         <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-          Write what you found. Saving never moves the job.
+          {isNew ? "The machine is in the shop. Write what you find, or start diagnosing and write it up later." : "Write what you found. Saving never moves the job."}
         </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
           <div className="md:col-span-2">
@@ -239,9 +194,15 @@ function DiagnosingCard({ workOrderId, hasCustomerEmail, preApprovalRequired, me
               </LinkButton>
             </>
           )}
-          <LinkButton onClick={() => save("stay")} disabled={pending}>
-            Just save for now
-          </LinkButton>
+          {isNew ? (
+            <LinkButton onClick={() => save("later")} disabled={pending}>
+              Start diagnosing, I&apos;ll write it up later
+            </LinkButton>
+          ) : (
+            <LinkButton onClick={() => save("stay")} disabled={pending}>
+              Just save for now
+            </LinkButton>
+          )}
         </div>
       </form>
       {mode === "estimate" && <EstimateForm workOrderId={workOrderId} hasCustomerEmail={hasCustomerEmail} defaultNotes={notes} onBack={() => setMode("diagnose")} />}
