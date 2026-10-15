@@ -21,7 +21,7 @@ export function WorkOrderQuickAction({ workOrderId, status }: { workOrderId: str
   const step: { label: string; done: string; run: () => Promise<ActionResult> } =
     status === "droppedOff"
       ? { label: "Start diagnosis", done: "Started diagnosing", run: () => startDiagnosis(workOrderId) }
-      : { label: "Start repair", done: "Repair started, approved in person", run: () => startRepair(workOrderId) };
+      : { label: "Start repair", done: "Repair started", run: () => startRepair(workOrderId) };
 
   function handleClick() {
     setError(null);

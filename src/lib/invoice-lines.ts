@@ -89,6 +89,33 @@ export function readBilling(formData: FormData, fallbackDescription: string): Bi
   return { mode: "flat", amount, taxIncluded: formData.get("flatTax") !== "extra", taxable: formData.get("flatTaxable") !== "off", description: description.slice(0, 200) };
 }
 
+/** One-off charges typed on the Finish screen ("shop supplies, $10"): a description and a price before tax. */
+export type ExtraCharge = { description: string; amount: number };
+
+/** Reads the extra charges from a form (a JSON list in `extraCharges`), ignoring blank rows. */
+export function readExtraCharges(formData: FormData): { items: ExtraCharge[] } | { error: string } {
+  const raw = String(formData.get("extraCharges") ?? "").trim();
+  if (!raw) return { items: [] };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { error: "The extra charges couldn't be read. Remove them and add them again." };
+  }
+  if (!Array.isArray(parsed)) return { error: "The extra charges couldn't be read. Remove them and add them again." };
+  const items: ExtraCharge[] = [];
+  for (const row of parsed.slice(0, 10)) {
+    const description = String((row as { description?: unknown })?.description ?? "").trim();
+    const amountRaw = String((row as { amount?: unknown })?.amount ?? "").trim();
+    if (!description && !amountRaw) continue; // an empty row
+    const amount = Number(amountRaw);
+    if (!description) return { error: "Give each extra charge a description." };
+    if (!amountRaw || !Number.isFinite(amount) || amount <= 0) return { error: `Enter an amount for "${description}".` };
+    items.push({ description: description.slice(0, 200), amount: Math.round(amount * 100) / 100 });
+  }
+  return { items };
+}
+
 type Totals = { subtotal: string; taxAmount: string; total: string };
 
 function addTotals(a: Totals, b: Totals): Totals {
@@ -102,6 +129,24 @@ function addTotals(a: Totals, b: Totals): Totals {
  * job still come out of stock, but with a flat price they are part of that one price, not separate lines.
  */
 export function buildInvoiceFromBilling(params: {
+  billing: Billing;
+  labourHours: { toString(): string } | null;
+  parts: { name: string; quantity: number; unitSellPrice: { toString(): string } | null; unitCostPrice: { toString(): string } | null; part?: { sku: string | null } | null }[];
+  shopProfile: { labourRate: { toString(): string } | null; diagnosticFee: { toString(): string } | null; taxRate: { toString(): string } | null } | null;
+  fees: { includeDiagnosticFee: boolean; deliveryFee: number | null };
+  /** Extra one-off charges, each taxable, added after everything else. */
+  extras?: ExtraCharge[];
+}): { lines: WorkOrderInvoiceLine[]; totals: Totals } {
+  const base = buildBase(params);
+  const extras = params.extras ?? [];
+  if (!extras.length) return base;
+  const taxRate = Number(params.shopProfile?.taxRate ?? 0);
+  const extraLines: WorkOrderInvoiceLine[] = extras.map((e, i) => ({ type: "custom", description: e.description, quantity: "1.00", unitPrice: e.amount.toFixed(2), unitCost: null, taxable: true, lineTotal: e.amount.toFixed(2), sortOrder: base.lines.length + i }));
+  const extraTotals = computeTotals(extraLines.map((l) => ({ quantity: 1, unitPrice: Number(l.unitPrice), taxable: true })), taxRate);
+  return { lines: [...base.lines, ...extraLines], totals: addTotals(base.totals, extraTotals) };
+}
+
+function buildBase(params: {
   billing: Billing;
   labourHours: { toString(): string } | null;
   parts: { name: string; quantity: number; unitSellPrice: { toString(): string } | null; unitCostPrice: { toString(): string } | null; part?: { sku: string | null } | null }[];

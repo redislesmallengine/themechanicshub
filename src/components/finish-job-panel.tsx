@@ -6,8 +6,7 @@ import { finishJob } from "@/app/(app)/invoices/actions";
 import { markReadyForPickup } from "@/app/(app)/work-orders/actions";
 import { offerUndo } from "@/lib/job-undo";
 import { PAYMENT_METHODS } from "@/lib/invoices";
-import { flatPriceTotals } from "@/lib/pricing";
-import { buildInvoiceFromBilling } from "@/lib/invoice-lines";
+import { buildInvoiceFromBilling, type ExtraCharge } from "@/lib/invoice-lines";
 import { SearchSelect } from "@/components/search-select";
 
 const inputStyle = {
@@ -44,10 +43,19 @@ function Segmented<T extends string>({ value, onChange, options, label }: { valu
   );
 }
 
+type Outcome = "paidTook" | "paidLater" | "billLater";
+const OUTCOMES: { value: Outcome; title: string; text: string }[] = [
+  { value: "paidTook", title: "Customer paid and took it", text: "Paid at the counter, machine goes home." },
+  { value: "paidLater", title: "Customer paid, will pick it up later", text: "Paid now, machine waits on the shelf." },
+  { value: "billLater", title: "Bill the customer later", text: "Make the invoice and send it when you are ready." },
+];
+
+const linkButton = "text-xs font-bold text-brand-600 disabled:opacity-60 text-left";
+
 /**
- * Finish & collect: the one panel for taking a job from In Repair (or Ready for pickup) to billed, and
- * optionally paid and picked up. What was done, the price, how it is being paid -- on one screen, with a
- * button that says exactly what it will do. A saved service can fill in the price and the notes.
+ * Finishing a job, in two small steps on one card. First what was done and a single "Repair finished" button; then the
+ * price and how the customer settled up, with one button that says Finish. The price can be a flat amount or built from
+ * hours and parts, and one-off charges can be added. A saved service can fill in the price and the notes.
  */
 export function FinishJobPanel({
   workOrderId,
@@ -87,6 +95,8 @@ export function FinishJobPanel({
   const [pending, startTransition] = useTransition();
 
   const [repairNotes, setRepairNotes] = useState(initialRepairNotes);
+  // A job that is already Ready goes straight to the price; one still being repaired asks for "Repair finished" first.
+  const [open, setOpen] = useState(status === "readyForPickup");
   const [billingMode, setBillingMode] = useState<"flat" | "hours">("flat");
   const [flatAmount, setFlatAmount] = useState("");
   const [flatTax, setFlatTax] = useState<"included" | "extra">("included");
@@ -97,27 +107,38 @@ export function FinishJobPanel({
   const [deliveryAmount, setDeliveryAmount] = useState(deliveryFeeDefault);
   const [includeDiagnostic, setIncludeDiagnostic] = useState(false);
   const [labourHours, setLabourHours] = useState(initialLabourHours);
-  const [payment, setPayment] = useState<"now" | "later">("now");
-  const [pickedUp, setPickedUp] = useState(true);
+  const [extras, setExtras] = useState<{ description: string; amount: string }[]>([]);
+  const [outcome, setOutcome] = useState<Outcome>("paidTook");
+  const [method, setMethod] = useState("");
+  const [reference, setReference] = useState("");
+  const [emailReceipt, setEmailReceipt] = useState(false);
 
-  const flat = (() => {
-    const amount = Number(flatAmount);
-    return Number.isFinite(amount) && amount > 0 ? flatPriceTotals(amount, flatTax === "included", taxRate, flatTaxable) : null;
-  })();
+  const paidNow = outcome !== "billLater";
+  const extraItems: ExtraCharge[] = extras
+    .filter((e) => e.description.trim() && Number.isFinite(Number(e.amount)) && Number(e.amount) > 0)
+    .map((e) => ({ description: e.description.trim(), amount: Number(e.amount) }));
 
-  // The by-hours-and-parts total, worked out with the same function the server bills with, so what the
-  // button says is what the invoice will total.
-  const hoursBill = (() => {
+  // The bill, worked out with the same function the server bills with, so the total shown is the total charged.
+  const bill = (() => {
+    const shopProfile = { labourRate: labourRate === null ? null : String(labourRate), diagnosticFee: diagnosticFee === null ? null : String(diagnosticFee), taxRate: String(taxRate) };
     const fee = Number(deliveryAmount);
+    const fees = { includeDiagnosticFee: includeDiagnostic, deliveryFee: includeDelivery && deliveryAmount.trim() && Number.isFinite(fee) && fee >= 0 ? fee : null };
+    if (billingMode === "flat") {
+      const amount = Number(flatAmount);
+      if (!(amount > 0)) return null;
+      return buildInvoiceFromBilling({ billing: { mode: "flat", amount, taxIncluded: flatTax === "included", taxable: flatTaxable, description: flatDescription.trim() || "Repair service" }, labourHours: null, parts: [], shopProfile, fees, extras: extraItems });
+    }
     const built = buildInvoiceFromBilling({
       billing: { mode: "hours" },
       labourHours: labourHours.trim() ? labourHours : null,
       parts: parts.map((p) => ({ name: p.name, quantity: p.quantity, unitSellPrice: p.unitSellPrice, unitCostPrice: null })),
-      shopProfile: { labourRate: labourRate === null ? null : String(labourRate), diagnosticFee: diagnosticFee === null ? null : String(diagnosticFee), taxRate: String(taxRate) },
-      fees: { includeDiagnosticFee: includeDiagnostic, deliveryFee: includeDelivery && deliveryAmount.trim() && Number.isFinite(fee) && fee >= 0 ? fee : null },
+      shopProfile,
+      fees,
+      extras: extraItems,
     });
     return built.lines.length > 0 ? built : null;
   })();
+  const total = bill ? `$${bill.totals.total}` : null;
 
   function pickService(id: string) {
     setServiceId(id);
@@ -136,9 +157,13 @@ export function FinishJobPanel({
   // (say a missing payment method) must not wipe what was typed.
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
     setError(null);
     setEmailProblem(null);
+    if (paidNow && !method) {
+      setError("Pick how the customer paid.");
+      return;
+    }
+    const formData = new FormData(e.currentTarget);
     startTransition(async () => {
       const result = await finishJob(workOrderId, formData);
       if (result?.error) {
@@ -170,7 +195,7 @@ export function FinishJobPanel({
     return (
       <div className="space-y-2">
         <p className="text-sm font-semibold" style={{ color: "var(--color-success-solid)" }}>
-          Done — the job is billed.
+          Done. The job is billed.
         </p>
         <p className="text-xs font-semibold" style={{ color: "var(--color-warning-solid)" }}>
           The receipt email wasn&apos;t sent: {emailProblem}
@@ -182,21 +207,17 @@ export function FinishJobPanel({
     );
   }
 
-  const buttonLabel = pending
-    ? "Saving…"
-    : payment === "now"
-      ? billingMode === "flat" && flat
-        ? `Finish & collect $${flat.total}`
-        : billingMode === "hours" && hoursBill
-          ? `Finish & collect $${hoursBill.totals.total}`
-          : "Finish & collect"
-      : "Finish & create invoice";
+  const summary = !paidNow
+    ? `We'll make an invoice for ${total ?? "this job"} to send later, and leave the job Ready.`
+    : outcome === "paidTook"
+      ? `We'll record ${total ?? "the amount"} as paid${method ? ` by ${method.toLowerCase()}` : ""} and move the job to Done.`
+      : `We'll record ${total ?? "the amount"} as paid${method ? ` by ${method.toLowerCase()}` : ""} and leave the job Ready until they collect it.`;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label htmlFor="fj-repairNotes" className="block text-xs font-bold mb-1" style={labelStyle}>
-          Work performed
+          What was done
         </label>
         <textarea
           id="fj-repairNotes"
@@ -204,218 +225,291 @@ export function FinishJobPanel({
           rows={3}
           value={repairNotes}
           onChange={(e) => setRepairNotes(e.target.value)}
-          placeholder="What was done — parts replaced, adjustments, test results. This goes on the invoice."
+          placeholder="Parts replaced, adjustments, test results. This goes on the invoice."
           className="w-full px-3 py-2 rounded-lg text-xs font-medium"
           style={inputStyle}
         />
         {notesPrefilledFromDiagnosis && repairNotes === initialRepairNotes && (
           <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-            Pre-filled from the diagnosis — edit it to say what was actually done.
+            Started from the diagnosis. Change it to say what was actually done.
           </p>
         )}
       </div>
 
-      {/* ---- price */}
-      <div className="rounded-lg p-3 space-y-3" style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-subtle)" }}>
-        <div className="text-[11px] font-extrabold uppercase tracking-wide" style={labelStyle}>
-          Price
+      {!open ? (
+        <div className="space-y-2">
+          {error && (
+            <p className="text-xs font-semibold" style={{ color: "var(--color-error-solid)" }} role="alert">
+              {error}
+            </p>
+          )}
+          <div className="flex items-center gap-x-5 gap-y-2 flex-wrap">
+            <button type="button" onClick={() => setOpen(true)} className="px-5 py-3 rounded-lg text-sm font-extrabold bg-brand-600 hover:bg-brand-700 text-white">
+              Repair finished
+            </button>
+            <button type="button" onClick={justMarkReady} disabled={pending} className={linkButton}>
+              {pending ? "Working…" : "Mark it ready for pickup, price it later"}
+            </button>
+          </div>
         </div>
-        {services.length > 0 && (
-          <div className="max-w-md">
-            <label htmlFor="fj-service" className="block text-xs font-bold mb-1" style={labelStyle}>
-              Use a saved service (optional)
-            </label>
-            <SearchSelect
-              id="fj-service"
-              value={serviceId}
-              onChange={pickService}
-              placeholder="Type to find a service, e.g. Snowblower…"
-              options={services.map((s) => ({ value: s.id, label: s.name, hint: `$${s.price.toFixed(2)}`, keywords: s.description ?? "" }))}
-            />
-          </div>
-        )}
-        <input type="hidden" name="billingMode" value={billingMode} />
-        <Segmented
-          value={billingMode}
-          onChange={setBillingMode}
-          label="How to bill this job"
-          options={[
-            { value: "flat", label: "One flat price" },
-            { value: "hours", label: "By hours & parts" },
-          ]}
-        />
-        {billingMode === "flat" ? (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-            <div>
-              <label htmlFor="fj-flatAmount" className="block font-bold mb-1" style={labelStyle}>
-                Amount charged ($)
-              </label>
-              <input id="fj-flatAmount" name="flatAmount" type="number" step="0.01" min="0" inputMode="decimal" value={flatAmount} onChange={(e) => setFlatAmount(e.target.value)} placeholder="207.00" className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
+      ) : (
+        <>
+          {/* ---- price */}
+          <div className="rounded-lg p-3 space-y-3" style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-subtle)" }}>
+            <div className="text-[11px] font-extrabold uppercase tracking-wide" style={labelStyle}>
+              Price
             </div>
-            <div>
-              <div className="font-bold mb-1" style={labelStyle}>
-                Tax
-              </div>
-              <Segmented
-                value={flatTax}
-                onChange={setFlatTax}
-                label="Does the amount include tax?"
-                options={[
-                  { value: "included", label: "Included" },
-                  { value: "extra", label: "Add tax" },
-                ]}
-              />
-              <input type="hidden" name="flatTax" value={flatTax} />
-              <input type="hidden" name="flatTaxable" value={flatTaxable ? "on" : "off"} />
-            </div>
-            <div>
-              <label htmlFor="fj-flatDescription" className="block font-bold mb-1" style={labelStyle}>
-                Shown on the invoice as
-              </label>
-              <input id="fj-flatDescription" name="flatDescription" type="text" value={flatDescription} onChange={(e) => setFlatDescription(e.target.value)} placeholder="Repair service" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
-            </div>
-            {flat && (
-              <p className="sm:col-span-3 text-[11px] font-semibold tabular-nums" style={labelStyle}>
-                ${flat.subtotal}
-                {taxRate > 0 && flatTaxable ? ` + ${taxLabel} $${flat.taxAmount}` : ""} = <span style={{ color: "var(--text-primary)" }}>${flat.total}</span>
-                {flatTax === "included" && taxRate > 0 && flatTaxable ? " (tax included in the amount you typed)" : ""}
-                {!flatTaxable ? " (no tax on this service)" : ""}
-              </p>
-            )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-            <div>
-              <label htmlFor="fj-labourHours" className="block font-bold mb-1" style={labelStyle}>
-                Labour hours
-              </label>
-              <input id="fj-labourHours" name="labourHours" type="number" step="0.25" min="0" value={labourHours} onChange={(e) => setLabourHours(e.target.value)} className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
-            </div>
-            <div className="sm:col-span-2 self-end text-[11px]" style={labelStyle}>
-              <span className="font-bold">Parts on this job: </span>
-              {parts.length === 0 ? <span style={{ color: "var(--text-muted)" }}>none — add any in Parts Needed below first.</span> : parts.map((p) => `${p.name} × ${p.quantity}`).join(", ")}
-            </div>
-            {hoursBill && (
-              <div className="sm:col-span-3 space-y-0.5 text-[11px] font-semibold tabular-nums" style={labelStyle}>
-                {hoursBill.lines.map((l) => (
-                  <div key={l.sortOrder} className="flex justify-between gap-3 max-w-md">
-                    <span>{l.description}</span>
-                    <span>${l.lineTotal}</span>
+            <input type="hidden" name="billingMode" value={billingMode} />
+            {billingMode === "flat" ? (
+              <div className="flex flex-wrap items-end gap-x-4 gap-y-2 text-xs">
+                <div>
+                  <label htmlFor="fj-flatAmount" className="block font-bold mb-1" style={labelStyle}>
+                    Amount charged ($)
+                  </label>
+                  <input id="fj-flatAmount" name="flatAmount" type="number" step="0.01" min="0" inputMode="decimal" value={flatAmount} onChange={(e) => setFlatAmount(e.target.value)} placeholder="207.00" className="w-40 px-3 py-2 rounded-lg text-sm font-mono" style={inputStyle} />
+                </div>
+                {taxRate > 0 && flatTaxable && (
+                  <div>
+                    <div className="font-bold mb-1" style={labelStyle}>
+                      Does that include {taxLabel}?
+                    </div>
+                    <Segmented
+                      value={flatTax}
+                      onChange={setFlatTax}
+                      label={`Does the amount include ${taxLabel}?`}
+                      options={[
+                        { value: "included", label: "Included" },
+                        { value: "extra", label: `Add ${taxLabel}` },
+                      ]}
+                    />
                   </div>
-                ))}
-                <p className="pt-1">
-                  ${hoursBill.totals.subtotal}
-                  {taxRate > 0 ? ` + ${taxLabel} $${hoursBill.totals.taxAmount}` : ""} = <span style={{ color: "var(--text-primary)" }}>${hoursBill.totals.total}</span>
+                )}
+                <input type="hidden" name="flatTax" value={flatTax} />
+                <input type="hidden" name="flatTaxable" value={flatTaxable ? "on" : "off"} />
+              </div>
+            ) : (
+              <div className="space-y-2 text-xs">
+                <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+                  <div>
+                    <label htmlFor="fj-labourHours" className="block font-bold mb-1" style={labelStyle}>
+                      Labour hours
+                    </label>
+                    <input id="fj-labourHours" name="labourHours" type="number" step="0.25" min="0" value={labourHours} onChange={(e) => setLabourHours(e.target.value)} className="w-28 px-3 py-2 rounded-lg text-sm font-mono" style={inputStyle} />
+                  </div>
+                  <div className="text-[11px] pb-2" style={labelStyle}>
+                    <span className="font-bold">Parts on this job: </span>
+                    {parts.length === 0 ? <span style={{ color: "var(--text-muted)" }}>none. Add any in Parts Needed first.</span> : parts.map((p) => `${p.name} × ${p.quantity}`).join(", ")}
+                  </div>
+                </div>
+                {Number(labourHours) > 0 && labourRate === null && (
+                  <p className="text-[11px] font-semibold" style={{ color: "var(--color-warning-solid)" }}>
+                    No hourly rate is set in Shop Profile, so labour hours add nothing to this bill.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {extras.map((x, i) => (
+              <div key={i} className="flex flex-wrap items-end gap-2 text-xs">
+                <label className="flex-1 min-w-[10rem] font-bold" style={labelStyle}>
+                  Extra charge
+                  <input
+                    value={x.description}
+                    onChange={(e) => setExtras((cur) => cur.map((r, ri) => (ri === i ? { ...r, description: e.target.value } : r)))}
+                    placeholder="e.g. New oil"
+                    className="mt-1 w-full px-3 py-2 rounded-lg text-xs font-medium"
+                    style={inputStyle}
+                  />
+                </label>
+                <label className="w-28 font-bold" style={labelStyle}>
+                  Price before tax ($)
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    inputMode="decimal"
+                    value={x.amount}
+                    onChange={(e) => setExtras((cur) => cur.map((r, ri) => (ri === i ? { ...r, amount: e.target.value } : r)))}
+                    className="mt-1 w-full px-3 py-2 rounded-lg text-xs font-mono"
+                    style={inputStyle}
+                  />
+                </label>
+                <button type="button" onClick={() => setExtras((cur) => cur.filter((_, ri) => ri !== i))} className="px-2 py-2 text-xs font-bold" style={{ color: "var(--color-error-solid)" }} aria-label="Remove this extra charge">
+                  Remove
+                </button>
+              </div>
+            ))}
+            <input type="hidden" name="extraCharges" value={JSON.stringify(extras)} />
+
+            {bill && (
+              <div className="text-[11px] font-semibold tabular-nums space-y-0.5" style={labelStyle}>
+                {billingMode === "hours" &&
+                  bill.lines.map((l) => (
+                    <div key={l.sortOrder} className="flex justify-between gap-3 max-w-md">
+                      <span>{l.description}</span>
+                      <span>${l.lineTotal}</span>
+                    </div>
+                  ))}
+                <p>
+                  ${bill.totals.subtotal}
+                  {taxRate > 0 ? ` + ${taxLabel} $${bill.totals.taxAmount}` : ""} = <span style={{ color: "var(--text-primary)" }}>${bill.totals.total}</span>
+                  {billingMode === "flat" && flatTax === "included" && taxRate > 0 && flatTaxable && extraItems.length === 0 ? " (the amount you typed, with the tax in it)" : ""}
                 </p>
               </div>
             )}
-            {Number(labourHours) > 0 && labourRate === null && (
-              <p className="sm:col-span-3 text-[11px] font-semibold" style={{ color: "var(--color-warning-solid)" }}>
-                No hourly rate is set in Shop Profile, so labour hours add nothing to this bill.
-              </p>
-            )}
-          </div>
-        )}
-        {(diagnosticFee || showDeliveryFee) && (
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs">
-            {diagnosticFee ? (
-              <label className="flex items-center gap-1.5 font-semibold" style={labelStyle}>
-                <input type="checkbox" name="includeDiagnosticFee" checked={includeDiagnostic} onChange={(e) => setIncludeDiagnostic(e.target.checked)} className="rounded" style={{ accentColor: "#0F52BA" }} />
-                Add the diagnostic fee (${diagnosticFee.toFixed(2)})
-              </label>
-            ) : null}
-            {showDeliveryFee && (
-              <>
-                <label className="flex items-center gap-1.5 font-semibold" style={labelStyle}>
-                  <input type="checkbox" name="includeDeliveryFee" checked={includeDelivery} onChange={(e) => setIncludeDelivery(e.target.checked)} className="rounded" style={{ accentColor: "#0F52BA" }} />
-                  Add pickup/delivery fee
-                </label>
-                {includeDelivery && (
-                  <span className="flex items-center gap-1">
-                    <span style={{ color: "var(--text-muted)" }}>$</span>
-                    <input aria-label="Delivery fee amount" name="deliveryFeeAmount" type="number" step="0.01" min="0" required value={deliveryAmount} onChange={(e) => setDeliveryAmount(e.target.value)} placeholder="0.00" className="w-24 px-2 py-1 rounded-lg text-xs font-mono" style={inputStyle} />
-                  </span>
+
+            <div className="flex flex-wrap gap-x-5 gap-y-1">
+              <button type="button" onClick={() => setExtras((cur) => [...cur, { description: "", amount: "" }])} className={linkButton}>
+                + Add another charge
+              </button>
+              <button type="button" onClick={() => setBillingMode(billingMode === "flat" ? "hours" : "flat")} className={linkButton}>
+                {billingMode === "flat" ? "Charge by hours and parts instead" : "Charge one flat price instead"}
+              </button>
+            </div>
+
+            <details>
+              <summary className="text-xs font-bold cursor-pointer" style={{ color: "var(--text-secondary)" }}>
+                More price options
+              </summary>
+              <div className="mt-3 space-y-3 text-xs">
+                {services.length > 0 && (
+                  <div className="max-w-md">
+                    <label htmlFor="fj-service" className="block font-bold mb-1" style={labelStyle}>
+                      Start from a saved service
+                    </label>
+                    <SearchSelect
+                      id="fj-service"
+                      value={serviceId}
+                      onChange={pickService}
+                      placeholder="Type to find a service, e.g. Snowblower…"
+                      options={services.map((s) => ({ value: s.id, label: s.name, hint: `$${s.price.toFixed(2)}`, keywords: s.description ?? "" }))}
+                    />
+                  </div>
                 )}
-              </>
+                {billingMode === "flat" && (
+                  <div className="max-w-md">
+                    <label htmlFor="fj-flatDescription" className="block font-bold mb-1" style={labelStyle}>
+                      Name on the invoice
+                    </label>
+                    <input id="fj-flatDescription" name="flatDescription" type="text" value={flatDescription} onChange={(e) => setFlatDescription(e.target.value)} placeholder="Repair service" className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+                  </div>
+                )}
+                {(diagnosticFee || showDeliveryFee) && (
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
+                    {diagnosticFee ? (
+                      <label className="flex items-center gap-1.5 font-semibold" style={labelStyle}>
+                        <input type="checkbox" name="includeDiagnosticFee" checked={includeDiagnostic} onChange={(e) => setIncludeDiagnostic(e.target.checked)} className="rounded" style={{ accentColor: "#0F52BA" }} />
+                        Add the diagnostic fee (${diagnosticFee.toFixed(2)})
+                      </label>
+                    ) : null}
+                    {showDeliveryFee && (
+                      <>
+                        <label className="flex items-center gap-1.5 font-semibold" style={labelStyle}>
+                          <input type="checkbox" name="includeDeliveryFee" checked={includeDelivery} onChange={(e) => setIncludeDelivery(e.target.checked)} className="rounded" style={{ accentColor: "#0F52BA" }} />
+                          Add pickup/delivery fee
+                        </label>
+                        {includeDelivery && (
+                          <span className="flex items-center gap-1">
+                            <span style={{ color: "var(--text-muted)" }}>$</span>
+                            <input aria-label="Delivery fee amount" name="deliveryFeeAmount" type="number" step="0.01" min="0" required value={deliveryAmount} onChange={(e) => setDeliveryAmount(e.target.value)} placeholder="0.00" className="w-24 px-2 py-1 rounded-lg text-xs font-mono" style={inputStyle} />
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </details>
+          </div>
+
+          {/* ---- how the customer settled up */}
+          <div className="rounded-lg p-3 space-y-3" style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-subtle)" }}>
+            <div className="text-[11px] font-extrabold uppercase tracking-wide" style={labelStyle}>
+              What happened with the customer?
+            </div>
+            <input type="hidden" name="payment" value={paidNow ? "now" : "later"} />
+            {outcome === "paidTook" && <input type="hidden" name="pickedUp" value="on" />}
+            <div role="radiogroup" aria-label="What happened with the customer" className="grid gap-2 sm:grid-cols-3">
+              {OUTCOMES.map((o) => {
+                const on = outcome === o.value;
+                return (
+                  <button
+                    key={o.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => setOutcome(o.value)}
+                    className="text-left rounded-lg px-3 py-2"
+                    style={on ? { background: "var(--color-info-subtle)", border: "2px solid var(--color-brand-600)" } : { background: "var(--bg-surface)", border: "1px solid var(--border-strong)" }}
+                  >
+                    <div className="text-xs font-extrabold" style={{ color: on ? "var(--color-brand-600)" : "var(--text-primary)" }}>
+                      {o.title}
+                    </div>
+                    <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                      {o.text}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {paidNow && (
+              <div className="space-y-2 text-xs">
+                <div className="font-bold" style={labelStyle}>
+                  How did they pay?
+                </div>
+                <input type="hidden" name="paymentMethod" value={method} />
+                <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="How did they pay?">
+                  {PAYMENT_METHODS.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      role="radio"
+                      aria-checked={method === m}
+                      onClick={() => setMethod(m)}
+                      className="px-3.5 py-1.5 rounded-full text-xs font-bold"
+                      style={method === m ? { background: "var(--color-brand-600)", color: "#fff", border: "1px solid var(--color-brand-600)" } : { background: "var(--bg-surface)", color: "var(--text-secondary)", border: "1px solid var(--border-strong)" }}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+                {(method === "E-transfer" || method === "Cheque") && (
+                  <label className="block max-w-xs font-bold" style={labelStyle}>
+                    {method === "Cheque" ? "Cheque number (optional)" : "E-transfer confirmation (optional)"}
+                    <input name="paymentReference" type="text" value={reference} onChange={(e) => setReference(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+                  </label>
+                )}
+                {customerEmail && (
+                  <label className="flex items-center gap-1.5 font-semibold" style={labelStyle}>
+                    <input type="checkbox" name="emailReceipt" checked={emailReceipt} onChange={(e) => setEmailReceipt(e.target.checked)} style={{ accentColor: "#0F52BA" }} />
+                    Email a receipt to {customerEmail}
+                  </label>
+                )}
+              </div>
             )}
           </div>
-        )}
-      </div>
 
-      {/* ---- payment */}
-      <div className="rounded-lg p-3 space-y-3" style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-subtle)" }}>
-        <div className="text-[11px] font-extrabold uppercase tracking-wide" style={labelStyle}>
-          Payment
-        </div>
-        <input type="hidden" name="payment" value={payment} />
-        <Segmented
-          value={payment}
-          onChange={(v) => {
-            setPayment(v);
-            setPickedUp(v === "now"); // paying at the counter usually means taking the machine; billing for later usually doesn't
-          }}
-          label="Is the customer paying now?"
-          options={[
-            { value: "now", label: "Paid now" },
-            { value: "later", label: "Bill later" },
-          ]}
-        />
-        {payment === "now" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div>
-              <label htmlFor="fj-paymentMethod" className="block font-bold mb-1" style={labelStyle}>
-                Payment method
-              </label>
-              <select id="fj-paymentMethod" name="paymentMethod" required defaultValue="" className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
-                <option value="" disabled>
-                  Select…
-                </option>
-                {PAYMENT_METHODS.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="fj-paymentReference" className="block font-bold mb-1" style={labelStyle}>
-                Reference (optional)
-              </label>
-              <input id="fj-paymentReference" name="paymentReference" type="text" placeholder="e-transfer #, etc." className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
-            </div>
+          {error && (
+            <p className="text-xs font-semibold" style={{ color: "var(--color-error-solid)" }} role="alert">
+              {error}
+            </p>
+          )}
+          <div className="flex items-center gap-x-5 gap-y-2 flex-wrap">
+            <button type="submit" disabled={pending} className="px-6 py-3 rounded-lg text-sm font-extrabold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
+              {pending ? "Saving…" : total ? `Finish · ${total}` : "Finish"}
+            </button>
+            {status === "inRepair" && (
+              <button type="button" onClick={justMarkReady} disabled={pending} className={linkButton}>
+                Mark it ready for pickup, price it later
+              </button>
+            )}
           </div>
-        )}
-        <label className="flex items-center gap-1.5 text-xs font-semibold" style={labelStyle}>
-          <input type="checkbox" name="pickedUp" checked={pickedUp} onChange={(e) => setPickedUp(e.target.checked)} style={{ accentColor: "#0F52BA" }} />
-          Customer picked up the machine (or you delivered it)
-        </label>
-        {payment === "now" && customerEmail && (
-          <label className="flex items-center gap-1.5 text-xs font-semibold" style={labelStyle}>
-            <input type="checkbox" name="emailReceipt" style={{ accentColor: "#0F52BA" }} />
-            Also email a receipt to {customerEmail}
-          </label>
-        )}
-      </div>
-
-      {error && (
-        <p className="text-xs font-semibold" style={{ color: "var(--color-error-solid)" }} role="alert">
-          {error}
-        </p>
+          <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+            {summary}
+          </p>
+        </>
       )}
-      <div className="flex items-center gap-4 flex-wrap">
-        <button type="submit" disabled={pending} className="px-5 py-2.5 rounded-lg text-sm font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-          {buttonLabel}
-        </button>
-        {status === "inRepair" && (
-          <button type="button" onClick={justMarkReady} disabled={pending} className="text-xs font-bold text-brand-600 disabled:opacity-60">
-            Just mark it ready for pickup
-          </button>
-        )}
-      </div>
-      <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-        {payment === "now" ? "Creates the invoice already paid" : "Creates the invoice as a draft"}
-        {pickedUp ? " and moves the job to Done." : " and leaves the job Ready."}
-      </p>
     </form>
   );
 }

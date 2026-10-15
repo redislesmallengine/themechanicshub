@@ -314,12 +314,12 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
       {showFinish && (status === "inRepair" || status === "readyForPickup") && (
         <div id="finish" className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "2px solid var(--color-brand-600)" }}>
           <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-            {status === "inRepair" ? "Finish this job" : "Bill this job"}
+            {status === "inRepair" ? "Repair in progress" : "Bill this job"}
           </h2>
           <p className="text-[11px] mt-0.5 mb-4" style={{ color: "var(--text-muted)" }}>
             {status === "inRepair"
-              ? "Say what was done, set the price, and take payment, all in one step. Parts used are added in Parts Needed below."
-              : "The repair is done. Set the price and take payment, or create the invoice to send later."}
+              ? "When the repair is finished, say what was done. The price and payment come next. Parts used are added in Parts Needed below."
+              : "The repair is done. Set the price, then say whether the customer paid or you will bill them."}
           </p>
           <FinishJobPanel
             workOrderId={workOrder.id}

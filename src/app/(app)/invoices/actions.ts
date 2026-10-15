@@ -11,7 +11,7 @@ import { claimInvoiceNumber, generateViewToken, computeTotals, classifyInvoiceTy
 import { applyStockAdjustment } from "@/lib/inventory";
 import { unitPriceFor } from "@/lib/pricing";
 import { partLineName } from "@/lib/parts";
-import { readFeeOptions, readBilling, buildWorkOrderInvoiceLines, buildInvoiceFromBilling } from "@/lib/invoice-lines";
+import { readFeeOptions, readBilling, readExtraCharges, buildWorkOrderInvoiceLines, buildInvoiceFromBilling } from "@/lib/invoice-lines";
 import { renderInvoicePdfFromRecord } from "@/lib/invoice-pdf";
 
 async function requireCanManageInvoices(action: "create" | "update" | "void" | "delete" = "update") {
@@ -221,7 +221,9 @@ export async function finishJob(workOrderId: string, formData: FormData) {
   const shopProfile = await prisma.shopProfile.findUnique({ where: { organizationId } });
   const billing = readBilling(formData, (repairNotes ?? "").split("\n")[0].slice(0, 80));
   if ("error" in billing) return { error: billing.error };
-  const { lines, totals } = buildInvoiceFromBilling({ billing, labourHours, parts: workOrder.parts, shopProfile, fees });
+  const extras = readExtraCharges(formData);
+  if ("error" in extras) return { error: extras.error };
+  const { lines, totals } = buildInvoiceFromBilling({ billing, labourHours, parts: workOrder.parts, shopProfile, fees, extras: extras.items });
   if (lines.length === 0) return { error: "There is nothing to bill yet. Type the amount charged, or add labour hours or parts." };
 
   const now = new Date();

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readBilling, buildInvoiceFromBilling, type Billing } from "./invoice-lines.ts";
+import { readBilling, buildInvoiceFromBilling, readExtraCharges, type Billing } from "./invoice-lines.ts";
 
 // Run with:  node --test src/lib/invoice-lines.test.ts
 const shop = { labourRate: "90", diagnosticFee: "45", taxRate: "15" };
@@ -61,4 +61,26 @@ test("flat billing needs an amount", () => {
 test("anything that isn't flat is billed by hours and parts", () => {
   assert.deepEqual(readBilling(form({}), ""), { mode: "hours" });
   assert.deepEqual(readBilling(form({ billingMode: "hours" }), ""), { mode: "hours" });
+});
+
+test("extra charges are added after the price, each taxable", () => {
+  const billing = readBilling(form({ billingMode: "flat", flatAmount: "207" }), "") as Billing;
+  const extras = readExtraCharges(form({ extraCharges: JSON.stringify([{ description: "New oil", amount: "10" }, { description: "", amount: "" }]) }));
+  assert.deepEqual(extras, { items: [{ description: "New oil", amount: 10 }] });
+  const { lines, totals } = buildInvoiceFromBilling({ billing, labourHours: null, parts: noParts, shopProfile: shop, fees: { includeDiagnosticFee: false, deliveryFee: null }, extras: (extras as { items: { description: string; amount: number }[] }).items });
+  assert.equal(lines.length, 2);
+  assert.equal(lines[1].description, "New oil");
+  assert.equal(lines[1].type, "custom");
+  // $207.00 (tax included) + $10.00 + $1.50 tax on it
+  assert.deepEqual(totals, { subtotal: "190.00", taxAmount: "28.50", total: "218.50" });
+});
+
+test("extra charges alone make a bill by hours work too, and bad rows are refused", () => {
+  const { lines, totals } = buildInvoiceFromBilling({ billing: { mode: "hours" }, labourHours: null, parts: noParts, shopProfile: shop, fees: { includeDiagnosticFee: false, deliveryFee: null }, extras: [{ description: "Shop supplies", amount: 20 }] });
+  assert.equal(lines.length, 1);
+  assert.deepEqual(totals, { subtotal: "20.00", taxAmount: "3.00", total: "23.00" });
+  assert.deepEqual(readExtraCharges(form({})), { items: [] });
+  assert.ok("error" in readExtraCharges(form({ extraCharges: "nope" })));
+  assert.ok("error" in readExtraCharges(form({ extraCharges: JSON.stringify([{ description: "Oil", amount: "" }]) })));
+  assert.ok("error" in readExtraCharges(form({ extraCharges: JSON.stringify([{ description: "", amount: "5" }]) })));
 });

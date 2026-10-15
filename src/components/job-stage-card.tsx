@@ -165,7 +165,7 @@ function DiagnosingCard({ workOrderId, hasCustomerEmail, preApprovalRequired, me
         return;
       }
       if (outcome === "repair") {
-        offerUndo(workOrderId, "Repair started, approved in person", result.previous);
+        offerUndo(workOrderId, "Repair started", result.previous);
       } else {
         setMessage("Saved.");
       }
