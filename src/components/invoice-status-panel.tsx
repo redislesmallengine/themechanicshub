@@ -17,13 +17,26 @@ const inputStyle = {
 
 type ActionResult = { success?: boolean; error?: string } | undefined;
 
-function SendForm({ invoiceId, isResend, isPaid }: { invoiceId: string; isResend: boolean; isPaid: boolean }) {
+function SendForm({ invoiceId, isResend, isPaid, to }: { invoiceId: string; isResend: boolean; isPaid: boolean; to: string | null }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ subject: string; html: string; replyTo: string | null; to: string | null } | null>(null);
   const [sent, setSent] = useState<{ to: string | null } | null>(null);
   const [pendingPreview, startPreview] = useTransition();
   const [pendingSend, startSend] = useTransition();
+
+  // A receipt is a thank-you with the amount paid, so it goes straight out. An invoice is previewed first.
+  function handleSendReceipt() {
+    setError(null);
+    startSend(async () => {
+      const result: ActionResult = await sendInvoice(invoiceId);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      setSent({ to });
+    });
+  }
 
   function handlePreview() {
     setError(null);
@@ -58,8 +71,8 @@ function SendForm({ invoiceId, isResend, isPaid }: { invoiceId: string; isResend
 
   return (
     <div>
-      <button type="button" onClick={handlePreview} disabled={pendingPreview} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-        {pendingPreview ? "Loading preview…" : isPaid ? "Preview and send the receipt" : isResend ? "Preview and send it again" : "Preview and send the email"}
+      <button type="button" onClick={isPaid ? handleSendReceipt : handlePreview} disabled={pendingPreview || pendingSend} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
+        {pendingPreview ? "Loading preview…" : pendingSend && isPaid ? "Sending…" : isPaid ? "Send the receipt now" : isResend ? "Preview and send it again" : "Preview and send the email"}
       </button>
       {error && (
         <p className="text-xs font-semibold mt-2" style={{ color: "var(--color-error-solid)" }}>
@@ -118,54 +131,97 @@ function SendForm({ invoiceId, isResend, isPaid }: { invoiceId: string; isResend
   );
 }
 
-function MarkPaidForm({ invoiceId, awaitingPickupCount }: { invoiceId: string; awaitingPickupCount: number }) {
+function MarkPaidForm({ invoiceId, awaitingPickupCount, recipientEmail }: { invoiceId: string; awaitingPickupCount: number; recipientEmail: string | null }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [emailProblem, setEmailProblem] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [method, setMethod] = useState("");
+  const [reference, setReference] = useState("");
+  const [receipt, setReceipt] = useState(!!recipientEmail);
+  const [pickedUp, setPickedUp] = useState(true);
   const bound = markInvoicePaid.bind(null, invoiceId);
+  const sendsReceipt = receipt && !!recipientEmail;
 
-  function handleSubmit(formData: FormData) {
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     setError(null);
+    if (!method) {
+      setError("Pick how the customer paid.");
+      return;
+    }
+    const formData = new FormData();
+    formData.set("paymentMethod", method);
+    formData.set("paymentReference", reference);
+    if (pickedUp && awaitingPickupCount > 0) formData.set("closeWorkOrder", "on");
+    if (sendsReceipt) formData.set("emailReceipt", "on");
     startTransition(async () => {
       const result = await bound(formData);
       if (result?.error) {
         setError(result.error);
         return;
       }
+      if (result && "emailError" in result && result.emailError) {
+        setEmailProblem(result.emailError);
+        return;
+      }
       router.refresh();
     });
   }
 
-  return (
-    <form action={handleSubmit} className="space-y-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-        <div>
-          <label htmlFor="paymentMethod" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-            Payment Method
-          </label>
-          <select id="paymentMethod" name="paymentMethod" required defaultValue="" className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
-            <option value="" disabled>
-              Select…
-            </option>
-            {PAYMENT_METHODS.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="paymentReference" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-            Reference (optional)
-          </label>
-          <input id="paymentReference" name="paymentReference" type="text" placeholder="e-transfer confirmation #, etc." className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
-        </div>
+  if (emailProblem) {
+    return (
+      <div className="space-y-2">
+        <p className="text-xs font-semibold" style={{ color: "var(--color-success-solid)" }}>
+          Marked as paid.
+        </p>
+        <p className="text-xs font-semibold" style={{ color: "var(--color-warning-solid)" }}>
+          The receipt email wasn&apos;t sent: {emailProblem}
+        </p>
+        <button type="button" onClick={() => router.refresh()} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white">
+          Continue
+        </button>
       </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3 rounded-lg p-3" style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-subtle)" }}>
+      <div className="text-xs font-bold" style={{ color: "var(--text-secondary)" }}>
+        How did they pay?
+      </div>
+      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="How did they pay?">
+        {PAYMENT_METHODS.map((m) => (
+          <button
+            key={m}
+            type="button"
+            role="radio"
+            aria-checked={method === m}
+            onClick={() => setMethod(m)}
+            className="px-3.5 py-1.5 rounded-full text-xs font-bold"
+            style={method === m ? { background: "var(--color-brand-600)", color: "#fff", border: "1px solid var(--color-brand-600)" } : { background: "var(--bg-surface)", color: "var(--text-secondary)", border: "1px solid var(--border-strong)" }}
+          >
+            {m}
+          </button>
+        ))}
+      </div>
+      {(method === "E-transfer" || method === "Cheque") && (
+        <label className="block max-w-xs text-xs font-bold" style={{ color: "var(--text-secondary)" }}>
+          {method === "Cheque" ? "Cheque number (optional)" : "E-transfer confirmation (optional)"}
+          <input value={reference} onChange={(e) => setReference(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+        </label>
+      )}
+      {recipientEmail && (
+        <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer" style={{ color: "var(--text-secondary)" }}>
+          <input type="checkbox" checked={receipt} onChange={(e) => setReceipt(e.target.checked)} style={{ accentColor: "#0F52BA" }} />
+          Email the customer a receipt ({recipientEmail})
+        </label>
+      )}
       {awaitingPickupCount > 0 && (
         <label className="flex items-start gap-2 text-xs font-semibold cursor-pointer" style={{ color: "var(--text-secondary)" }}>
-          <input type="checkbox" name="closeWorkOrder" defaultChecked className="mt-0.5" />
+          <input type="checkbox" checked={pickedUp} onChange={(e) => setPickedUp(e.target.checked)} className="mt-0.5" style={{ accentColor: "#0F52BA" }} />
           <span>
-            Customer picked up the machine{awaitingPickupCount > 1 ? "s" : ""} — close the work order{awaitingPickupCount > 1 ? "s" : ""}
+            Customer picked up the machine{awaitingPickupCount > 1 ? "s" : ""} and the job is done
             <span className="block font-normal text-[10px]" style={{ color: "var(--text-muted)" }}>
               Untick if they&apos;re paying now but collecting later.
             </span>
@@ -173,12 +229,12 @@ function MarkPaidForm({ invoiceId, awaitingPickupCount }: { invoiceId: string; a
         </label>
       )}
       {error && (
-        <p className="text-xs font-semibold" style={{ color: "var(--color-error-solid)" }}>
+        <p className="text-xs font-semibold" style={{ color: "var(--color-error-solid)" }} role="alert">
           {error}
         </p>
       )}
-      <button type="submit" disabled={pending} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-        {pending ? "Saving…" : "Mark as Paid"}
+      <button type="submit" disabled={pending} className="px-5 py-3 rounded-lg text-sm font-extrabold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
+        {pending ? "Saving…" : sendsReceipt ? "Mark as paid and email receipt" : "Mark as paid"}
       </button>
     </form>
   );
@@ -300,6 +356,8 @@ export interface InvoiceSendInfo {
   shopName: string;
   shareUrl: string;
   pdfHref: string;
+  /** Where an email goes: the customer's address, or the warranty provider's billing address. */
+  recipientEmail: string | null;
 }
 
 const optionBox = { background: "var(--bg-surface-subtle)", border: "1px solid var(--border-subtle)" };
@@ -318,7 +376,7 @@ function SendChooser({ invoiceId, status, isWarranty, hasRecipient, hasRecipient
           Email
         </div>
         {hasRecipientEmail ? (
-          <SendForm invoiceId={invoiceId} isResend={!isDraft} isPaid={isPaid} />
+          <SendForm invoiceId={invoiceId} isResend={!isDraft} isPaid={isPaid} to={send.recipientEmail} />
         ) : isWarranty ? (
           <p className="text-xs" style={{ color: "var(--text-muted)" }}>
             {hasRecipient ? "This warranty provider has no billing email. Add one under Warranty providers in Settings." : "No warranty provider is attached to this invoice yet, so there is nothing to email."}
@@ -437,7 +495,7 @@ export function InvoiceStatusPanel({
       </div>
 
       {chooser && status !== "void" && <SendChooser invoiceId={invoiceId} status={status} isWarranty={isWarranty} hasRecipient={hasRecipient} hasRecipientEmail={hasRecipientEmail} send={send} />}
-      {paying && open && <MarkPaidForm invoiceId={invoiceId} awaitingPickupCount={awaitingPickupCount} />}
+      {paying && open && <MarkPaidForm invoiceId={invoiceId} awaitingPickupCount={awaitingPickupCount} recipientEmail={send.recipientEmail} />}
 
       {open && canVoid && (
         <details>

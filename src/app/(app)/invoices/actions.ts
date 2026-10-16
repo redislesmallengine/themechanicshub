@@ -897,7 +897,14 @@ export async function markInvoicePaid(invoiceId: string, formData: FormData) {
   revalidatePath("/invoices");
   if (invoice.workOrderId) revalidatePath(`/work-orders/${invoice.workOrderId}`);
   for (const cwo of invoice.combinedWorkOrders) revalidatePath(`/work-orders/${cwo.workOrderId}`);
-  return { success: true };
+
+  // "Email the customer a receipt": the invoice is paid by now, so a failed send is reported, not rolled back.
+  let emailError: string | null = null;
+  if (formData.get("emailReceipt") === "on") {
+    const sent = await sendInvoice(invoiceId);
+    if (sent?.error) emailError = sent.error;
+  }
+  return { success: true as const, emailError };
 }
 
 /**

@@ -120,7 +120,8 @@ export function FinishJobPanel({
   const [claimNumber, setClaimNumber] = useState("");
   const [method, setMethod] = useState("");
   const [reference, setReference] = useState("");
-  const [emailReceipt, setEmailReceipt] = useState(false);
+  const [emailReceipt, setEmailReceipt] = useState(!!customerEmail);
+  const [invoiceId, setInvoiceId] = useState<string | null>(null);
 
   const paidNow = outcome === "paidTook" || outcome === "paidLater";
   const tookIt = outcome === "paidTook" || outcome === "claimTook";
@@ -185,10 +186,13 @@ export function FinishJobPanel({
         return;
       }
       if (result?.success && result.emailError) {
+        setInvoiceId(result.invoiceId);
         setEmailProblem(result.emailError);
         return;
       }
-      router.refresh();
+      // Straight to the invoice, where sending, payment and the pickup are one click each.
+      if (result?.success) router.push(`/invoices/${result.invoiceId}?created=1`);
+      else router.refresh();
     });
   }
 
@@ -214,7 +218,7 @@ export function FinishJobPanel({
         <p className="text-xs font-semibold" style={{ color: "var(--color-warning-solid)" }}>
           The receipt email wasn&apos;t sent: {emailProblem}
         </p>
-        <button type="button" onClick={() => router.refresh()} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white">
+        <button type="button" onClick={() => (invoiceId ? router.push(`/invoices/${invoiceId}?created=1`) : router.refresh())} className="px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white">
           Continue
         </button>
       </div>

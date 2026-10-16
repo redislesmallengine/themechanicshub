@@ -16,8 +16,9 @@ import { DeleteInvoiceButton } from "@/components/delete-invoice-button";
 import { SendWhatsAppButton } from "@/components/send-whatsapp-button";
 import { SentEmailsPanel } from "@/components/sent-emails-panel";
 
-export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function InvoiceDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ created?: string }> }) {
   const { id } = await params;
+  const { created } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   if (!session?.session.activeOrganizationId) redirect("/sign-in");
@@ -79,7 +80,21 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           <Link href="/invoices" className="font-semibold text-brand-600">
             Invoices
           </Link>
+          {invoice.workOrderId && (
+            <>
+              {" "}
+              ·{" "}
+              <Link href={`/work-orders/${invoice.workOrderId}`} className="font-semibold text-brand-600">
+                ← Back to the job
+              </Link>
+            </>
+          )}
         </p>
+        {created === "1" && (
+          <div className="rounded-lg px-4 py-2.5 mb-3 text-xs font-semibold" style={{ background: "var(--color-success-subtle)", color: "var(--color-success-text)", border: "1px solid var(--color-success-border)" }}>
+            Invoice {invoice.invoiceNumber} created.{status === "draft" ? " Next: send it to the customer, or record the payment." : ""}
+          </div>
+        )}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -204,7 +219,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           hasRecipientEmail={invoice.payerType === "warranty" ? !!invoice.warrantyProvider?.billingEmail : !!invoice.customer?.email}
           canVoid={canVoid.success}
           awaitingPickupCount={[invoice.workOrder, ...invoice.combinedWorkOrders.map((c) => c.workOrder)].filter((wo) => wo?.status === "readyForPickup").length}
-          send={{ customerName: invoice.customer?.name ?? null, customerPhone: invoice.customer?.phone ?? null, invoiceNumber: invoice.invoiceNumber, shopName: invoice.organization.name, shareUrl, pdfHref: `/api/invoices/${invoice.id}/pdf` }}
+          send={{ customerName: invoice.customer?.name ?? null, customerPhone: invoice.customer?.phone ?? null, invoiceNumber: invoice.invoiceNumber, shopName: invoice.organization.name, shareUrl, pdfHref: `/api/invoices/${invoice.id}/pdf`, recipientEmail: invoice.payerType === "warranty" ? invoice.warrantyProvider?.billingEmail ?? null : invoice.customer?.email ?? null }}
         />
         {invoice.status === "paid" && invoice.paymentReference && (
           <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>

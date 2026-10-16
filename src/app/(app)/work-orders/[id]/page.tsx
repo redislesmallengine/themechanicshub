@@ -236,7 +236,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
                 </span>
               )}
             </h2>
-            <Link href={`/invoices/${linkedInvoice.id}`} className="text-xs font-bold text-brand-600">
+            <Link href={`/invoices/${linkedInvoice.id}`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-brand-600" style={{ background: "var(--bg-surface)", border: "1px solid var(--color-brand-600)" }}>
               Open the full invoice →
             </Link>
           </div>
@@ -253,7 +253,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
             hasRecipientEmail={linkedInvoice.payerType === "warranty" ? !!linkedInvoice.warrantyProvider?.billingEmail : !!workOrder.customer.email}
             canVoid={canVoid.success}
             awaitingPickupCount={status === "readyForPickup" ? 1 : 0}
-            send={{ customerName: workOrder.customer.name, customerPhone: workOrder.customer.phone, invoiceNumber: linkedInvoice.invoiceNumber, shopName: organization?.name ?? "the shop", shareUrl, pdfHref: `/api/invoices/${linkedInvoice.id}/pdf` }}
+            send={{ customerName: workOrder.customer.name, customerPhone: workOrder.customer.phone, invoiceNumber: linkedInvoice.invoiceNumber, shopName: organization?.name ?? "the shop", shareUrl, pdfHref: `/api/invoices/${linkedInvoice.id}/pdf`, recipientEmail: linkedInvoice.payerType === "warranty" ? linkedInvoice.warrantyProvider?.billingEmail ?? null : workOrder.customer.email }}
             closeableWorkOrderId={status === "readyForPickup" && !workOrder.combinedInto ? workOrder.id : null}
           />
         </div>
