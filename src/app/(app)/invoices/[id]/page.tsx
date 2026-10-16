@@ -14,6 +14,7 @@ import { InvoicePayerForm } from "@/components/invoice-payer-form";
 import { ensureInvoiceShortCode } from "@/lib/invoice-short-link";
 import { DeleteInvoiceButton } from "@/components/delete-invoice-button";
 import { SendWhatsAppButton } from "@/components/send-whatsapp-button";
+import { SendReceiptButton } from "@/components/send-receipt-button";
 import { SentEmailsPanel } from "@/components/sent-emails-panel";
 
 export default async function InvoiceDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ created?: string }> }) {
@@ -147,7 +148,8 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               )}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            {status === "paid" && <SendReceiptButton invoiceId={invoice.id} recipientEmail={invoice.payerType === "warranty" ? invoice.warrantyProvider?.billingEmail ?? null : invoice.customer?.email ?? null} />}
             <a
               href={`/api/invoices/${invoice.id}/pdf`}
               className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-slate-50"
@@ -219,6 +221,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           hasRecipientEmail={invoice.payerType === "warranty" ? !!invoice.warrantyProvider?.billingEmail : !!invoice.customer?.email}
           canVoid={canVoid.success}
           awaitingPickupCount={[invoice.workOrder, ...invoice.combinedWorkOrders.map((c) => c.workOrder)].filter((wo) => wo?.status === "readyForPickup").length}
+          receiptInHeader
           send={{ customerName: invoice.customer?.name ?? null, customerPhone: invoice.customer?.phone ?? null, invoiceNumber: invoice.invoiceNumber, shopName: invoice.organization.name, shareUrl, pdfHref: `/api/invoices/${invoice.id}/pdf`, recipientEmail: invoice.payerType === "warranty" ? invoice.warrantyProvider?.billingEmail ?? null : invoice.customer?.email ?? null }}
         />
         {invoice.status === "paid" && invoice.paymentReference && (

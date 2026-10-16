@@ -427,6 +427,7 @@ export function InvoiceStatusPanel({
   awaitingPickupCount,
   send,
   closeableWorkOrderId = null,
+  receiptInHeader = false,
 }: {
   invoiceId: string;
   status: string;
@@ -439,6 +440,8 @@ export function InvoiceStatusPanel({
   send: InvoiceSendInfo;
   /** A single job that is Ready and not yet picked up, so an unpaid invoice can still record the pickup. */
   closeableWorkOrderId?: string | null;
+  /** The page already has a Send receipt button in its header (the invoice page), so a paid invoice does not offer one here. */
+  receiptInHeader?: boolean;
 }) {
   const [chooser, setChooser] = useState(false);
   const [paying, setPaying] = useState(false);
@@ -486,7 +489,7 @@ export function InvoiceStatusPanel({
             The customer already paid
           </button>
         )}
-        {(status === "sent" || status === "viewed" || status === "paid") && (
+        {(status === "sent" || status === "viewed" || (status === "paid" && !receiptInHeader)) && (
           <button type="button" onClick={() => setChooser((v) => !v)} className={link}>
             {status === "paid" ? "Send a receipt" : "Send it again"}
           </button>
