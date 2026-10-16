@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { finishJob } from "@/app/(app)/invoices/actions";
 import { markReadyForPickup } from "@/app/(app)/work-orders/actions";
@@ -109,7 +109,9 @@ export function FinishJobPanel({
   const [flatTaxable, setFlatTaxable] = useState(true);
   const [flatDescription, setFlatDescription] = useState("");
   const [serviceId, setServiceId] = useState("");
-  const [includeDelivery, setIncludeDelivery] = useState(showDeliveryFee);
+  const [includeDelivery, setIncludeDelivery] = useState(showDeliveryFee && deliveryFeeDefault.trim() !== "");
+  const [moreOpen, setMoreOpen] = useState(false);
+  const errorRef = useRef<HTMLDivElement>(null);
   const [deliveryAmount, setDeliveryAmount] = useState(deliveryFeeDefault);
   const [includeDiagnostic, setIncludeDiagnostic] = useState(false);
   const [labourHours, setLabourHours] = useState(initialLabourHours);
@@ -170,8 +172,17 @@ export function FinishJobPanel({
     e.preventDefault();
     setError(null);
     setEmailProblem(null);
+    if (billingMode === "flat" && !(Number(flatAmount) > 0)) {
+      setError("Type the amount you are charging.");
+      return;
+    }
+    if (includeDelivery && !(deliveryAmount.trim() !== "" && Number(deliveryAmount) >= 0)) {
+      setMoreOpen(true);
+      setError("Type the pickup/delivery fee, or untick it under More price options.");
+      return;
+    }
     if (paidNow && !method) {
-      setError("Pick how the customer paid.");
+      setError("Pick how the customer paid: Cash, E-transfer, Card, Cheque or Other.");
       return;
     }
     if (payer === "warranty" && !providerId) {
@@ -195,6 +206,11 @@ export function FinishJobPanel({
       else router.refresh();
     });
   }
+
+  // A message that appears out of view is the same as nothing happening, so bring it into view.
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [error]);
 
   function justMarkReady() {
     setError(null);
@@ -235,7 +251,7 @@ export function FinishJobPanel({
       : `We'll record ${total ?? "the amount"} as paid${method ? ` by ${method.toLowerCase()}` : ""} and leave the job Ready until they collect it.`;
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} noValidate className="space-y-4">
       <div>
         <label htmlFor="fj-repairNotes" className="block text-xs font-bold mb-1" style={labelStyle}>
           What was done
@@ -388,7 +404,7 @@ export function FinishJobPanel({
               </button>
             </div>
 
-            <details>
+            <details open={moreOpen} onToggle={(e) => setMoreOpen((e.currentTarget as HTMLDetailsElement).open)}>
               <summary className="text-xs font-bold cursor-pointer" style={{ color: "var(--text-secondary)" }}>
                 More price options
               </summary>
@@ -432,7 +448,7 @@ export function FinishJobPanel({
                         {includeDelivery && (
                           <span className="flex items-center gap-1">
                             <span style={{ color: "var(--text-muted)" }}>$</span>
-                            <input aria-label="Delivery fee amount" name="deliveryFeeAmount" type="number" step="0.01" min="0" required value={deliveryAmount} onChange={(e) => setDeliveryAmount(e.target.value)} placeholder="0.00" className="w-24 px-2 py-1 rounded-lg text-xs font-mono" style={inputStyle} />
+                            <input aria-label="Delivery fee amount" name="deliveryFeeAmount" type="number" step="0.01" min="0" value={deliveryAmount} onChange={(e) => setDeliveryAmount(e.target.value)} placeholder="0.00" className="w-24 px-2 py-1 rounded-lg text-xs font-mono" style={inputStyle} />
                           </span>
                         )}
                       </>
@@ -552,11 +568,13 @@ export function FinishJobPanel({
             )}
           </div>
 
-          {error && (
-            <p className="text-xs font-semibold" style={{ color: "var(--color-error-solid)" }} role="alert">
-              {error}
-            </p>
-          )}
+          <div ref={errorRef}>
+            {error && (
+              <p className="text-sm font-bold rounded-lg px-3 py-2" style={{ color: "var(--color-error-solid)", background: "var(--color-error-subtle)", border: "1px solid var(--color-error-solid)" }} role="alert">
+                {error}
+              </p>
+            )}
+          </div>
           <div className="flex items-center gap-x-5 gap-y-2 flex-wrap">
             <button type="submit" disabled={pending} className="px-6 py-3 rounded-lg text-sm font-extrabold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
               {pending ? "Saving…" : total ? `Finish · ${total}` : "Finish"}
