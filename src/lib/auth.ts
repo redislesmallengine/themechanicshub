@@ -37,6 +37,17 @@ export const auth = betterAuth({
         before: async (session) => {
           const reason = await signInBlockReason(session.userId);
           if (reason) throw new APIError("FORBIDDEN", { message: reason });
+
+          // Start the session already acting as the person's shop. Without this the first page after signing in
+          // finds no shop on the session and shows "Sign in to a shop" until a refresh. Looking it up must never
+          // be able to block a sign-in, so a failure just leaves the session as it was (the app frame still
+          // fills the shop in on the first request).
+          try {
+            const membership = await prisma.member.findFirst({ where: { userId: session.userId }, orderBy: { createdAt: "asc" }, select: { organizationId: true } });
+            if (membership) return { data: { ...session, activeOrganizationId: membership.organizationId } };
+          } catch {
+            // fall through to the unchanged session
+          }
           return { data: session };
         },
       },

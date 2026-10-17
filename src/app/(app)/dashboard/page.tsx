@@ -44,7 +44,12 @@ function SectionHead({ icon: Icon, label, note }: { icon: ComponentType<{ classN
 export default async function DashboardPage() {
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
-  const organizationId = session?.session.activeOrganizationId;
+  let organizationId = session?.session.activeOrganizationId;
+  // A session that has just been created may not have its shop saved yet; the person's membership says which shop it is.
+  if (!organizationId && session) {
+    const membership = await prisma.member.findFirst({ where: { userId: session.user.id }, orderBy: { createdAt: "asc" }, select: { organizationId: true } });
+    organizationId = membership?.organizationId;
+  }
 
   if (!organizationId) {
     return (
