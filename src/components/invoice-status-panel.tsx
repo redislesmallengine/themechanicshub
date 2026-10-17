@@ -8,6 +8,7 @@ import { EmailSentNotice } from "@/components/email-sent-notice";
 import { MarkInvoiceSentButton } from "@/components/mark-invoice-sent-button";
 import { SendWhatsAppButton } from "@/components/send-whatsapp-button";
 import { CloseJobAction } from "@/components/close-job-dialog";
+import { secondaryButton } from "@/lib/ui";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -405,7 +406,7 @@ function SendChooser({ invoiceId, status, isWarranty, hasRecipient, hasRecipient
           <a href={send.pdfHref} className="px-3.5 py-1.5 rounded-lg text-xs font-semibold" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}>
             Download PDF
           </a>
-          {isDraft && <MarkInvoiceSentButton invoiceId={invoiceId} warranty={isWarranty} className="text-xs font-bold text-brand-600 disabled:opacity-60" label={isWarranty ? "I submitted it another way" : "I handed it over or sent it another way"} />}
+          {isDraft && <MarkInvoiceSentButton invoiceId={invoiceId} warranty={isWarranty} className={secondaryButton} label={isWarranty ? "I submitted it another way" : "I handed it over or sent it another way"} />}
         </div>
       </div>
     </div>
@@ -447,7 +448,7 @@ export function InvoiceStatusPanel({
   const [paying, setPaying] = useState(false);
   const open = status === "draft" || status === "sent" || status === "viewed";
   const big = "px-5 py-3 rounded-lg text-sm font-extrabold bg-brand-600 hover:bg-brand-700 text-white";
-  const link = "text-xs font-bold text-brand-600 text-left";
+  const link = secondaryButton;
 
   return (
     <div className="space-y-3">

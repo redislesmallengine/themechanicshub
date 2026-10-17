@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { closeWorkOrder } from "@/app/(app)/work-orders/actions";
 import { markInvoiceSent } from "@/app/(app)/invoices/actions";
+import { secondaryButton } from "@/lib/ui";
 import { offerUndo } from "@/lib/job-undo";
 
 /**
@@ -101,7 +102,7 @@ export function CloseJobAction({ workOrderId, draftInvoiceId, label = "Mark Pick
 
   return (
     <div>
-      <button type="button" onClick={handleClick} disabled={pending} className={variant === "link" ? "text-xs font-bold text-brand-600 text-left disabled:opacity-60" : "px-5 py-3 rounded-lg text-sm font-extrabold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60"}>
+      <button type="button" onClick={handleClick} disabled={pending} className={variant === "link" ? secondaryButton : "px-5 py-3 rounded-lg text-sm font-extrabold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60"}>
         {pending ? "Working…" : label}
       </button>
       {error && (

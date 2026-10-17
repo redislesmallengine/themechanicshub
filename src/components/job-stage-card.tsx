@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { updateDiagnosis, recordPhoneDecision, changeWorkOrderStatus } from "@/app/(app)/work-orders/actions";
 import { EstimateForm } from "@/components/estimate-form";
 import { offerUndo } from "@/lib/job-undo";
+import { dangerButton, secondaryButton } from "@/lib/ui";
 import type { WorkOrderStatus } from "@/lib/work-orders";
 
 const inputStyle = {
@@ -36,7 +37,7 @@ function BigButton({ children, onClick, pending, type = "button" }: { children: 
 
 function LinkButton({ children, onClick, disabled, danger }: { children: React.ReactNode; onClick: () => void; disabled?: boolean; danger?: boolean }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} className="text-xs font-bold disabled:opacity-60 text-left" style={{ color: danger ? "var(--color-error-solid)" : "var(--color-brand-600)" }}>
+    <button type="button" onClick={onClick} disabled={disabled} className={danger ? dangerButton : secondaryButton}>
       {children}
     </button>
   );

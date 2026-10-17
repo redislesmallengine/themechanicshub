@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { sendEstimate, previewEstimateEmail } from "@/app/(app)/work-orders/actions";
 import { EmailSentNotice } from "@/components/email-sent-notice";
+import { secondaryButton } from "@/lib/ui";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -115,7 +116,7 @@ export function EstimateForm({
             {pendingPreview ? "Loading preview…" : "Review and send estimate"}
           </button>
           {onBack && (
-            <button type="button" onClick={onBack} className="text-xs font-bold text-brand-600">
+            <button type="button" onClick={onBack} className={secondaryButton}>
               Back
             </button>
           )}

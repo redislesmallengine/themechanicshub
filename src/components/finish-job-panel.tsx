@@ -8,6 +8,7 @@ import { offerUndo } from "@/lib/job-undo";
 import { PAYMENT_METHODS } from "@/lib/invoices";
 import { buildInvoiceFromBilling, type ExtraCharge } from "@/lib/invoice-lines";
 import { SearchSelect } from "@/components/search-select";
+import { secondaryButton } from "@/lib/ui";
 
 const inputStyle = {
   background: "var(--bg-surface-subtle)",
@@ -54,7 +55,7 @@ const CLAIM_OUTCOMES: { value: Outcome; title: string; text: string }[] = [
   { value: "claimShelf", title: "Customer will pick it up later", text: "Machine waits on the shelf; the claim is sent to the provider." },
 ];
 
-const linkButton = "text-xs font-bold text-brand-600 disabled:opacity-60 text-left";
+const linkButton = secondaryButton;
 
 /**
  * Finishing a job, in two small steps on one card. First what was done and a single "Repair finished" button; then the
