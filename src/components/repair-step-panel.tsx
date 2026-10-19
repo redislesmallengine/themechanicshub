@@ -62,8 +62,11 @@ export function RepairStepPanel({
   notesPrefilledFromDiagnosis,
   parts,
   availableParts,
+  returningToBilling = false,
 }: {
   workOrderId: string;
+  /** Looking at this step from Billing: the button saves and goes back to Billing instead of finishing the repair. */
+  returningToBilling?: boolean;
   initialRepairNotes: string;
   notesPrefilledFromDiagnosis: boolean;
   parts: PartRowData[];
@@ -83,6 +86,11 @@ export function RepairStepPanel({
       const result = await finishRepair(workOrderId, fd);
       if (result?.error) {
         setError(result.error);
+        return;
+      }
+      if (returningToBilling) {
+        router.push(`/work-orders/${workOrderId}`);
+        router.refresh();
         return;
       }
       offerUndo(workOrderId, "Repair marked finished", result.previous);
@@ -121,7 +129,7 @@ export function RepairStepPanel({
         </p>
       )}
       <button type="button" onClick={finish} disabled={pending} className="px-8 py-4 rounded-xl text-xl font-extrabold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-60">
-        {pending ? "Saving…" : "Repair finished"}
+        {pending ? "Saving…" : returningToBilling ? "Save and go back to Billing" : "Repair finished"}
       </button>
     </div>
   );

@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { STATUS_LABELS, STATUS_BADGE, DROP_OFF_METHOD_LABELS, needsPricing, type WorkOrderStatus } from "@/lib/work-orders";
+import { STATUS_LABELS, STATUS_BADGE, DROP_OFF_METHOD_LABELS, STEP_ROW, needsPricing, viewableSteps, canMoveBackTo, stepIndex, type StepTarget, type WorkOrderStatus } from "@/lib/work-orders";
 import { invoiceChip } from "@/lib/invoices";
 import { ensureInvoiceShortCode } from "@/lib/invoice-short-link";
 import { partLineName } from "@/lib/parts";
@@ -37,11 +37,13 @@ function Collapsible({ title, summary, defaultOpen = false, children }: { title:
 import { WorkOrderRepairNotesForm } from "@/components/work-order-repair-notes-form";
 import { RepairStepPanel } from "@/components/repair-step-panel";
 import { BillingScreen } from "@/components/billing-screen";
+import { ViewingBanner } from "@/components/viewing-banner";
 import { InvoiceStatusPanel } from "@/components/invoice-status-panel";
 import { ClaimSteps } from "@/components/claim-steps";
 
-export default async function WorkOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function WorkOrderDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ view?: string }> }) {
   const { id } = await params;
+  const { view } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   if (!session?.session.activeOrganizationId) redirect("/sign-in");
@@ -85,6 +87,10 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   const repairFinished = !!workOrder.repairFinishedAt;
   const repairing = status === "inRepair" && !repairFinished && !linkedInvoice;
   const billing = needsPricing(status, repairFinished, !!linkedInvoice);
+  // An earlier step being looked at (?view=...): the page shows that step and the job stays where it is.
+  const viewStep = (viewableSteps(status, repairFinished, !!linkedInvoice) as string[]).includes(view ?? "") ? (view as StepTarget) : null;
+  const viewLabel = viewStep ? (STEP_ROW.find((x) => x.target === viewStep)?.label ?? "") : "";
+  const currentLabel = status === "declined" ? STATUS_LABELS.declined : STEP_ROW[stepIndex(status, repairFinished)].label;
   const equipmentLabel = [workOrder.equipment.make, workOrder.equipment.model].filter(Boolean).join(" / ") || workOrder.equipment.equipmentType?.name || "Equipment";
   // The option shows whenever this work order was marked Shop
   // Pickup/Delivery at intake -- independent of whether Shop Profile has a
@@ -94,8 +100,6 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   const showDeliveryFee = workOrder.dropOffMethod === "pickupDelivery";
   const deliveryFeeDefault = shopProfile?.deliveryFee?.toString() ?? "";
 
-  // Pending / Diagnosing: the stage card above is where diagnosing happens. The folded Diagnosis section below is for editing it later.
-  const earlyStage = status === "droppedOff" || status === "diagnosing";
   const memberOptions = members.filter((m) => m.user).map((m) => ({ userId: m.userId, name: m.user!.name }));
   const diagnosisForm = (
     <WorkOrderDiagnosisForm
@@ -118,7 +122,47 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
     : workOrder.decidedByName
       ? `No written estimate — go-ahead given ${approvalMethodText} by ${workOrder.decidedByName} on ${workOrder.decidedAt?.toLocaleDateString() ?? ""}.${workOrder.notToExceedAmount ? ` Not to exceed $${workOrder.notToExceedAmount.toString()}.` : ""}`
       : "—";
-  const diagnosisSub = [workOrder.assignedTo?.name, workOrder.labourHours ? `${workOrder.labourHours.toString()} hr` : null].filter(Boolean).join(" · ");
+
+  const invoiceCard = linkedInvoice ? (
+        <div id="invoice-card" className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "2px solid var(--color-brand-600)" }}>
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+            <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+              Invoice {linkedInvoice.invoiceNumber} · ${linkedInvoice.total.toString()}
+              {workOrder.combinedInto && (
+                <span className="ml-2 text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>
+                  combined with other equipment
+                </span>
+              )}
+            </h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              {linkedInvoice.status === "draft" && (
+                <a href={`/invoice/${linkedInvoice.viewToken}`} target="_blank" rel="noopener noreferrer" className={secondaryButton}>
+                  Preview invoice (what the customer sees)
+                </a>
+              )}
+              <Link href={`/invoices/${linkedInvoice.id}`} className={secondaryButton}>
+                Open the full invoice →
+              </Link>
+            </div>
+          </div>
+          {linkedInvoice.payerType === "warranty" && (
+            <div className="mb-3">
+              <ClaimSteps status={linkedInvoice.status} submittedAt={linkedInvoice.sentAt} paidAt={linkedInvoice.paidAt} />
+            </div>
+          )}
+          <InvoiceStatusPanel
+            invoiceId={linkedInvoice.id}
+            status={linkedInvoice.status}
+            isWarranty={linkedInvoice.payerType === "warranty"}
+            hasRecipient={linkedInvoice.payerType === "warranty" ? !!linkedInvoice.warrantyProvider : !!workOrder.customer}
+            hasRecipientEmail={linkedInvoice.payerType === "warranty" ? !!linkedInvoice.warrantyProvider?.billingEmail : !!workOrder.customer.email}
+            canVoid={canVoid.success}
+            awaitingPickupCount={status === "readyForPickup" ? 1 : 0}
+            send={{ customerName: workOrder.customer.name, customerPhone: workOrder.customer.phone, invoiceNumber: linkedInvoice.invoiceNumber, shopName: organization?.name ?? "the shop", shareUrl, pdfHref: `/api/invoices/${linkedInvoice.id}/pdf`, recipientEmail: linkedInvoice.payerType === "warranty" ? linkedInvoice.warrantyProvider?.billingEmail ?? null : workOrder.customer.email }}
+            closeableWorkOrderId={status === "readyForPickup" && !workOrder.combinedInto ? workOrder.id : null}
+          />
+        </div>
+  ) : null;
 
   return (
     <div className="readable p-6 space-y-6">
@@ -200,9 +244,74 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
       </div>
 
       <div className="rounded-xl px-5 py-4" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-        <JobStepper workOrderId={workOrder.id} status={status} hasEstimate={!!workOrder.estimateAmount} hasInvoice={!!linkedInvoice} repairFinished={repairFinished} />
+        <JobStepper workOrderId={workOrder.id} status={status} hasInvoice={!!linkedInvoice} repairFinished={repairFinished} viewing={viewStep} />
       </div>
 
+      {viewStep ? (
+        <>
+          <ViewingBanner workOrderId={workOrder.id} viewingLabel={viewLabel} viewingTarget={viewStep} currentLabel={currentLabel} canMoveBack={canMoveBackTo(viewStep, status, repairFinished, !!workOrder.estimateAmount, !!linkedInvoice)} warnsAboutApproval={viewStep === "droppedOff" || viewStep === "diagnosing" || viewStep === "awaitingApproval"} />
+
+          {viewStep === "droppedOff" && (
+            <div className="rounded-xl p-5 space-y-2" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+              <h2 className="text-xl font-extrabold">Waiting: dropped off</h2>
+              <p className="text-base">Dropped off on {workOrder.createdAt.toLocaleDateString()}{workOrder.dropOffMethod ? ` · ${DROP_OFF_METHOD_LABELS[workOrder.dropOffMethod as keyof typeof DROP_OFF_METHOD_LABELS] ?? workOrder.dropOffMethod}` : ""}.</p>
+              <p className="text-base whitespace-pre-wrap">
+                <b>Complaint:</b> {workOrder.complaint}
+              </p>
+            </div>
+          )}
+
+          {viewStep === "diagnosing" && (
+            <div className="rounded-xl p-5 space-y-3" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+              <h2 className="text-xl font-extrabold">Diagnosis</h2>
+              <p className="text-base">Changes you save here are kept. The job stays on {currentLabel}.</p>
+              {diagnosisForm}
+            </div>
+          )}
+
+          {viewStep === "awaitingApproval" && (
+            <div className="rounded-xl p-5 space-y-2" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+              <h2 className="text-xl font-extrabold">Waiting on customer: what the customer was told</h2>
+              <p className="text-base whitespace-pre-wrap">{toldCustomer}</p>
+              {workOrder.awaitingApprovalAt && <p className="text-base">Estimate sent on {workOrder.awaitingApprovalAt.toLocaleDateString()}.</p>}
+            </div>
+          )}
+
+          {viewStep === "inRepair" && (
+            status === "inRepair" ? (
+              <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+                <h2 className="text-xl font-extrabold mb-4">Repairing</h2>
+                <RepairStepPanel
+                  workOrderId={workOrder.id}
+                  returningToBilling
+                  initialRepairNotes={workOrder.repairNotes ?? workOrder.diagnosisNotes ?? ""}
+                  notesPrefilledFromDiagnosis={false}
+                  parts={workOrder.parts.map((p) => ({ id: p.id, name: partLineName(p.name, p.part?.sku), quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
+                  availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, sku: p.sku, barcode: p.barcode, quantityOnHand: p.quantityOnHand }))}
+                />
+              </div>
+            ) : (
+              <div className="rounded-xl p-5 space-y-3" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
+                <h2 className="text-xl font-extrabold">Repairing: what was done</h2>
+                <p className="text-base whitespace-pre-wrap">{workOrder.repairNotes ?? "Nothing was written."}</p>
+                <h3 className="text-lg font-extrabold">Parts used</h3>
+                {workOrder.parts.length === 0 ? <p className="text-base">No parts.</p> : (
+                  <ul className="text-base list-disc pl-6">
+                    {workOrder.parts.map((p) => (
+                      <li key={p.id}>
+                        {partLineName(p.name, p.part?.sku)} × {p.quantity}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )
+          )}
+
+          {viewStep === "billing" && invoiceCard}
+        </>
+      ) : (
+        <>
       {stageCardShows && (
         <JobStageCard
           workOrderId={workOrder.id}
@@ -226,46 +335,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
       )}
 
       {/* Billed: the invoice is the next step, with sending and payment right here. */}
-      {linkedInvoice && (
-        <div id="invoice-card" className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "2px solid var(--color-brand-600)" }}>
-          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-            <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-              Invoice {linkedInvoice.invoiceNumber} · ${linkedInvoice.total.toString()}
-              {workOrder.combinedInto && (
-                <span className="ml-2 text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>
-                  combined with other equipment
-                </span>
-              )}
-            </h2>
-            <div className="flex items-center gap-2 flex-wrap">
-              {linkedInvoice.status === "draft" && (
-                <a href={`/invoice/${linkedInvoice.viewToken}`} target="_blank" rel="noopener noreferrer" className={secondaryButton}>
-                  Preview invoice (what the customer sees)
-                </a>
-              )}
-              <Link href={`/invoices/${linkedInvoice.id}`} className={secondaryButton}>
-                Open the full invoice →
-              </Link>
-            </div>
-          </div>
-          {linkedInvoice.payerType === "warranty" && (
-            <div className="mb-3">
-              <ClaimSteps status={linkedInvoice.status} submittedAt={linkedInvoice.sentAt} paidAt={linkedInvoice.paidAt} />
-            </div>
-          )}
-          <InvoiceStatusPanel
-            invoiceId={linkedInvoice.id}
-            status={linkedInvoice.status}
-            isWarranty={linkedInvoice.payerType === "warranty"}
-            hasRecipient={linkedInvoice.payerType === "warranty" ? !!linkedInvoice.warrantyProvider : !!workOrder.customer}
-            hasRecipientEmail={linkedInvoice.payerType === "warranty" ? !!linkedInvoice.warrantyProvider?.billingEmail : !!workOrder.customer.email}
-            canVoid={canVoid.success}
-            awaitingPickupCount={status === "readyForPickup" ? 1 : 0}
-            send={{ customerName: workOrder.customer.name, customerPhone: workOrder.customer.phone, invoiceNumber: linkedInvoice.invoiceNumber, shopName: organization?.name ?? "the shop", shareUrl, pdfHref: `/api/invoices/${linkedInvoice.id}/pdf`, recipientEmail: linkedInvoice.payerType === "warranty" ? linkedInvoice.warrantyProvider?.billingEmail ?? null : workOrder.customer.email }}
-            closeableWorkOrderId={status === "readyForPickup" && !workOrder.combinedInto ? workOrder.id : null}
-          />
-        </div>
-      )}
+      {invoiceCard}
 
       {showStory && (
         <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
@@ -274,7 +344,6 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
           </h2>
           <div>
             {[
-              { label: "Diagnosis", sub: diagnosisSub, body: diagnosisForm },
               { label: "Told the customer", sub: "estimate and go-ahead", body: <p className="text-sm" style={{ color: "var(--text-primary)" }}>{toldCustomer}</p> },
               // While the Finish panel is open it is the one place to write what was done, so this row waits for it.
               ...(repairing || billing
@@ -351,8 +420,8 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         </div>
       )}
 
-      {/* On the stages with no Job summary (waiting on the customer, declined) the diagnosis is edited here. Elsewhere it is edited in the summary. */}
-      {!earlyStage && !showStory && <Collapsible title="Diagnosis" summary={diagnosisSub || undefined}>{diagnosisForm}</Collapsible>}
+        </>
+      )}
 
       <Collapsible title="Emails Sent" summary={sentEmails.length === 0 ? "nothing yet" : `${sentEmails.length} sent`}>
         <SentEmailsPanel

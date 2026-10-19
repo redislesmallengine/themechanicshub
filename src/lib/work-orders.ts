@@ -112,3 +112,19 @@ export const NEXT_STATUS: Partial<Record<WorkOrderStatus, WorkOrderStatus>> = {
 export function now(): number {
   return Date.now();
 }
+
+/**
+ * Whether the job can really be moved back to the given step (the "Redo from here" button when looking at an earlier
+ * step). Billing needs no invoice yet; from Billing, Repairing is one step back; everything else follows moveTargets.
+ */
+export function canMoveBackTo(target: StepTarget, status: WorkOrderStatus, repairFinished: boolean, hasEstimate: boolean, hasInvoice: boolean): boolean {
+  if (target === "billing") return !hasInvoice;
+  if (target === "inRepair" && status === "inRepair" && repairFinished) return true;
+  return moveTargets(status, hasEstimate, hasInvoice).includes(target);
+}
+
+/** The steps of a job that can be looked at without moving it: every step before the one it is on (a declined job only back to Repairing). */
+export function viewableSteps(status: WorkOrderStatus, repairFinished: boolean, hasInvoice: boolean): StepTarget[] {
+  const current = stepIndex(status, repairFinished);
+  return STEP_ROW.filter((step, i) => i < current && (status !== "declined" || i <= 3) && (step.target !== "billing" || hasInvoice)).map((s) => s.target);
+}
