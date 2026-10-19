@@ -84,3 +84,53 @@ test("extra charges alone make a bill by hours work too, and bad rows are refuse
   assert.ok("error" in readExtraCharges(form({ extraCharges: JSON.stringify([{ description: "Oil", amount: "" }]) })));
   assert.ok("error" in readExtraCharges(form({ extraCharges: JSON.stringify([{ description: "", amount: "5" }]) })));
 });
+
+// ---- the Billing screen's rows
+
+import { buildInvoiceFromRows, readBillingRows } from "./invoice-lines.ts";
+
+test("rows, prices before tax: tax is added on top", () => {
+  const { lines, totals } = buildInvoiceFromRows({
+    rows: [
+      { kind: "labour", description: "Labour", quantity: 2, unitPrice: 90, taxable: true },
+      { kind: "part", description: "Spark plug", quantity: 2, unitPrice: 6.5, taxable: true },
+    ],
+    taxIncluded: false,
+    taxRate: 15,
+  });
+  assert.equal(lines.length, 2);
+  assert.deepEqual(totals, { subtotal: "193.00", taxAmount: "28.95", total: "221.95" });
+});
+
+test("rows, tax included: one $207 row totals exactly $207.00", () => {
+  const { lines, totals } = buildInvoiceFromRows({ rows: [{ kind: "other", description: "Repair service", quantity: 1, unitPrice: 207, taxable: true }], taxIncluded: true, taxRate: 15 });
+  assert.equal(lines[0].unitPrice, "180.00");
+  assert.deepEqual(totals, { subtotal: "180.00", taxAmount: "27.00", total: "207.00" });
+});
+
+test("rows, tax included, several rows: the total is what was typed to the cent", () => {
+  const { totals } = buildInvoiceFromRows({
+    rows: [
+      { kind: "labour", description: "Labour", quantity: 1.5, unitPrice: 103.5, taxable: true },
+      { kind: "part", description: "Belt", quantity: 3, unitPrice: 11.49, taxable: true },
+      { kind: "service", description: "Safety inspection", quantity: 1, unitPrice: 20, taxable: false },
+    ],
+    taxIncluded: true,
+    taxRate: 15,
+  });
+  assert.equal(totals.total, "209.72");
+  assert.equal((Number(totals.subtotal) + Number(totals.taxAmount)).toFixed(2), totals.total);
+});
+
+test("a no-tax row is never taxed, with tax added or included", () => {
+  const rows = [{ kind: "service" as const, description: "Safety inspection", quantity: 1, unitPrice: 100, taxable: false }];
+  assert.deepEqual(buildInvoiceFromRows({ rows, taxIncluded: false, taxRate: 15 }).totals, { subtotal: "100.00", taxAmount: "0.00", total: "100.00" });
+  assert.deepEqual(buildInvoiceFromRows({ rows, taxIncluded: true, taxRate: 15 }).totals, { subtotal: "100.00", taxAmount: "0.00", total: "100.00" });
+});
+
+test("reading rows: blanks are skipped, a half-filled row is explained", () => {
+  const ok = readBillingRows(form({ billingRows: JSON.stringify([{ kind: "other", description: "", unitPrice: "", quantity: 1 }, { kind: "labour", description: "Labour", quantity: 1, unitPrice: "90" }]) }));
+  assert.ok("rows" in ok && ok.rows.length === 1);
+  const bad = readBillingRows(form({ billingRows: JSON.stringify([{ kind: "other", description: "Oil", quantity: 1, unitPrice: "" }]) }));
+  assert.ok("error" in bad && bad.error.includes("Oil"));
+});

@@ -43,9 +43,10 @@ export interface StatusSnapshot {
   awaitingApprovalAt: string | null;
   readyForPickupAt: string | null;
   closedAt: string | null;
+  repairFinishedAt: string | null;
 }
 
-function snapshotOf(w: { status: string; approvalMethod: string | null; decidedByName: string | null; decidedAt: Date | null; awaitingApprovalAt: Date | null; readyForPickupAt: Date | null; closedAt: Date | null }): StatusSnapshot {
+function snapshotOf(w: { status: string; approvalMethod: string | null; decidedByName: string | null; decidedAt: Date | null; awaitingApprovalAt: Date | null; readyForPickupAt: Date | null; closedAt: Date | null; repairFinishedAt: Date | null }): StatusSnapshot {
   return {
     status: w.status,
     approvalMethod: w.approvalMethod,
@@ -54,6 +55,7 @@ function snapshotOf(w: { status: string; approvalMethod: string | null; decidedB
     awaitingApprovalAt: w.awaitingApprovalAt?.toISOString() ?? null,
     readyForPickupAt: w.readyForPickupAt?.toISOString() ?? null,
     closedAt: w.closedAt?.toISOString() ?? null,
+    repairFinishedAt: w.repairFinishedAt?.toISOString() ?? null,
   };
 }
 
@@ -87,10 +89,28 @@ export async function restoreWorkOrderState(workOrderId: string, previous: Statu
       awaitingApprovalAt: date(previous.awaitingApprovalAt),
       readyForPickupAt: date(previous.readyForPickupAt),
       closedAt: date(previous.closedAt),
+      repairFinishedAt: date(previous.repairFinishedAt ?? null),
     },
   });
   revalidateJob(workOrderId);
   return { success: true };
+}
+
+/**
+ * "Repair finished": saves what was done and moves the job to the Billing step. Billing is not a status of its own, so
+ * this just stamps `repairFinishedAt` on a job that is Repairing. Undo clears it again.
+ */
+export async function finishRepair(workOrderId: string, formData: FormData) {
+  const { organizationId } = await requireCanManageWorkOrders("update");
+  const workOrder = await prisma.workOrder.findUnique({ where: { id: workOrderId }, include: { invoice: { select: { id: true } }, combinedInto: { select: { id: true } } } });
+  if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
+  if (workOrder.status !== "inRepair") return { error: "This job isn't in Repairing anymore. Reload the page to see where it is." };
+  if (workOrder.invoice || workOrder.combinedInto) return { error: "This job already has an invoice." };
+
+  const repairNotes = String(formData.get("repairNotes") ?? "").trim() || null;
+  await prisma.workOrder.update({ where: { id: workOrderId }, data: { repairNotes, repairFinishedAt: new Date() } });
+  revalidateJob(workOrderId);
+  return { success: true, previous: snapshotOf(workOrder) };
 }
 
 export async function createWorkOrder(formData: FormData) {
@@ -389,13 +409,20 @@ const STATUS_ORDER = ["droppedOff", "diagnosing", "awaitingApproval", "inRepair"
  * refused because they would leave the job contradicting itself: Awaiting Approval with
  * no estimate sent, and going back before Ready for Pickup once an invoice exists.
  */
-export async function changeWorkOrderStatus(workOrderId: string, target: string) {
+export async function changeWorkOrderStatus(workOrderId: string, targetStep: string) {
+  let target = targetStep;
   const { organizationId } = await requireCanManageWorkOrders("update");
-  if (!STATUS_ORDER.includes(target)) return { error: "That isn't a valid status." };
+  // "billing" is the Billing step: Repairing with the repair marked finished.
+  const toBilling = target === "billing";
+  if (!toBilling && !STATUS_ORDER.includes(target)) return { error: "That isn't a valid status." };
 
   const workOrder = await prisma.workOrder.findUnique({ where: { id: workOrderId }, include: { invoice: { select: { id: true } }, combinedInto: { select: { id: true } } } });
   if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
-  if (workOrder.status === target) return { success: true };
+  if (toBilling && workOrder.status === "inRepair" && workOrder.repairFinishedAt) return { success: true };
+  if (!toBilling && workOrder.status === target && !(target === "inRepair" && workOrder.repairFinishedAt)) return { success: true };
+  if (toBilling && (workOrder.invoice || workOrder.combinedInto)) return { error: "This job already has an invoice, so it can't go back to Billing." };
+  if (toBilling && workOrder.status !== "readyForPickup" && workOrder.status !== "closed") return { error: "Only a job that is Ready or Done can go back to Billing." };
+  if (toBilling) target = "inRepair";
 
   const hasInvoice = !!(workOrder.invoice || workOrder.combinedInto);
   if (hasInvoice && STATUS_ORDER.indexOf(target) < STATUS_ORDER.indexOf("readyForPickup")) {
@@ -405,7 +432,7 @@ export async function changeWorkOrderStatus(workOrderId: string, target: string)
   if (target === "awaitingApproval" && !workOrder.estimateAmount) return { error: "Send an estimate first — Waiting on customer means an estimate is out with the customer." };
 
   const now = new Date();
-  const data: { status: string; approvalMethod?: string | null; decidedByName?: string | null; decidedAt?: Date | null; awaitingApprovalAt?: Date; readyForPickupAt?: Date | null; closedAt?: Date | null } = { status: target };
+  const data: { status: string; approvalMethod?: string | null; decidedByName?: string | null; decidedAt?: Date | null; awaitingApprovalAt?: Date; readyForPickupAt?: Date | null; closedAt?: Date | null; repairFinishedAt?: Date | null } = { status: target };
   const rank = STATUS_ORDER.indexOf(target);
 
   if (target === "awaitingApproval") data.awaitingApprovalAt = now;
@@ -426,6 +453,9 @@ export async function changeWorkOrderStatus(workOrderId: string, target: string)
     data.closedAt = null;
   }
   if (rank < STATUS_ORDER.indexOf("readyForPickup") || target === "declined") data.readyForPickupAt = null;
+  // Back to Repairing (or earlier) reopens the repair; Billing keeps it finished.
+  if (toBilling) data.repairFinishedAt = workOrder.repairFinishedAt ?? now;
+  else if (rank <= STATUS_ORDER.indexOf("inRepair") || target === "declined") data.repairFinishedAt = null;
 
   await prisma.workOrder.update({ where: { id: workOrderId }, data });
   revalidateJob(workOrderId);

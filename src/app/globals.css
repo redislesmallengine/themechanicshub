@@ -47,8 +47,8 @@
   --border-strong: #cbd5e1;
 
   --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --text-secondary: #1e293b;
+  --text-muted: #334155;
 
   --shadow-xs: 0px 1px 2px rgba(15, 23, 42, 0.05);
   --shadow-sm: 0px 1px 3px rgba(15, 23, 42, 0.1), 0px 1px 2px rgba(15, 23, 42, 0.06);
@@ -67,8 +67,8 @@
     --border-strong: #4b5563;
 
     --text-primary: #f9fafb;
-    --text-secondary: #9ca3af;
-    --text-muted: #6b7280;
+    --text-secondary: #e5e7eb;
+    --text-muted: #d1d5db;
 
     --color-success-subtle: #0f2a1b;
     --color-warning-subtle: #2e2007;
@@ -233,4 +233,37 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .undo-timer { display: none; }
+}
+
+/* =====================================================================
+   Easy-to-read screens -- the job, invoice and customer-invoice pages.
+   All text is the full dark colour (white in dark mode), bigger, and fields are plain white with a dark border.
+   ===================================================================== */
+.readable {
+  --text-secondary: var(--text-primary);
+  --text-muted: var(--text-primary);
+  font-size: 1.125rem;
+  line-height: 1.55;
+}
+.readable .text-\[10px\],
+.readable .text-\[11px\],
+.readable .text-xs { font-size: 1rem; line-height: 1.5; }
+.readable .text-sm { font-size: 1.125rem; line-height: 1.55; }
+.readable .text-base { font-size: 1.25rem; line-height: 1.5; }
+.readable .text-lg { font-size: 1.375rem; }
+.readable .text-xl { font-size: 1.5rem; }
+.readable .text-2xl { font-size: 1.75rem; line-height: 1.25; }
+.readable input:not([type="checkbox"]):not([type="radio"]),
+.readable select,
+.readable textarea {
+  font-size: 1.1875rem;
+  background: var(--bg-surface) !important;
+  border: 1.5px solid var(--text-primary) !important;
+  color: var(--text-primary) !important;
+}
+.readable input::placeholder,
+.readable textarea::placeholder {
+  color: var(--text-primary);
+  opacity: 0.6;
+  font-style: italic;
 }

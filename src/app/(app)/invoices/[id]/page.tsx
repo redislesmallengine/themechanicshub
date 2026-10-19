@@ -75,7 +75,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
     : [];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="readable p-6 space-y-6">
       <div>
         <p className="text-xs mb-1">
           <Link href="/invoices" className="font-semibold text-brand-600">
@@ -459,10 +459,10 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
 
       {invoice.notes && !editable && (
         <div className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-          <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-muted)" }}>
-            Notes
+          <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-primary)" }}>
+            Notes on the invoice
           </div>
-          <p className="text-sm whitespace-pre-wrap" style={{ color: "var(--text-secondary)" }}>
+          <p className="text-sm whitespace-pre-wrap" style={{ color: "var(--text-primary)" }}>
             {invoice.notes}
           </p>
         </div>

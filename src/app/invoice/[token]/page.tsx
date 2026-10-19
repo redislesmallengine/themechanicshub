@@ -61,8 +61,8 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
   const shopContact = [shopProfile?.address, shopProfile?.phone, shopEmail, shopProfile?.website?.replace(/^https?:\/\//i, "")].filter(Boolean);
 
   return (
-    <div className="min-h-screen p-4 md:p-10 flex justify-center" style={{ background: "var(--bg-app)" }}>
-      <div className="w-full max-w-2xl">
+    <div className="readable min-h-screen p-4 md:p-10 flex justify-center" style={{ background: "var(--bg-app)" }}>
+      <div className="w-full max-w-3xl">
         <div className="flex items-center gap-2.5 mb-6">
           {shopProfile?.logoKey ? (
             // eslint-disable-next-line @next/next/no-img-element -- streamed via /api/shop-logo
@@ -272,8 +272,13 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
           )}
 
           {invoice.notes && (
-            <div className="mt-4 pt-4 text-xs whitespace-pre-wrap" style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-secondary)" }}>
-              {invoice.notes}
+            <div className="mt-6 rounded-lg p-4" style={{ border: "2px solid var(--text-primary)" }}>
+              <div className="text-xs font-extrabold uppercase tracking-wide mb-1.5" style={{ color: "var(--text-primary)" }}>
+                Notes
+              </div>
+              <p className="text-sm whitespace-pre-wrap" style={{ color: "var(--text-primary)" }}>
+                {invoice.notes}
+              </p>
             </div>
           )}
 
@@ -304,11 +309,16 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
             </a>
           </div>
 
-          {shopProfile?.hstNumber && (
-            <p className="mt-4 text-center text-xs font-bold" style={{ color: "var(--text-primary)" }}>
-              HST/GST #{shopProfile.hstNumber}
+          <div className="mt-6 pt-4 text-center" style={{ borderTop: "1px solid var(--border-strong)" }}>
+            <p className="text-base font-extrabold" style={{ color: "var(--text-primary)" }}>
+              Thank you for your business
             </p>
-          )}
+            {shopProfile?.hstNumber && (
+              <p className="mt-1 text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+                HST/GST #{shopProfile.hstNumber}
+              </p>
+            )}
+          </div>
         </div>
       </div>
     </div>

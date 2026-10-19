@@ -519,6 +519,7 @@ model WorkOrder {
   notToExceedAmount   Decimal?  @db.Decimal(10, 2) // optional verbal price ceiling captured on the "skip formal estimate" fast path — see skipEstimateApproval
   awaitingApprovalAt  DateTime? // set when status first becomes awaitingApproval — what the "waiting 2+ days" dashboard flag measures from
   readyForPickupAt    DateTime? // set when status first becomes readyForPickup — what the aging alert measures from
+  repairFinishedAt    DateTime? // set when "Repair finished" is pressed; a job that is inRepair with this set is on the Billing step (no extra status value)
   closedAt            DateTime?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt

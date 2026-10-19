@@ -312,7 +312,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
                         : woStatus === "readyForPickup"
                           ? { label: "Bill & collect →", href: `/work-orders/${wo.id}#finish` }
                           : woStatus === "inRepair"
-                            ? { label: "Finish & collect →", href: `/work-orders/${wo.id}#finish` }
+                            ? { label: wo.repairFinishedAt ? "Bill this job →" : "Finish the repair →", href: `/work-orders/${wo.id}#finish` }
                             : { label: "Open →", href: `/work-orders/${wo.id}` };
                 const showDelete = (woStatus === "droppedOff" || woStatus === "declined" || isOwner) && !invoiceId && canDelete.success;
                 return (

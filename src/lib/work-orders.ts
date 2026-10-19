@@ -19,20 +19,33 @@ export const STATUS_LABELS: Record<WorkOrderStatus, string> = {
 };
 
 /**
- * The six steps shown across the top of a job. A declined job sits on the last step ("Done") marked
- * "Customer said no", so the bar stays six long. `target` is the status a click on that step moves to.
+ * The seven steps shown across the top of a job. A declined job sits on the last step ("Done") marked
+ * "Customer said no", so the bar stays seven long. `target` is what a click on that step moves to.
+ * Billing is not a status of its own: it is Repairing once "Repair finished" has been pressed (the job's
+ * `repairFinishedAt` is set), so its target is the pseudo-status "billing" that changeWorkOrderStatus understands.
  */
-export const STEP_ROW: { target: WorkOrderStatus; label: string }[] = [
+export type StepTarget = WorkOrderStatus | "billing";
+export const STEP_ROW: { target: StepTarget; label: string }[] = [
   { target: "droppedOff", label: STATUS_LABELS.droppedOff },
   { target: "diagnosing", label: STATUS_LABELS.diagnosing },
   { target: "awaitingApproval", label: STATUS_LABELS.awaitingApproval },
   { target: "inRepair", label: STATUS_LABELS.inRepair },
+  { target: "billing", label: "Billing" },
   { target: "readyForPickup", label: STATUS_LABELS.readyForPickup },
   { target: "closed", label: STATUS_LABELS.closed },
 ];
 
-export function stepIndex(status: WorkOrderStatus): number {
-  return status === "declined" ? STEP_ROW.length - 1 : STEP_ROW.findIndex((s) => s.target === status);
+/** Which step a job is on. Repairing with the repair marked finished is the Billing step. */
+export function stepIndex(status: WorkOrderStatus, repairFinished = false): number {
+  if (status === "declined") return STEP_ROW.length - 1;
+  if (status === "inRepair" && repairFinished) return STEP_ROW.findIndex((s) => s.target === "billing");
+  return STEP_ROW.findIndex((s) => s.target === status);
+}
+
+/** True while the job is being priced: repair done, nothing invoiced yet. A job parked on Ready with no invoice also gets the pricing screen. */
+export function needsPricing(status: WorkOrderStatus, repairFinished: boolean, hasInvoice: boolean): boolean {
+  if (hasInvoice) return false;
+  return (status === "inRepair" && repairFinished) || status === "readyForPickup";
 }
 
 /**

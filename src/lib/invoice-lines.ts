@@ -177,3 +177,73 @@ function buildBase(params: {
   const feeTotals = computeTotals(feeLines.map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), taxable: l.taxable })), taxRate);
   return { lines: [flatLine, ...feeLines], totals: addTotals(flat, feeTotals) };
 }
+
+// ---------------------------------------------------------------------------------------------
+// The Billing screen: a list of rows (labour, saved services, parts, other charges), each with a
+// quantity and a price, and one rule for tax -- the prices typed are before tax, or already include it.
+// ---------------------------------------------------------------------------------------------
+
+export type BillingRowKind = "labour" | "service" | "part" | "other";
+export type BillingRow = { kind: BillingRowKind; description: string; quantity: number; unitPrice: number; taxable: boolean; workOrderPartId?: string };
+
+const cents = (n: number) => Math.round(n * 100) / 100;
+
+/** Reads the rows from a form (a JSON list in `billingRows`), ignoring blank rows and checking the rest. */
+export function readBillingRows(formData: FormData): { rows: BillingRow[] } | { error: string } {
+  const raw = String(formData.get("billingRows") ?? "").trim();
+  if (!raw) return { rows: [] };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { error: "The price rows couldn't be read. Reload the page and try again." };
+  }
+  if (!Array.isArray(parsed)) return { error: "The price rows couldn't be read. Reload the page and try again." };
+  const rows: BillingRow[] = [];
+  for (const r of parsed.slice(0, 60)) {
+    const row = r as Partial<Record<keyof BillingRow, unknown>>;
+    const kind = row.kind as BillingRowKind;
+    if (!["labour", "service", "part", "other"].includes(kind)) continue;
+    const description = String(row.description ?? "").trim();
+    const quantity = Number(row.quantity);
+    const priceRaw = String(row.unitPrice ?? "").trim();
+    const unitPrice = Number(priceRaw);
+    if (!description && !priceRaw) continue; // an empty row
+    if (!description) return { error: "Give every price row a name, or remove the empty one." };
+    if (!Number.isFinite(quantity) || quantity <= 0) return { error: `Enter a quantity for "${description}".` };
+    if (!priceRaw || !Number.isFinite(unitPrice) || unitPrice < 0) return { error: `Enter a price for "${description}".` };
+    rows.push({ kind, description: description.slice(0, 200), quantity, unitPrice, taxable: row.taxable !== false, workOrderPartId: row.workOrderPartId ? String(row.workOrderPartId) : undefined });
+  }
+  return { rows };
+}
+
+/**
+ * The invoice lines and totals for the Billing rows. With "before tax" every price is what the customer is charged
+ * before tax, and tax is added on top. With "tax included" the prices typed already contain the tax: each taxable
+ * row's price is worked back to its pre-tax figure and the grand total is exactly what was typed to the cent
+ * (the tax figure absorbs any single-cent rounding, so a $207 job always prints as $207.00).
+ */
+export function buildInvoiceFromRows(params: { rows: BillingRow[]; taxIncluded: boolean; taxRate: number; unitCosts?: Record<string, string | null> }): { lines: WorkOrderInvoiceLine[]; totals: Totals } {
+  const { rows, taxIncluded, taxRate } = params;
+  const lines: WorkOrderInvoiceLine[] = rows.map((r, i) => {
+    let unitPrice = cents(r.unitPrice);
+    if (taxIncluded && r.taxable && taxRate > 0) unitPrice = r.quantity === 1 ? flatPriceTotals(r.unitPrice, true, taxRate, true).unitPrice : cents(r.unitPrice / (1 + taxRate / 100));
+    return {
+      type: r.kind === "labour" || r.kind === "service" ? "labor" : r.kind === "part" ? "part" : "custom",
+      description: r.description,
+      quantity: r.quantity.toFixed(2),
+      unitPrice: unitPrice.toFixed(2),
+      unitCost: r.workOrderPartId ? params.unitCosts?.[r.workOrderPartId] ?? null : null,
+      taxable: r.taxable,
+      lineTotal: cents(r.quantity * unitPrice).toFixed(2),
+      sortOrder: i,
+    };
+  });
+  if (!(taxIncluded && taxRate > 0)) {
+    return { lines, totals: computeTotals(lines.map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), taxable: l.taxable })), taxRate) };
+  }
+  // Tax included: the total is the typed figures added up; subtotal is the pre-tax lines; tax is the difference.
+  const gross = cents(rows.reduce((sum, r) => sum + r.quantity * r.unitPrice, 0));
+  const subtotal = cents(lines.reduce((sum, l) => sum + Number(l.lineTotal), 0));
+  return { lines, totals: { subtotal: subtotal.toFixed(2), taxAmount: cents(gross - subtotal).toFixed(2), total: gross.toFixed(2) } };
+}

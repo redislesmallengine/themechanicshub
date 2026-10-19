@@ -4,14 +4,14 @@ import { notFound, redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { STATUS_LABELS, STATUS_BADGE, DROP_OFF_METHOD_LABELS, type WorkOrderStatus } from "@/lib/work-orders";
+import { STATUS_LABELS, STATUS_BADGE, DROP_OFF_METHOD_LABELS, needsPricing, type WorkOrderStatus } from "@/lib/work-orders";
 import { invoiceChip } from "@/lib/invoices";
 import { ensureInvoiceShortCode } from "@/lib/invoice-short-link";
 import { partLineName } from "@/lib/parts";
+import { secondaryButton } from "@/lib/ui";
 import { WorkOrderDiagnosisForm } from "@/components/work-order-diagnosis-form";
 import { JobStepper } from "@/components/job-stepper";
 import { JobStageCard } from "@/components/job-stage-card";
-import { WorkOrderPartsPanel } from "@/components/work-order-parts-panel";
 import { GenerateInvoiceButton } from "@/components/generate-invoice-button";
 import { SentEmailsPanel } from "@/components/sent-emails-panel";
 import { DeleteWorkOrderButton } from "@/components/delete-work-order-button";
@@ -35,8 +35,8 @@ function Collapsible({ title, summary, defaultOpen = false, children }: { title:
   );
 }
 import { WorkOrderRepairNotesForm } from "@/components/work-order-repair-notes-form";
-import { WorkOrderStatusMover } from "@/components/work-order-status-mover";
-import { FinishJobPanel } from "@/components/finish-job-panel";
+import { RepairStepPanel } from "@/components/repair-step-panel";
+import { BillingScreen } from "@/components/billing-screen";
 import { InvoiceStatusPanel } from "@/components/invoice-status-panel";
 import { ClaimSteps } from "@/components/claim-steps";
 
@@ -77,13 +77,14 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   const status = workOrder.status as WorkOrderStatus;
   // The money side of this job, in plain words, so the job and its invoice are never read as contradicting each other.
   const linkedInvoice = workOrder.invoice ?? workOrder.combinedInto?.invoice ?? null;
-  const draftInvoiceId = linkedInvoice?.status === "draft" ? linkedInvoice.id : null;
   const shortCode = linkedInvoice ? await ensureInvoiceShortCode(linkedInvoice.id) : null;
   const shareUrl = linkedInvoice ? (shortCode ? `${process.env.BETTER_AUTH_URL}/i/${shortCode}` : `${process.env.BETTER_AUTH_URL}/invoice/${linkedInvoice.viewToken}`) : "";
   const moneyChip = linkedInvoice ? invoiceChip(linkedInvoice.status, linkedInvoice.dueDate, linkedInvoice.payerType) : null;
   const jobIsDone = status === "readyForPickup" || status === "closed";
-  // Not billed yet and ready for it: the Finish panel is this job's next step.
-  const showFinish = (status === "inRepair" || status === "readyForPickup") && !linkedInvoice;
+  // Repairing shows only the repair; once "Repair finished" is pressed (or the job is parked on Ready) and nothing is invoiced, the Billing screen takes over.
+  const repairFinished = !!workOrder.repairFinishedAt;
+  const repairing = status === "inRepair" && !repairFinished && !linkedInvoice;
+  const billing = needsPricing(status, repairFinished, !!linkedInvoice);
   const equipmentLabel = [workOrder.equipment.make, workOrder.equipment.model].filter(Boolean).join(" / ") || workOrder.equipment.equipmentType?.name || "Equipment";
   // The option shows whenever this work order was marked Shop
   // Pickup/Delivery at intake -- independent of whether Shop Profile has a
@@ -120,7 +121,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
   const diagnosisSub = [workOrder.assignedTo?.name, workOrder.labourHours ? `${workOrder.labourHours.toString()} hr` : null].filter(Boolean).join(" · ");
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="readable p-6 space-y-6">
       <div>
         <p className="text-xs mb-1">
           <Link href="/work-orders" className="font-semibold text-brand-600">
@@ -199,7 +200,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
       </div>
 
       <div className="rounded-xl px-5 py-4" style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)" }}>
-        <JobStepper workOrderId={workOrder.id} status={status} hasEstimate={!!workOrder.estimateAmount} hasInvoice={!!linkedInvoice} />
+        <JobStepper workOrderId={workOrder.id} status={status} hasEstimate={!!workOrder.estimateAmount} hasInvoice={!!linkedInvoice} repairFinished={repairFinished} />
       </div>
 
       {stageCardShows && (
@@ -236,9 +237,16 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
                 </span>
               )}
             </h2>
-            <Link href={`/invoices/${linkedInvoice.id}`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-brand-600" style={{ background: "var(--bg-surface)", border: "1px solid var(--color-brand-600)" }}>
-              Open the full invoice →
-            </Link>
+            <div className="flex items-center gap-2 flex-wrap">
+              {linkedInvoice.status === "draft" && (
+                <a href={`/invoice/${linkedInvoice.viewToken}`} target="_blank" rel="noopener noreferrer" className={secondaryButton}>
+                  Preview invoice (what the customer sees)
+                </a>
+              )}
+              <Link href={`/invoices/${linkedInvoice.id}`} className={secondaryButton}>
+                Open the full invoice →
+              </Link>
+            </div>
           </div>
           {linkedInvoice.payerType === "warranty" && (
             <div className="mb-3">
@@ -269,7 +277,7 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
               { label: "Diagnosis", sub: diagnosisSub, body: diagnosisForm },
               { label: "Told the customer", sub: "estimate and go-ahead", body: <p className="text-sm" style={{ color: "var(--text-primary)" }}>{toldCustomer}</p> },
               // While the Finish panel is open it is the one place to write what was done, so this row waits for it.
-              ...(showFinish
+              ...(repairing || billing
                 ? []
                 : [{ label: "Work performed", sub: "how it was fixed", body: <WorkOrderRepairNotesForm workOrderId={workOrder.id} initialNotes={workOrder.repairNotes ?? workOrder.diagnosisNotes ?? ""} prefilledFromDiagnosis={!workOrder.repairNotes && !!workOrder.diagnosisNotes} /> }]),
             ].map((row) => (
@@ -291,54 +299,47 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
         </div>
       )}
 
-      {/* Not billed yet: the one panel that finishes the job, bills it and (if wanted) takes payment. */}
-      {showFinish && (status === "inRepair" || status === "readyForPickup") && (
+      {/* Repairing: only the repair -- what was done, the parts used, and one big button to move on to Billing. */}
+      {repairing && (
         <div id="finish" className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "2px solid var(--color-brand-600)" }}>
-          <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-            {status === "inRepair" ? "Repair in progress" : "Bill this job"}
-          </h2>
-          <p className="text-[11px] mt-0.5 mb-4" style={{ color: "var(--text-muted)" }}>
-            {status === "inRepair"
-              ? "When the repair is finished, say what was done. The price and payment come next. Parts used are added in Parts Needed below."
-              : "The repair is done. Set the price, then say whether the customer paid or you will bill them."}
-          </p>
-          <FinishJobPanel
+          <h2 className="text-xl font-extrabold mb-4">Repairing</h2>
+          <RepairStepPanel
             workOrderId={workOrder.id}
-            status={status}
             initialRepairNotes={workOrder.repairNotes ?? workOrder.diagnosisNotes ?? ""}
             notesPrefilledFromDiagnosis={!workOrder.repairNotes && !!workOrder.diagnosisNotes}
-            initialLabourHours={workOrder.labourHours?.toString() ?? ""}
-            parts={workOrder.parts.map((p) => ({ name: partLineName(p.name, p.part?.sku), quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
+            parts={workOrder.parts.map((p) => ({ id: p.id, name: partLineName(p.name, p.part?.sku), quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
+            availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, sku: p.sku, barcode: p.barcode, quantityOnHand: p.quantityOnHand }))}
+          />
+        </div>
+      )}
+
+      {/* Billing: the repair is done and nothing is invoiced yet. Big rows, a preview of the customer's invoice, then create it. */}
+      {billing && (status === "inRepair" || status === "readyForPickup") && (
+        <div id="finish" className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "2px solid var(--color-brand-600)" }}>
+          <h2 className="text-xl font-extrabold mb-4">Billing</h2>
+          <BillingScreen
+            workOrderId={workOrder.id}
+            status={status}
+            initialNotes={workOrder.repairNotes ?? workOrder.diagnosisNotes ?? ""}
+            parts={workOrder.parts.map((p) => ({ id: p.id, name: partLineName(p.name, p.part?.sku), quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
+            availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, sku: p.sku, barcode: p.barcode, quantityOnHand: p.quantityOnHand }))}
+            labourHours={workOrder.labourHours?.toString() ?? ""}
             labourRate={shopProfile?.labourRate ? Number(shopProfile.labourRate) : null}
             services={services.map((sv) => ({ id: sv.id, name: sv.name, price: Number(sv.price), taxable: sv.taxable, description: sv.description }))}
             diagnosticFee={shopProfile?.diagnosticFee ? Number(shopProfile.diagnosticFee) : null}
             showDeliveryFee={showDeliveryFee}
             deliveryFeeDefault={deliveryFeeDefault}
             customerEmail={workOrder.customer.email}
+            customerName={workOrder.customer.name}
+            equipmentLabel={equipmentLabel}
+            shopName={organization?.name ?? "Your shop"}
+            hstNumber={shopProfile?.hstNumber ?? null}
             warrantyProviders={warrantyProviders}
             taxRate={shopProfile?.taxRate ? Number(shopProfile.taxRate) : 0}
             taxLabel={shopProfile?.taxLabel ?? "Tax"}
           />
-          {status === "readyForPickup" && (
-            <p className="text-[10px] mt-3" style={{ color: "var(--text-muted)" }}>
-              Billing this customer for more than one machine at once?{" "}
-              <Link href="/invoices/new" className="font-semibold text-brand-600">
-                Combine work orders into one invoice
-              </Link>{" "}
-              instead.
-            </p>
-          )}
         </div>
       )}
-
-      {/* The finer details sit folded below, so the screen shows only the current step. */}
-      <Collapsible title="Parts Needed" summary={workOrder.parts.length === 0 ? "none yet" : `${workOrder.parts.length} used`}>
-        <WorkOrderPartsPanel
-          workOrderId={workOrder.id}
-          parts={workOrder.parts.map((p) => ({ id: p.id, name: partLineName(p.name, p.part?.sku), quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
-          availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, sku: p.sku, barcode: p.barcode, quantityOnHand: p.quantityOnHand }))}
-        />
-      </Collapsible>
 
       {/* Closed with no invoice (an older job): billing is still possible from here. */}
       {status === "closed" && !linkedInvoice && (
@@ -352,27 +353,6 @@ export default async function WorkOrderDetailPage({ params }: { params: Promise<
 
       {/* On the stages with no Job summary (waiting on the customer, declined) the diagnosis is edited here. Elsewhere it is edited in the summary. */}
       {!earlyStage && !showStory && <Collapsible title="Diagnosis" summary={diagnosisSub || undefined}>{diagnosisForm}</Collapsible>}
-
-      <Collapsible title="Move to another stage" summary="skip ahead or go back">
-        <div className="space-y-3">
-          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-            The steps above and the big button are the normal way. This jumps straight to any stage; the Undo bar appears after.
-          </p>
-          <WorkOrderStatusMover workOrderId={workOrder.id} status={status} hasEstimate={!!workOrder.estimateAmount} hasInvoice={!!linkedInvoice} draftInvoiceId={draftInvoiceId} />
-          {workOrder.decidedByName && (
-            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              {status === "declined" ? "Declined" : "Approved"} by <b style={{ color: "var(--text-secondary)" }}>{workOrder.decidedByName}</b> via{" "}
-              {workOrder.approvalMethod === "phone" ? "phone" : workOrder.approvalMethod === "in-person" ? "drop-off, no formal estimate" : "the online link"} on {workOrder.decidedAt?.toLocaleString()}
-              {workOrder.notToExceedAmount && (
-                <>
-                  {" "}
-                  — not to exceed <b style={{ color: "var(--text-secondary)" }}>${workOrder.notToExceedAmount.toString()}</b>
-                </>
-              )}
-            </p>
-          )}
-        </div>
-      </Collapsible>
 
       <Collapsible title="Emails Sent" summary={sentEmails.length === 0 ? "nothing yet" : `${sentEmails.length} sent`}>
         <SentEmailsPanel

@@ -11,7 +11,7 @@ import { claimInvoiceNumber, generateViewToken, computeTotals, classifyInvoiceTy
 import { applyStockAdjustment } from "@/lib/inventory";
 import { unitPriceFor } from "@/lib/pricing";
 import { partLineName } from "@/lib/parts";
-import { readFeeOptions, readBilling, readExtraCharges, buildWorkOrderInvoiceLines, buildInvoiceFromBilling } from "@/lib/invoice-lines";
+import { readFeeOptions, buildWorkOrderInvoiceLines, readBillingRows, buildInvoiceFromRows } from "@/lib/invoice-lines";
 import { renderInvoicePdfFromRecord } from "@/lib/invoice-pdf";
 
 async function requireCanManageInvoices(action: "create" | "update" | "void" | "delete" = "update") {
@@ -168,7 +168,7 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
 }
 
 /**
- * "Finish & collect" -- the one panel that takes a job from In Repair (or Ready for pickup) to billed, and
+ * The Billing screen's "Create invoice" -- takes a job from In Repair (or Ready for pickup) to billed, and
  * optionally paid and picked up, in a single transaction so a half-finished job can't be left behind:
  *
  *   paying now  -> the invoice is created already paid
@@ -219,32 +219,28 @@ export async function finishJob(workOrderId: string, formData: FormData) {
     claimNumber = String(formData.get("claimNumber") ?? "").trim() || null;
   }
 
-  const labourRaw = String(formData.get("labourHours") ?? "").trim();
-  let labourHours = workOrder.labourHours;
-  if (labourRaw) {
-    const num = Number(labourRaw);
-    if (!Number.isFinite(num) || num < 0) return { error: "Labour hours needs to be a positive number." };
-    labourHours = num.toFixed(2) as unknown as typeof workOrder.labourHours;
-  }
-  const repairNotes = String(formData.get("repairNotes") ?? "").trim() || null;
-
-  const fees = readFeeOptions(formData);
-  if ("error" in fees) return { error: fees.error };
-
+  // The price rows from the Billing screen, and the one tax rule for the prices typed on them.
   const shopProfile = await prisma.shopProfile.findUnique({ where: { organizationId } });
-  const billing = readBilling(formData, (repairNotes ?? "").split("\n")[0].slice(0, 80));
-  if ("error" in billing) return { error: billing.error };
-  const extras = readExtraCharges(formData);
-  if ("error" in extras) return { error: extras.error };
-  const { lines, totals } = buildInvoiceFromBilling({ billing, labourHours, parts: workOrder.parts, shopProfile, fees, extras: extras.items });
-  if (lines.length === 0) return { error: "There is nothing to bill yet. Type the amount charged, or add labour hours or parts." };
+  const read = readBillingRows(formData);
+  if ("error" in read) return { error: read.error };
+  if (read.rows.length === 0) return { error: "There is nothing to bill yet. Add labour, a service, a part or another charge." };
+  const jobPartIds = new Set(workOrder.parts.map((p) => p.id));
+  if (read.rows.some((r) => r.workOrderPartId && !jobPartIds.has(r.workOrderPartId))) return { error: "A part on this bill was taken off the job. Reload the page and check the rows." };
+  const { lines, totals } = buildInvoiceFromRows({
+    rows: read.rows,
+    taxIncluded: formData.get("taxMode") === "included",
+    taxRate: Number(shopProfile?.taxRate ?? 0),
+    unitCosts: Object.fromEntries(workOrder.parts.map((p) => [p.id, p.unitCostPrice?.toString() ?? null])),
+  });
+  const invoiceNotes = String(formData.get("invoiceNotes") ?? "").trim() || null;
+  const labourTotal = read.rows.filter((r) => r.kind === "labour").reduce((sum, r) => sum + r.quantity, 0);
+  const labourHours = labourTotal > 0 ? (labourTotal.toFixed(2) as unknown as typeof workOrder.labourHours) : workOrder.labourHours;
 
   const now = new Date();
   const invoice = await prisma.$transaction(async (tx) => {
     await tx.workOrder.update({
       where: { id: workOrderId },
       data: {
-        repairNotes,
         labourHours,
         status: pickedUp ? "closed" : "readyForPickup",
         readyForPickupAt: workOrder.readyForPickupAt ?? now,
@@ -263,7 +259,7 @@ export async function finishJob(workOrderId: string, formData: FormData) {
         viewToken: generateViewToken(),
         ...(payNow ? { status: "paid", paidAt: now, paymentMethod, paymentReference } : {}),
         ...(warranty ? { payerType: "warranty", warrantyProviderId, claimNumber } : {}),
-        notes: repairNotes,
+        notes: invoiceNotes,
         ...totals,
         lineItems: { create: lines },
       },

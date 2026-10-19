@@ -13,7 +13,7 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 24 },
   logo: { width: 56, height: 56, objectFit: "contain", marginBottom: 6 },
   shopName: { fontSize: 14, fontWeight: 700 },
-  muted: { color: "#475569", fontSize: 9 },
+  muted: { color: "#1E293B", fontSize: 9 },
   invoiceTitle: { fontSize: 20, fontWeight: 700, textAlign: "right", color: "#0F52BA" },
   metaRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 4 },
   section: { marginBottom: 20 },
@@ -39,7 +39,7 @@ const styles = StyleSheet.create({
   claimBanner: { marginBottom: 16, padding: 8, borderRadius: 4, backgroundColor: "#F0F9FF" },
   claimBannerText: { fontSize: 9, fontWeight: 700, color: "#075985" },
   warrantyTag: { fontSize: 8, fontWeight: 700, color: "#0284C7", textAlign: "right", marginTop: 4 },
-  notes: { marginTop: 20, fontSize: 9, color: "#475569" },
+  notes: { marginTop: 20, fontSize: 10, color: "#0F172A", border: "1.5px solid #0F172A", borderRadius: 4, padding: 8 },
   footer: { marginTop: 28, paddingTop: 12, borderTop: "1px solid #E2E8F0" },
   footerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   footerLink: { fontSize: 9, color: "#0F52BA", textDecoration: "none" },
@@ -235,8 +235,6 @@ function InvoiceDocument({ data }: { data: InvoicePdfData }) {
           </View>
         )}
 
-        {isPaid && <Text style={[styles.muted, { marginTop: 16, textAlign: "center" }]}>Thank you for your business.</Text>}
-
         {data.notes && (
           <View style={styles.notes}>
             <Text style={styles.sectionLabel}>Notes</Text>
@@ -244,27 +242,26 @@ function InvoiceDocument({ data }: { data: InvoicePdfData }) {
           </View>
         )}
 
-        {(data.shop.facebookUrl || data.shop.googleReviewUrl || data.shop.hstNumber) && (
-          <View style={styles.footer}>
-            {(data.shop.facebookUrl || data.shop.googleReviewUrl) && (
-              <View style={styles.footerRow}>
-                {data.shop.facebookUrl ? (
-                  <Link src={data.shop.facebookUrl} style={styles.footerLink}>
-                    Find us on Facebook
-                  </Link>
-                ) : (
-                  <Text />
-                )}
-                {data.shop.googleReviewUrl && (
-                  <Link src={data.shop.googleReviewUrl} style={styles.reviewButton}>
-                    Leave us a Google Review
-                  </Link>
-                )}
-              </View>
-            )}
-            {data.shop.hstNumber && <Text style={styles.taxNumber}>HST/GST #{data.shop.hstNumber}</Text>}
-          </View>
-        )}
+        <View style={styles.footer}>
+          {(data.shop.facebookUrl || data.shop.googleReviewUrl) && (
+            <View style={styles.footerRow}>
+              {data.shop.facebookUrl ? (
+                <Link src={data.shop.facebookUrl} style={styles.footerLink}>
+                  Find us on Facebook
+                </Link>
+              ) : (
+                <Text />
+              )}
+              {data.shop.googleReviewUrl && (
+                <Link src={data.shop.googleReviewUrl} style={styles.reviewButton}>
+                  Leave us a Google Review
+                </Link>
+              )}
+            </View>
+          )}
+          <Text style={[styles.taxNumber, { fontSize: 11 }]}>Thank you for your business</Text>
+          {data.shop.hstNumber && <Text style={[styles.taxNumber, { marginTop: 2 }]}>HST/GST #{data.shop.hstNumber}</Text>}
+        </View>
       </Page>
     </Document>
   );
