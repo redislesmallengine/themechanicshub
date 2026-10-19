@@ -242,21 +242,21 @@ body {
 .readable {
   --text-secondary: var(--text-primary);
   --text-muted: var(--text-primary);
-  font-size: 1.125rem;
-  line-height: 1.55;
+  font-size: 1rem;
+  line-height: 1.5;
 }
 .readable .text-\[10px\],
 .readable .text-\[11px\],
-.readable .text-xs { font-size: 1rem; line-height: 1.5; }
-.readable .text-sm { font-size: 1.125rem; line-height: 1.55; }
-.readable .text-base { font-size: 1.25rem; line-height: 1.5; }
-.readable .text-lg { font-size: 1.375rem; }
-.readable .text-xl { font-size: 1.5rem; }
-.readable .text-2xl { font-size: 1.75rem; line-height: 1.25; }
+.readable .text-xs { font-size: 0.875rem; line-height: 1.45; }
+.readable .text-sm { font-size: 1rem; line-height: 1.5; }
+.readable .text-base { font-size: 1.0625rem; line-height: 1.5; }
+.readable .text-lg { font-size: 1.1875rem; }
+.readable .text-xl { font-size: 1.3125rem; }
+.readable .text-2xl { font-size: 1.5rem; line-height: 1.3; }
 .readable input:not([type="checkbox"]):not([type="radio"]),
 .readable select,
 .readable textarea {
-  font-size: 1.1875rem;
+  font-size: 1rem;
   background: var(--bg-surface) !important;
   border: 1.5px solid var(--text-primary) !important;
   color: var(--text-primary) !important;
