@@ -137,11 +137,11 @@ export default async function WorkOrderDetailPage({ params, searchParams }: { pa
             <div className="flex items-center gap-2 flex-wrap">
               {linkedInvoice.status === "draft" && (
                 <a href={`/invoice/${linkedInvoice.viewToken}`} target="_blank" rel="noopener noreferrer" className={secondaryButton}>
-                  Preview invoice (what the customer sees)
+                  Preview Invoice
                 </a>
               )}
               <Link href={`/invoices/${linkedInvoice.id}`} className={secondaryButton}>
-                Open the full invoice →
+                Edit Invoice
               </Link>
             </div>
           </div>

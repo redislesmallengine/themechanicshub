@@ -164,7 +164,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-slate-50"
               style={{ background: "var(--bg-surface)", border: "1px solid var(--border-strong)", color: "var(--text-secondary)" }}
             >
-              View Invoice
+              Preview Invoice
             </a>
             <SendWhatsAppButton
               initialPhone={invoice.customer?.phone ?? null}

@@ -487,7 +487,7 @@ export function InvoiceStatusPanel({
         {status === "paid" && awaitingPickupCount > 0 && <PickupAction invoiceId={invoiceId} count={awaitingPickupCount} />}
         {status === "draft" && (
           <button type="button" onClick={() => setPaying((v) => !v)} className={link}>
-            The customer already paid
+            No Invoice (Paid/Close)
           </button>
         )}
         {(status === "sent" || status === "viewed" || (status === "paid" && !receiptInHeader)) && (
@@ -495,7 +495,7 @@ export function InvoiceStatusPanel({
             {status === "paid" ? "Send a receipt" : "Send it again"}
           </button>
         )}
-        {open && closeableWorkOrderId && awaitingPickupCount > 0 && <CloseJobAction workOrderId={closeableWorkOrderId} draftInvoiceId={status === "draft" ? invoiceId : null} label="The customer picked it up (invoice stays open)" variant="link" />}
+        {open && closeableWorkOrderId && awaitingPickupCount > 0 && <CloseJobAction workOrderId={closeableWorkOrderId} draftInvoiceId={status === "draft" ? invoiceId : null} label="Unpaid / Delivered" variant="link" />}
       </div>
 
       {chooser && status !== "void" && <SendChooser invoiceId={invoiceId} status={status} isWarranty={isWarranty} hasRecipient={hasRecipient} hasRecipientEmail={hasRecipientEmail} send={send} />}
