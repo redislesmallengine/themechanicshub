@@ -31,8 +31,8 @@ export function JobStepper({
     <div>
       <ol className="relative grid grid-cols-7 gap-1" aria-label="Where this job is">
         {/* the track behind the dots, filled up to the current step */}
-        <span aria-hidden className="absolute top-[13px] h-0.5 rounded" style={{ left: "calc(100% / 14)", right: "calc(100% / 14)", background: "var(--border-strong)" }} />
-        <span aria-hidden className="absolute top-[13px] h-0.5 rounded" style={{ left: "calc(100% / 14)", width: `calc((100% - 100% / 7) * ${current / (STEP_ROW.length - 1)})`, background: "var(--color-success-solid)" }} />
+        <span aria-hidden className="absolute top-[15px] sm:top-[13px] h-0.5 rounded" style={{ left: "calc(100% / 14)", right: "calc(100% / 14)", background: "var(--border-strong)" }} />
+        <span aria-hidden className="absolute top-[15px] sm:top-[13px] h-0.5 rounded" style={{ left: "calc(100% / 14)", width: `calc((100% - 100% / 7) * ${current / (STEP_ROW.length - 1)})`, background: "var(--color-success-solid)" }} />
         {STEP_ROW.map((step, i) => {
           const done = i < current;
           const now = i === current;
@@ -41,7 +41,7 @@ export function JobStepper({
           const label = now && declined ? STATUS_LABELS.declined : step.label;
           const dot = (
             <span
-              className="relative z-10 grid place-items-center w-7 h-7 rounded-full text-xs font-extrabold"
+              className="relative z-10 grid place-items-center w-8 h-8 sm:w-7 sm:h-7 rounded-full text-xs font-extrabold"
               style={
                 done
                   ? { background: "var(--color-success-solid)", color: "#fff", border: "2px solid var(--color-success-solid)", ...(isViewing ? { boxShadow: "0 0 0 3px var(--bg-surface), 0 0 0 5px var(--text-primary)" } : {}) }
@@ -55,7 +55,7 @@ export function JobStepper({
           );
           const text = (
             <span
-              className={`text-[11px] sm:text-xs font-bold text-center leading-tight${clickable ? " underline decoration-dotted underline-offset-4" : ""}`}
+              className={`hidden sm:block text-[11px] sm:text-xs font-bold text-center leading-tight${clickable ? " underline decoration-dotted underline-offset-4" : ""}`}
               style={{ color: done ? "var(--color-success-solid)" : now ? (declined ? "var(--color-error-solid)" : "var(--color-brand-600)") : "var(--text-muted)" }}
             >
               {label}
@@ -64,7 +64,7 @@ export function JobStepper({
           return (
             <li key={step.target} className="flex" aria-current={now ? "step" : undefined}>
               {clickable ? (
-                <Link href={now ? basePath : `${basePath}?view=${step.target}`} scroll={false} title={now ? `Back to ${label}` : `Look at ${label}`} className="job-step-link w-full flex flex-col items-center gap-1.5 rounded-lg cursor-pointer">
+                <Link href={now ? basePath : `${basePath}?view=${step.target}`} scroll={false} title={now ? `Back to ${label}` : `Look at ${label}`} aria-label={now ? `Back to ${label}` : `Look at ${label}`} className="job-step-link w-full flex flex-col items-center gap-1.5 rounded-lg cursor-pointer">
                   {dot}
                   {text}
                 </Link>
@@ -78,7 +78,12 @@ export function JobStepper({
           );
         })}
       </ol>
-      <p className="text-[11px] mt-2">
+      {/* Phones: no room for names under 7 dots, so one clear line says where the job is (or what is being looked at). */}
+      <div className="sm:hidden mt-3 text-center">
+        <p className="text-lg font-extrabold">{viewing ? `Looking at: ${viewingLabel}` : `Step ${current + 1} of ${STEP_ROW.length}: ${currentLabel}`}</p>
+        <p className="text-sm">{viewing ? `The job is still on ${currentLabel}. Tap dot ${current + 1} to go back.` : viewable.size > 0 ? "Tap a green dot to look at that step." : "The blue dot is where this job is now."}</p>
+      </div>
+      <p className="hidden sm:block text-[11px] mt-2">
         {viewing
           ? `You are looking at ${viewingLabel}. The job is still on ${currentLabel}. Click ${currentLabel} to go back to it.`
           : viewable.size > 0
