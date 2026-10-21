@@ -248,8 +248,8 @@ export function BillingScreen({
         setEmailProblem(result.emailError);
         return;
       }
-      // Straight to the invoice, where sending, payment and the pickup are one click each.
-      if (result?.success) router.push(`/invoices/${result.invoiceId}?created=1`);
+      // Straight to the invoice, where sending, payment and the pickup are one click each. receipt=1 makes it say the receipt went out.
+      if (result?.success) router.push(`/invoices/${result.invoiceId}?created=1${result.receiptSentTo ? "&receipt=1" : ""}`);
       else router.refresh();
     });
   }

@@ -273,12 +273,14 @@ export async function finishJob(workOrderId: string, formData: FormData) {
 
   // Optional receipt. The job is already billed and paid by now, so a failed send is reported, not rolled back.
   let emailError: string | null = null;
+  let receiptSentTo: string | null = null;
   if (payNow && formData.get("emailReceipt") === "on" && workOrder.customer.email) {
     const sent = await sendInvoice(invoice.id);
     if (sent?.error) emailError = sent.error;
+    else receiptSentTo = sent?.sentTo ?? null;
   }
 
-  return { success: true as const, invoiceId: invoice.id, emailError };
+  return { success: true as const, invoiceId: invoice.id, emailError, receiptSentTo };
 }
 
 /** Work orders for this customer that are ready to fold into a combined invoice — same eligibility rule as generateInvoiceFromWorkOrder, minus the "already has an invoice" case (checked here via both the direct link and the combined-invoice join table). Used by the New Invoice page to build its checklist. */
@@ -850,16 +852,21 @@ export async function sendInvoice(invoiceId: string) {
   const pdfBuffer = await renderInvoicePdfFromRecord(invoice);
 
   const { subject, html } = await buildInvoiceEmail(organizationId, invoice);
-  await sendMail({
-    to: recipient.email,
-    subject,
-    html,
-    organizationId,
-    attachments: [{ filename: `${invoice.invoiceNumber}.pdf`, content: pdfBuffer }],
-    relatedType: "invoice",
-    relatedId: invoiceId,
-    replyTo: invoice.organization.shopProfile?.invoiceReplyToEmail ?? undefined,
-  });
+  try {
+    await sendMail({
+      to: recipient.email,
+      subject,
+      html,
+      organizationId,
+      attachments: [{ filename: `${invoice.invoiceNumber}.pdf`, content: pdfBuffer }],
+      relatedType: "invoice",
+      relatedId: invoiceId,
+      replyTo: invoice.organization.shopProfile?.invoiceReplyToEmail ?? undefined,
+    });
+  } catch (err) {
+    // The failed attempt is already kept in Emails Sent; tell the person plainly instead of throwing.
+    return { error: `The email to ${recipient.email} didn't go through (${err instanceof Error ? err.message : "unknown error"}). Nothing was sent. Try again, or use WhatsApp or the PDF.` };
+  }
 
   if (invoice.status === "draft") {
     await prisma.invoice.update({ where: { id: invoiceId }, data: { status: "sent", sentAt: new Date() } });
@@ -867,7 +874,7 @@ export async function sendInvoice(invoiceId: string) {
 
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
-  return { success: true };
+  return { success: true, sentTo: recipient.email };
 }
 
 export async function markInvoicePaid(invoiceId: string, formData: FormData) {
@@ -896,11 +903,13 @@ export async function markInvoicePaid(invoiceId: string, formData: FormData) {
 
   // "Email the customer a receipt": the invoice is paid by now, so a failed send is reported, not rolled back.
   let emailError: string | null = null;
+  let receiptSentTo: string | null = null;
   if (formData.get("emailReceipt") === "on") {
     const sent = await sendInvoice(invoiceId);
     if (sent?.error) emailError = sent.error;
+    else receiptSentTo = sent?.sentTo ?? null;
   }
-  return { success: true as const, emailError };
+  return { success: true as const, emailError, receiptSentTo };
 }
 
 /**

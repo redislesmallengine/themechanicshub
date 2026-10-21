@@ -17,9 +17,9 @@ import { SendWhatsAppButton } from "@/components/send-whatsapp-button";
 import { SendReceiptButton } from "@/components/send-receipt-button";
 import { SentEmailsPanel } from "@/components/sent-emails-panel";
 
-export default async function InvoiceDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ created?: string }> }) {
+export default async function InvoiceDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ created?: string; receipt?: string }> }) {
   const { id } = await params;
-  const { created } = await searchParams;
+  const { created, receipt } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   if (!session?.session.activeOrganizationId) redirect("/sign-in");
@@ -94,6 +94,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
         {created === "1" && (
           <div className="rounded-lg px-4 py-2.5 mb-3 text-xs font-semibold" style={{ background: "var(--color-success-subtle)", color: "var(--color-success-text)", border: "1px solid var(--color-success-border)" }}>
             Invoice {invoice.invoiceNumber} created.{status === "draft" ? " Next: send it to the customer, or record the payment." : ""}
+            {receipt === "1" && invoice.customer?.email ? ` Receipt emailed to ${invoice.customer.email}. A copy is under Emails Sent below.` : ""}
           </div>
         )}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

@@ -66,7 +66,16 @@ export default async function WorkOrderDetailPage({ params, searchParams }: { pa
     auth.api.listMembers({ headers: reqHeaders }),
     prisma.part.findMany({ where: { organizationId, quantityOnHand: { gt: 0 } }, orderBy: { name: "asc" } }),
     prisma.shopProfile.findUnique({ where: { organizationId } }),
-    prisma.sentEmail.findMany({ where: { relatedType: "estimate", relatedId: workOrder.id }, orderBy: { createdAt: "desc" } }),
+    prisma.sentEmail.findMany({
+      where: {
+        OR: [
+          { relatedType: "estimate", relatedId: workOrder.id },
+          // the invoice and receipt emails for this job too, so everything sent to the customer is in one list
+          ...((workOrder.invoice?.id ?? workOrder.combinedInto?.invoice?.id) ? [{ relatedType: "invoice", relatedId: (workOrder.invoice?.id ?? workOrder.combinedInto?.invoice?.id) as string }] : []),
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+    }),
     auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { workOrder: ["delete"] } } }),
     prisma.member.findFirst({ where: { organizationId, userId: session.user.id } }),
     prisma.service.findMany({ where: { organizationId, active: true }, orderBy: { name: "asc" } }),
@@ -423,7 +432,7 @@ export default async function WorkOrderDetailPage({ params, searchParams }: { pa
         </>
       )}
 
-      <Collapsible title="Emails Sent" summary={sentEmails.length === 0 ? "nothing yet" : `${sentEmails.length} sent`}>
+      <Collapsible title="Emails Sent" defaultOpen={sentEmails.length > 0} summary={sentEmails.length === 0 ? "nothing yet" : `${sentEmails.length} sent`}>
         <SentEmailsPanel
           emails={sentEmails.map((e) => ({
             id: e.id,

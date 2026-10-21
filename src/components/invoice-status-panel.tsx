@@ -136,6 +136,7 @@ function MarkPaidForm({ invoiceId, awaitingPickupCount, recipientEmail }: { invo
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [emailProblem, setEmailProblem] = useState<string | null>(null);
+  const [receiptTo, setReceiptTo] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [method, setMethod] = useState("");
   const [reference, setReference] = useState("");
@@ -166,8 +167,17 @@ function MarkPaidForm({ invoiceId, awaitingPickupCount, recipientEmail }: { invo
         setEmailProblem(result.emailError);
         return;
       }
+      // The receipt was emailed: say so, rather than the card just changing.
+      if (result && "receiptSentTo" in result && result.receiptSentTo) {
+        setReceiptTo(result.receiptSentTo);
+        return;
+      }
       router.refresh();
     });
+  }
+
+  if (receiptTo) {
+    return <EmailSentNotice title="Paid, and the receipt was sent" to={receiptTo} detail="A copy is under Emails Sent at the bottom of the page." onClose={() => router.refresh()} />;
   }
 
   if (emailProblem) {
