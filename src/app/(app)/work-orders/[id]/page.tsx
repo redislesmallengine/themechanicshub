@@ -413,6 +413,7 @@ export default async function WorkOrderDetailPage({ params, searchParams }: { pa
             deliveryFeeDefault={deliveryFeeDefault}
             customerEmail={workOrder.customer.email}
             customerName={workOrder.customer.name}
+            customerPhone={workOrder.customer.phone}
             equipmentLabel={equipmentLabel}
             shopName={organization?.name ?? "Your shop"}
             hstNumber={shopProfile?.hstNumber ?? null}

@@ -134,6 +134,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
                   {invoice.warrantyProvider.billingAddress && <p style={{ color: "var(--text-secondary)" }}>{invoice.warrantyProvider.billingAddress}</p>}
                   <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
                     Equipment owner: {invoice.customer?.name ?? "—"}
+                    {invoice.customer?.phone ? ` · ${invoice.customer.phone}` : ""}
                   </p>
                 </>
               ) : invoice.customer ? (
@@ -142,6 +143,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
                     {invoice.customer.name}
                   </p>
                   {invoice.customer.address && <p style={{ color: "var(--text-secondary)" }}>{invoice.customer.address}</p>}
+                  {invoice.customer.phone && <p style={{ color: "var(--text-secondary)" }}>{invoice.customer.phone}</p>}
                 </>
               ) : (
                 <p style={{ color: "var(--text-secondary)" }}>No Customer Info</p>

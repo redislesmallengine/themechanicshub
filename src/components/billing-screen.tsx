@@ -82,6 +82,7 @@ export function BillingScreen({
   deliveryFeeDefault,
   customerEmail,
   customerName,
+  customerPhone,
   equipmentLabel,
   shopName,
   hstNumber,
@@ -102,6 +103,7 @@ export function BillingScreen({
   deliveryFeeDefault: string;
   customerEmail: string | null;
   customerName: string;
+  customerPhone: string | null;
   equipmentLabel: string;
   shopName: string;
   hstNumber: string | null;
@@ -472,6 +474,7 @@ export function BillingScreen({
               </div>
               <div className="text-base text-right">
                 <div className="font-bold">{customerName}</div>
+                {customerPhone && <div>{customerPhone}</div>}
                 <div>{equipmentLabel}</div>
               </div>
             </div>
