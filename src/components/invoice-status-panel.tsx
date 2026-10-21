@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { sendInvoice, previewInvoiceEmail, markInvoicePaid, voidInvoice, closeInvoiceWorkOrders, saveCustomerEmailForInvoice } from "@/app/(app)/invoices/actions";
 import { PAYMENT_METHODS } from "@/lib/invoices";
@@ -360,6 +360,40 @@ function AddEmailForm({ invoiceId }: { invoiceId: string }) {
   );
 }
 
+/** The most recent email about this invoice, for the line "Receipt emailed to ... on ...". */
+export interface LastEmail {
+  to: string;
+  /** ISO time. Shown in the viewer's own time zone once the page has loaded. */
+  at: string;
+  success: boolean;
+}
+
+const noopSubscribe = () => () => {};
+/** "Oct 21, 1:59 PM" in the viewer's own time zone; empty on the server so the page never disagrees with itself. */
+function useLocalWhen(iso: string): string {
+  return useSyncExternalStore(
+    noopSubscribe,
+    () => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+    () => ""
+  );
+}
+
+/** One line on the invoice card saying what was last emailed and when, so nobody has to guess whether it went out. */
+function LastEmailLine({ email, isPaid }: { email: LastEmail; isPaid: boolean }) {
+  const when = useLocalWhen(email.at);
+  return email.success ? (
+    <p className="text-sm font-bold" style={{ color: "var(--color-success-solid)" }}>
+      ✓ {isPaid ? "Receipt" : "Invoice"} emailed to {email.to}
+      {when ? ` on ${when}` : ""}.
+    </p>
+  ) : (
+    <p className="text-sm font-bold" style={{ color: "var(--color-warning-solid)" }}>
+      The last email to {email.to}
+      {when ? ` (${when})` : ""} didn&apos;t go through. Send it again.
+    </p>
+  );
+}
+
 export interface InvoiceSendInfo {
   customerName: string | null;
   customerPhone: string | null;
@@ -439,6 +473,7 @@ export function InvoiceStatusPanel({
   send,
   closeableWorkOrderId = null,
   receiptInHeader = false,
+  lastEmail = null,
 }: {
   invoiceId: string;
   status: string;
@@ -453,6 +488,8 @@ export function InvoiceStatusPanel({
   closeableWorkOrderId?: string | null;
   /** The page already has a Send receipt button in its header (the invoice page), so a paid invoice does not offer one here. */
   receiptInHeader?: boolean;
+  /** The last email sent about this invoice, if any. */
+  lastEmail?: LastEmail | null;
 }) {
   const [chooser, setChooser] = useState(false);
   const [paying, setPaying] = useState(false);
@@ -477,6 +514,7 @@ export function InvoiceStatusPanel({
           Paid.
         </p>
       )}
+      {lastEmail && status !== "void" && <LastEmailLine email={lastEmail} isPaid={status === "paid"} />}
       {status === "void" && (
         <p className="text-xs font-semibold" style={{ color: "var(--color-error-solid)" }}>
           Voided.
@@ -502,7 +540,7 @@ export function InvoiceStatusPanel({
         )}
         {(status === "sent" || status === "viewed" || (status === "paid" && !receiptInHeader)) && (
           <button type="button" onClick={() => setChooser((v) => !v)} className={link}>
-            {status === "paid" ? "Send a receipt" : "Send it again"}
+            {status === "paid" ? (lastEmail?.success ? "Send the receipt again" : "Send a receipt") : "Send it again"}
           </button>
         )}
         {open && closeableWorkOrderId && awaitingPickupCount > 0 && <CloseJobAction workOrderId={closeableWorkOrderId} draftInvoiceId={status === "draft" ? invoiceId : null} label="Unpaid / Delivered" variant="link" />}

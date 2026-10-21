@@ -166,6 +166,10 @@ export default async function WorkOrderDetailPage({ params, searchParams }: { pa
             hasRecipient={linkedInvoice.payerType === "warranty" ? !!linkedInvoice.warrantyProvider : !!workOrder.customer}
             hasRecipientEmail={linkedInvoice.payerType === "warranty" ? !!linkedInvoice.warrantyProvider?.billingEmail : !!workOrder.customer.email}
             canVoid={canVoid.success}
+            lastEmail={(() => {
+              const last = sentEmails.find((e) => e.relatedType === "invoice");
+              return last ? { to: last.to, at: last.createdAt.toISOString(), success: last.success } : null;
+            })()}
             awaitingPickupCount={status === "readyForPickup" ? 1 : 0}
             send={{ customerName: workOrder.customer.name, customerPhone: workOrder.customer.phone, invoiceNumber: linkedInvoice.invoiceNumber, shopName: organization?.name ?? "the shop", shareUrl, pdfHref: `/api/invoices/${linkedInvoice.id}/pdf`, recipientEmail: linkedInvoice.payerType === "warranty" ? linkedInvoice.warrantyProvider?.billingEmail ?? null : workOrder.customer.email }}
             closeableWorkOrderId={status === "readyForPickup" && !workOrder.combinedInto ? workOrder.id : null}

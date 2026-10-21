@@ -150,7 +150,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            {status === "paid" && <SendReceiptButton invoiceId={invoice.id} recipientEmail={invoice.payerType === "warranty" ? invoice.warrantyProvider?.billingEmail ?? null : invoice.customer?.email ?? null} />}
+            {status === "paid" && <SendReceiptButton invoiceId={invoice.id} sentBefore={sentEmails.some((e) => e.success)} recipientEmail={invoice.payerType === "warranty" ? invoice.warrantyProvider?.billingEmail ?? null : invoice.customer?.email ?? null} />}
             <a
               href={`/api/invoices/${invoice.id}/pdf`}
               className="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-slate-50"
@@ -223,6 +223,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           canVoid={canVoid.success}
           awaitingPickupCount={[invoice.workOrder, ...invoice.combinedWorkOrders.map((c) => c.workOrder)].filter((wo) => wo?.status === "readyForPickup").length}
           receiptInHeader
+          lastEmail={sentEmails[0] ? { to: sentEmails[0].to, at: sentEmails[0].createdAt.toISOString(), success: sentEmails[0].success } : null}
           send={{ customerName: invoice.customer?.name ?? null, customerPhone: invoice.customer?.phone ?? null, invoiceNumber: invoice.invoiceNumber, shopName: invoice.organization.name, shareUrl, pdfHref: `/api/invoices/${invoice.id}/pdf`, recipientEmail: invoice.payerType === "warranty" ? invoice.warrantyProvider?.billingEmail ?? null : invoice.customer?.email ?? null }}
         />
         {invoice.status === "paid" && invoice.paymentReference && (
