@@ -21,7 +21,13 @@ async function prepare(organizationId: string, report: ReportKind, p: ReportPara
   const shop = await prisma.shopProfile.findUnique({ where: { organizationId }, select: { province: true, taxLabel: true, taxRate: true } });
   const timeZone = timeZoneForProvince(shop?.province);
   const today = toLocalDate(new Date(getNow()), timeZone);
-  const range = resolvePreset(p.preset, p.from, p.to, today);
+  let range = resolvePreset(p.preset, p.from, p.to, today);
+  // "Everything" starts where the shop's data starts, not in the year 2000 (which made the daily view scroll for ever).
+  if (p.preset === "all") {
+    const first = await prisma.invoice.aggregate({ where: { organizationId }, _min: { issueDate: true, paidAt: true } });
+    const dates = [first._min.issueDate, first._min.paidAt].filter((d): d is Date => !!d).map((d) => toLocalDate(d, timeZone));
+    if (dates.length > 0) range = { from: dates.reduce((a, b) => (a < b ? a : b)), to: today };
+  }
   const taxRate = shop?.taxRate ? Number(shop.taxRate) : 0;
 
   const { invoices, draftCount } = await loadReportInvoices({ organizationId, timeZone, from: p.compare ? previousRange(range).from : range.from, to: range.to, today, canViewMargins });
