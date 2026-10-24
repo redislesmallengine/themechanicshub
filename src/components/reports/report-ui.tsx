@@ -8,7 +8,8 @@ export const fmtPct = (n: number) => `${(n * 100).toFixed(0)}%`;
 export function cell(kind: DetailCol["kind"], v: string | number | null | undefined): string {
   if (v === null || v === undefined || v === "") return "";
   if (kind === "money") return fmtMoney(Number(v));
-  if (kind === "date") return shortDate(String(v));
+  // A date column's total row says "Total", which is a label and not a date.
+  if (kind === "date") return /^\d{4}-\d{2}-\d{2}/.test(String(v)) ? shortDate(String(v)) : String(v);
   if (kind === "int") return Number(v).toLocaleString("en-CA", { maximumFractionDigits: 2 });
   if (kind === "pct") return fmtPct(Number(v));
   return String(v);
