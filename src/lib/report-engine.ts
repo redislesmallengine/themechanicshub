@@ -1,3 +1,4 @@
+import { allocateTax } from "./taxes.ts";
 // The Income, Sales and HST reports: plain functions over a list of invoices, so they can be tested on their own.
 //
 //   Income = money received, counted on the day an invoice was paid (in full)
@@ -50,6 +51,8 @@ export interface ReportInvoice {
   total: number;
   /** Sum of the taxable lines before tax; the tax on a partial view of the invoice is shared out by it. */
   taxableBase: number;
+  /** The taxes this invoice's tax is made of (GST, PST...), with their rates. Missing in older fixtures. */
+  taxes?: { name: string; rate: number }[];
   lines: ReportLine[];
 }
 
@@ -558,6 +561,8 @@ export interface HstReport {
   linesMissingTax: number;
   chart: Chart;
   periods: { label: string; invoices: number; taxable: number; nontax: number; tax: number; total: number }[];
+  /** The tax collected, split by tax (GST, PST...). Only taxes that appear on invoices in the period. */
+  byTax: { name: string; rate: number; collected: number }[];
   byPayer: GroupRow[];
   details: DetailTable;
 }
@@ -574,8 +579,19 @@ export function buildHst(shaped: Shaped[], range: DateRange, compare: boolean, g
   const taxable = sum(cur, (s) => s.taxable), nontax = sum(cur, (s) => s.nontax);
   const credits = creditRate === null ? 0 : r2(sum(cur, (s) => s.partsCost) * creditRate);
   const rows = [...cur].sort((a, b) => dateOf(b).localeCompare(dateOf(a)) || b.inv.number.localeCompare(a.inv.number));
+  // Each invoice's tax (or its share, in a filtered view) split between the taxes it was made of.
+  const taxTotals = new Map<string, { name: string; rate: number; collected: number }>();
+  for (const s of cur) {
+    for (const l of allocateTax(s.tax, s.inv.taxes ?? [])) {
+      const key = `${l.name}|${l.rate}`;
+      const entry = taxTotals.get(key) ?? { name: l.name, rate: l.rate, collected: 0 };
+      entry.collected += Number(l.amount);
+      taxTotals.set(key, entry);
+    }
+  }
   return {
     range, previous: prevR, basis,
+    byTax: [...taxTotals.values()].map((t) => ({ ...t, collected: r2(t.collected) })),
     sales: r2(taxable + nontax), taxableSales: r2(taxable), nonTaxableSales: r2(nontax),
     collected: { value: r2(tax), previous: r2(sum(prev, (s) => s.tax)) },
     credits, net: r2(tax - credits),

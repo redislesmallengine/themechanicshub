@@ -83,10 +83,14 @@ export interface RevenueTiles {
   partsMarginPercent: number | null;
   warrantyOutstanding: number;
   warrantyOutstandingCount: number;
+  /** Tax on invoices paid this month. */
+  taxThisMonth: number;
+  /** That tax split by tax (GST, PST...), when invoices carry a breakdown. */
+  taxByName: { name: string; amount: number }[];
 }
 
 export async function getRevenueTiles(organizationId: string): Promise<RevenueTiles> {
-  const [monthRows, outstandingRows, avgRows, marginRows, warrantyRows] = await Promise.all([
+  const [monthRows, outstandingRows, avgRows, marginRows, warrantyRows, taxRows, taxNameRows] = await Promise.all([
     prisma.$queryRaw<{ this_month: string | null; last_month: string | null }[]>(Prisma.sql`
       SELECT
         COALESCE(SUM(total) FILTER (WHERE "paidAt" >= date_trunc('month', now())), 0)::text AS this_month,
@@ -124,6 +128,18 @@ export async function getRevenueTiles(organizationId: string): Promise<RevenueTi
       FROM "Invoice"
       WHERE "organizationId" = ${organizationId} AND status IN ('draft', 'sent', 'viewed') AND "payerType" = 'warranty'
     `),
+    prisma.$queryRaw<{ tax: string | null }[]>(Prisma.sql`
+      SELECT COALESCE(SUM("taxAmount"), 0)::text AS tax
+      FROM "Invoice"
+      WHERE "organizationId" = ${organizationId} AND status = 'paid' AND "paidAt" >= date_trunc('month', now())
+    `),
+    prisma.$queryRaw<{ name: string; amount: string }[]>(Prisma.sql`
+      SELECT elem->>'name' AS name, SUM((elem->>'amount')::numeric)::text AS amount
+      FROM "Invoice" i, jsonb_array_elements(CASE WHEN jsonb_typeof(i."taxBreakdown") = 'array' THEN i."taxBreakdown" ELSE '[]'::jsonb END) AS elem
+      WHERE i."organizationId" = ${organizationId} AND i.status = 'paid' AND i."paidAt" >= date_trunc('month', now())
+      GROUP BY elem->>'name'
+      ORDER BY MIN(i."paidAt")
+    `),
   ]);
 
   const revenue = Number(marginRows[0]?.revenue ?? 0);
@@ -139,6 +155,8 @@ export async function getRevenueTiles(organizationId: string): Promise<RevenueTi
     partsMarginPercent: revenue > 0 ? ((revenue - cost) / revenue) * 100 : null,
     warrantyOutstanding: Number(warrantyRows[0]?.total ?? 0),
     warrantyOutstandingCount: Number(warrantyRows[0]?.count ?? 0),
+    taxThisMonth: Number(taxRows[0]?.tax ?? 0),
+    taxByName: taxNameRows.map((t) => ({ name: t.name, amount: Number(t.amount) })),
   };
 }
 

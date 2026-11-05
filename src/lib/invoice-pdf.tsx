@@ -1,4 +1,5 @@
 import { Document, Page, View, Text, Image, Link, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
+import { invoiceTaxLines, taxLineLabel, type TaxLine } from "@/lib/taxes";
 import { getImage } from "@/lib/storage";
 
 // Pure-JS PDF generation (no headless Chrome — that would be a heavy
@@ -69,10 +70,8 @@ export interface InvoicePdfData {
   payerType: string;
   claimNumber: string | null;
   warrantyProvider: { name: string; billingEmail: string | null; billingAddress: string | null } | null;
-  taxLabel: string;
-  taxRate: string;
+  taxLines: TaxLine[];
   subtotal: string;
-  taxAmount: string;
   total: string;
   paidAt: Date | null;
   paymentMethod: string | null;
@@ -193,12 +192,12 @@ function InvoiceDocument({ data }: { data: InvoicePdfData }) {
             <Text style={styles.totalLabel}>Subtotal</Text>
             <Text>${data.subtotal}</Text>
           </View>
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>
-              {data.taxLabel} ({data.taxRate}%)
-            </Text>
-            <Text>${data.taxAmount}</Text>
-          </View>
+          {data.taxLines.map((t) => (
+            <View key={t.name} style={styles.totalRow}>
+              <Text style={styles.totalLabel}>{taxLineLabel(t)}</Text>
+              <Text>${t.amount}</Text>
+            </View>
+          ))}
           <View style={styles.grandTotalRow}>
             <Text style={styles.grandTotalLabel}>Total</Text>
             <Text style={styles.grandTotalValue}>${data.total}</Text>
@@ -300,6 +299,7 @@ export interface InvoiceWithRelationsForPdf {
   notes: string | null;
   subtotal: unknown;
   taxAmount: unknown;
+  taxBreakdown?: unknown;
   total: unknown;
   paidAt: Date | null;
   paymentMethod: string | null;
@@ -366,10 +366,8 @@ export async function renderInvoicePdfFromRecord(invoice: InvoiceWithRelationsFo
     payerType: invoice.payerType,
     claimNumber: invoice.claimNumber,
     warrantyProvider: invoice.warrantyProvider,
-    taxLabel: shopProfile?.taxLabel ?? "Tax",
-    taxRate: shopProfile?.taxRate?.toString() ?? "0",
+    taxLines: invoiceTaxLines({ taxBreakdown: invoice.taxBreakdown, taxAmount: String(invoice.taxAmount) }, shopProfile as { taxLabel: string | null; taxRate: string | null } | null),
     subtotal: String(invoice.subtotal),
-    taxAmount: String(invoice.taxAmount),
     total: String(invoice.total),
     paidAt: invoice.paidAt,
     paymentMethod: invoice.paymentMethod,

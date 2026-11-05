@@ -9,6 +9,8 @@ export interface ReportContext {
   range: DateRange;
   today: string;
   taxLabel: string;
+  /** "CA" or "US": decides the wording of the tax report. */
+  country: string;
   taxRate: number;
   options: Record<FacetKey, string[]>;
   draftCount: number;
@@ -18,7 +20,7 @@ export interface ReportContext {
 }
 
 async function prepare(organizationId: string, report: ReportKind, p: ReportParams, canViewMargins: boolean) {
-  const shop = await prisma.shopProfile.findUnique({ where: { organizationId }, select: { province: true, taxLabel: true, taxRate: true } });
+  const shop = await prisma.shopProfile.findUnique({ where: { organizationId }, select: { province: true, taxLabel: true, taxRate: true, country: true } });
   const timeZone = timeZoneForProvince(shop?.province);
   const today = toLocalDate(new Date(getNow()), timeZone);
   let range = resolvePreset(p.preset, p.from, p.to, today);
@@ -35,7 +37,7 @@ async function prepare(organizationId: string, report: ReportKind, p: ReportPara
   // keep a chosen value on screen even when nothing in this window carries it
   for (const d of FACETS) for (const v of p.filters.sets[d.key] ?? []) if (!options[d.key].includes(v)) options[d.key] = [...options[d.key], v];
   const shaped = shapeAll(invoices, p.filters, report);
-  const context: ReportContext = { range, today, taxLabel: shop?.taxLabel || "Tax", taxRate, options, draftCount, canViewMargins, loaded: shaped.length };
+  const context: ReportContext = { range, today, taxLabel: shop?.taxLabel || "Tax", country: shop?.country === "US" ? "US" : "CA", taxRate, options, draftCount, canViewMargins, loaded: shaped.length };
   return { context, shaped };
 }
 

@@ -259,6 +259,8 @@ model ShopProfile {
   deliveryFee             Decimal? @db.Decimal(10, 2) // flat fee, optional unlike diagnosticFee -- not every shop does pickup/delivery; Generate Invoice suggests it only when the work order's dropOffMethod was pickupDelivery
   taxRate                 Decimal? @db.Decimal(5, 2) // percentage, e.g. 15.00
   taxLabel                String? // e.g. "HST", "GST+PST"
+  taxes                   Json? // the shop's taxes as [{ "name": "GST", "rate": 5 }, ...]; every tax applies to every taxable line. taxRate is their sum and taxLabel their names, so code that only needs the combined rate keeps working. Null = the single tax in taxLabel/taxRate.
+  country                 String? // "CA" or "US"; null = Canada. Decides the wording of the tax settings and whether a line can be marked "no tax".
   province                String?
   agingAlertDays          Int      @default(14) // Phase 4 — flag a work order sitting in "Ready for Pickup" past this many days
   newJobMode              String   @default("steps") // which button leads on the Work Orders page: "quick" (Quick Job) or "steps" (New Work Order, step by step)
@@ -597,6 +599,7 @@ model Invoice {
   dueDate             DateTime  @default(now())
   subtotal            Decimal   @default(0) @db.Decimal(10, 2)
   taxAmount           Decimal   @default(0) @db.Decimal(10, 2)
+  taxBreakdown        Json? // what taxAmount is made of, [{ "name": "GST", "rate": 5, "amount": "8.10" }, ...], as the shop's taxes stood when the totals were last worked out; null on invoices from before this existed
   total               Decimal   @default(0) @db.Decimal(10, 2)
   notes               String?
   viewToken           String    @unique // powers the public /invoice/[token] page, same pattern as WorkOrder.approvalToken

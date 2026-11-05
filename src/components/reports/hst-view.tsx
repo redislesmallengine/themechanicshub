@@ -47,6 +47,12 @@ export function HstView({ p, context, d, canViewMargins }: { p: ReportParams; co
     foot: ["Total", d.periods.reduce((t, x) => t + x.invoices, 0), d.taxableSales, d.nonTaxableSales, d.collected.value, d.periods.reduce((t, x) => t + x.total, 0)],
   };
   const cmp = p.compare ? change(d.collected.value, d.collected.previous) : null;
+  const ca = context.country !== "US";
+  const byTax: DetailTable = {
+    cols: [{ h: "Tax", kind: "text" }, { h: "Rate", kind: "text" }, { h: "Collected", kind: "money" }],
+    rows: d.byTax.map((t) => [t.name, `${t.rate}%`, t.collected]),
+    foot: ["All taxes", "", d.byTax.reduce((sum, t) => sum + t.collected, 0)],
+  };
 
   return (
     <ReportFrame report="hst" p={p} context={context}>
@@ -80,16 +86,16 @@ export function HstView({ p, context, d, canViewMargins }: { p: ReportParams; co
         <Card title="Return summary" sub={p.basis === "invoice" ? "invoice basis" : "payment basis"}>
           <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border-subtle)" }}>
             <div style={{ marginTop: -1 }}>
-              <ReturnLine line="Line 101" label="Sales and other revenue (before tax)" value={fmtMoney(d.sales)} />
+              <ReturnLine line={ca ? "Line 101" : undefined} label="Sales and other revenue (before tax)" value={fmtMoney(d.sales)} />
               <ReturnLine label={`Taxable at ${rate}`} value={fmtMoney(d.taxableSales)} sub />
               <ReturnLine label="Not taxable" value={fmtMoney(d.nonTaxableSales)} sub />
-              <ReturnLine line="Line 103" label={`${label} collected or collectible`} value={fmtMoney(d.collected.value)} />
-              <ReturnLine line="Line 106" label={`Input tax credits${creditsOn ? " (estimate)" : ""}`} value={creditsOn ? fmtMoney(d.credits) : "not estimated"} />
-              <ReturnLine line="Line 109" label="Net tax to remit or (refund)" value={fmtMoney(d.net)} strong />
+              <ReturnLine line={ca ? "Line 103" : undefined} label={`${label} collected or collectible`} value={fmtMoney(d.collected.value)} />
+              <ReturnLine line={ca ? "Line 106" : undefined} label={`Input tax credits${creditsOn ? " (estimate)" : ""}`} value={creditsOn ? fmtMoney(d.credits) : "not estimated"} />
+              <ReturnLine line={ca ? "Line 109" : undefined} label="Net tax to remit or (refund)" value={fmtMoney(d.net)} strong />
             </div>
           </div>
           <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-            Laid out like the lines on the federal GST/HST return so your accountant can follow it. {creditsOn ? `Credits are an estimate: ${context.taxRate}% of what the parts you sold cost you, which is not the same as the ${label} on your supplier bills. ` : ""}Confirm the figures with your accountant before filing.
+            {ca ? "Laid out like the lines on the federal GST/HST return so your accountant can follow it." : "Laid out like a sales tax return so your accountant can follow it."} {creditsOn ? `Credits are an estimate: ${context.taxRate}% of what the parts you sold cost you, which is not the same as the ${label} on your supplier bills. ` : ""}Confirm the figures with your accountant before filing.
           </p>
         </Card>
 
@@ -108,6 +114,12 @@ export function HstView({ p, context, d, canViewMargins }: { p: ReportParams; co
           </div>
         </Card>
       </div>
+
+      {d.byTax.length > 1 && (
+        <Card title="Collected by tax" sub="each tax is filed on its own">
+          <DetailTableView table={byTax} limit={50} shown moreHref="" lessHref="" />
+        </Card>
+      )}
 
       <Card title={`${label} collected over time`} sub={`each ${p.group}`}>
         {d.collected.value === 0 ? <Empty>No {label} in this period.</Empty> : <StackedChart chart={d.chart} label={`${label} collected over time`} />}

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { saveShopProfile, uploadShopLogo, removeShopLogo } from "@/app/(app)/settings/shop/actions";
-import { CANADIAN_PROVINCES } from "@/lib/provinces";
+import { CANADIAN_PROVINCES, US_STATES } from "@/lib/provinces";
 import { StoreIcon } from "@/components/icons";
 import { ImageUploader } from "@/components/image-uploader";
 
@@ -22,8 +22,8 @@ export function ShopProfileForm({
   initialLabourRate,
   initialDiagnosticFee,
   initialDeliveryFee,
-  initialTaxRate,
-  initialTaxLabel,
+  initialTaxes,
+  initialCountry,
   initialProvince,
   initialAgingAlertDays,
   initialNewJobMode,
@@ -42,8 +42,9 @@ export function ShopProfileForm({
   initialLabourRate: string;
   initialDiagnosticFee: string;
   initialDeliveryFee: string;
-  initialTaxRate: string;
-  initialTaxLabel: string;
+  /** The shop's taxes, one row each. A shop with a single tax has one row. */
+  initialTaxes: { name: string; rate: string }[];
+  initialCountry: "CA" | "US";
   initialProvince: string;
   initialAgingAlertDays: string;
   initialNewJobMode: string;
@@ -55,6 +56,12 @@ export function ShopProfileForm({
 }) {
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [saving, startSaving] = useTransition();
+  const [country, setCountry] = useState<"CA" | "US">(initialCountry);
+  const [province, setProvince] = useState(initialProvince);
+  const [taxes, setTaxes] = useState<{ name: string; rate: string }[]>(initialTaxes.length > 0 ? initialTaxes : [{ name: "", rate: "" }]);
+  const us = country === "US";
+  const multiple = taxes.length > 1;
+  const setTax = (i: number, patch: Partial<{ name: string; rate: string }>) => setTaxes((cur) => cur.map((t, ti) => (ti === i ? { ...t, ...patch } : t)));
 
   function handleSubmit(formData: FormData) {
     setMessage(null);
@@ -293,64 +300,105 @@ export function ShopProfileForm({
         <div className="font-bold text-xs mb-2" style={{ color: "var(--text-secondary)" }}>
           Tax Configuration
         </div>
+        <input type="hidden" name="country" value={country} />
+        <input type="hidden" name="taxes" value={JSON.stringify(taxes)} />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
           <div>
-            <label htmlFor="province" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-              Province <span style={{ color: "var(--color-error-solid)" }}>*</span>
+            <label htmlFor="country" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+              Country <span style={{ color: "var(--color-error-solid)" }}>*</span>
             </label>
-            <select id="province" name="province" required defaultValue={initialProvince} className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
+            <select
+              id="country"
+              value={country}
+              onChange={(e) => {
+                setCountry(e.target.value as "CA" | "US");
+                setProvince("");
+              }}
+              className="w-full px-3 py-2 rounded-lg text-xs font-semibold"
+              style={inputStyle}
+            >
+              <option value="CA">Canada</option>
+              <option value="US">United States</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="province" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+              {us ? "State" : "Province"} <span style={{ color: "var(--color-error-solid)" }}>*</span>
+            </label>
+            <select id="province" name="province" required value={province} onChange={(e) => setProvince(e.target.value)} className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
               <option value="" disabled>
                 Select…
               </option>
-              {CANADIAN_PROVINCES.map((p) => (
+              {(us ? US_STATES : CANADIAN_PROVINCES).map((p) => (
                 <option key={p} value={p}>
                   {p}
                 </option>
               ))}
             </select>
           </div>
-          <div>
-            <label htmlFor="taxLabel" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-              Tax Label <span style={{ color: "var(--color-error-solid)" }}>*</span>
-            </label>
-            <input
-              id="taxLabel"
-              name="taxLabel"
-              type="text"
-              required
-              defaultValue={initialTaxLabel}
-              placeholder="HST"
-              className="w-full px-3 py-2 rounded-lg text-xs font-medium"
-              style={inputStyle}
-            />
+        </div>
+
+        <div className="mt-4 space-y-3 text-xs">
+          {!multiple ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="tax-name-0" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+                  Tax Label <span style={{ color: "var(--color-error-solid)" }}>*</span>
+                </label>
+                <input id="tax-name-0" type="text" required value={taxes[0].name} onChange={(e) => setTax(0, { name: e.target.value })} placeholder={us ? "Sales tax" : "HST"} className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+              </div>
+              <div>
+                <label htmlFor="tax-rate-0" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+                  Tax Rate (%) <span style={{ color: "var(--color-error-solid)" }}>*</span>
+                </label>
+                <input id="tax-rate-0" type="number" step="0.01" min="0" required value={taxes[0].rate} onChange={(e) => setTax(0, { rate: e.target.value })} placeholder={us ? "8.25" : "15.00"} className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="font-bold" style={{ color: "var(--text-secondary)" }}>
+                Taxes on every invoice
+              </div>
+              {taxes.map((t, i) => (
+                <div key={i} className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,.7fr)_auto] gap-3 items-end">
+                  <div>
+                    <label htmlFor={`tax-name-${i}`} className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+                      Name
+                    </label>
+                    <input id={`tax-name-${i}`} type="text" required value={t.name} onChange={(e) => setTax(i, { name: e.target.value })} placeholder={us ? "County" : "PST"} className="w-full px-3 py-2 rounded-lg text-xs font-medium" style={inputStyle} />
+                  </div>
+                  <div>
+                    <label htmlFor={`tax-rate-${i}`} className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
+                      Rate (%)
+                    </label>
+                    <input id={`tax-rate-${i}`} type="number" step="0.01" min="0" required value={t.rate} onChange={(e) => setTax(i, { rate: e.target.value })} className="w-full px-3 py-2 rounded-lg text-xs font-mono" style={inputStyle} />
+                  </div>
+                  <button type="button" onClick={() => setTaxes((cur) => cur.filter((_, ti) => ti !== i))} className="px-2 py-2 text-xs font-bold" style={{ color: "var(--color-error-solid)" }}>
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-3 flex-wrap">
+            <button type="button" onClick={() => setTaxes((cur) => [...cur, { name: "", rate: "" }])} className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-brand-600 border border-[var(--color-brand-600)] bg-[var(--bg-surface)]">
+              + Add another tax
+            </button>
+            <span style={{ color: "var(--text-muted)" }}>{multiple ? "Each tax appears on its own line on invoices and reports. All of them apply to labour and parts." : "Only needed if you file more than one tax separately."}</span>
           </div>
-          <div>
-            <label htmlFor="taxRate" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-              Tax Rate (%) <span style={{ color: "var(--color-error-solid)" }}>*</span>
-            </label>
-            <input
-              id="taxRate"
-              name="taxRate"
-              type="number"
-              step="0.01"
-              min="0"
-              required
-              defaultValue={initialTaxRate}
-              placeholder="15.00"
-              className="w-full px-3 py-2 rounded-lg text-xs font-mono"
-              style={inputStyle}
-            />
-          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
           <div>
             <label htmlFor="hstNumber" className="block font-bold mb-1" style={{ color: "var(--text-secondary)" }}>
-              Government Tax # (HST/GST)
+              {us ? "Tax permit number (optional)" : "Government Tax # (HST/GST)"}
             </label>
             <input
               id="hstNumber"
               name="hstNumber"
               type="text"
               defaultValue={initialHstNumber}
-              placeholder="123456789 RT0001"
+              placeholder={us ? "32-1234567-8" : "123456789 RT0001"}
               className="w-full px-3 py-2 rounded-lg text-xs font-mono"
               style={inputStyle}
             />
@@ -360,7 +408,9 @@ export function ShopProfileForm({
           </div>
         </div>
         <p className="text-[10px] mt-1" style={{ color: "var(--text-muted)" }}>
-          Double-check your current provincial/federal rate before saving — this isn&apos;t tax advice, just where invoicing will pull it from.
+          {us
+            ? "Type your combined state and local rate, or one row for each tax you file separately. Check your state's revenue department for the current rate and for what is taxable. This isn't tax advice."
+            : "Double-check your current provincial/federal rate before saving — this isn't tax advice, just where invoicing will pull it from."}
         </p>
       </div>
 

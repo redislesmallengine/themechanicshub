@@ -9,14 +9,14 @@ import { Seg } from "@/components/reports/report-ui";
 const TABS: { report: ReportKind; label: string; blurb: string }[] = [
   { report: "income", label: "Income", blurb: "Money that came in, by the day it was paid" },
   { report: "sales", label: "Sales", blurb: "Work you billed, by the day it was invoiced" },
-  { report: "hst", label: "HST", blurb: "Tax collected, laid out like your return" },
+  { report: "hst", label: "Tax", blurb: "Tax collected, laid out like your return" },
 ];
 const EXPLAIN: Record<ReportKind, string> = {
   income: "Income counts money that actually came in. An invoice counts on the day it was paid, in full. Unpaid invoices are not income yet; they show as money still owed.",
   sales: "Sales counts work you billed, on the day the invoice went out, before tax. It does not matter whether the customer has paid yet. Voided invoices and drafts are left out.",
-  hst: "This shows the tax on those sales, laid out like the lines on a GST/HST return. Choose whether to file on the invoice date or on the payment date, and confirm the figures with your accountant before filing.",
+  hst: "This shows the tax on those sales, laid out like a tax return. Choose whether to file on the invoice date or on the payment date, and confirm the figures with your accountant before filing.",
 };
-const TITLES: Record<ReportKind, string> = { income: "Income Report", sales: "Sales Report", hst: "HST Report" };
+const TITLES: Record<ReportKind, string> = { income: "Income Report", sales: "Sales Report", hst: "Tax Report" };
 
 const field = "mt-1 w-full px-2.5 py-1.5 rounded-lg text-xs";
 const inputStyle = { background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)", color: "var(--text-primary)" };
@@ -126,6 +126,8 @@ function activeCount(p: ReportParams, report: ReportKind) {
 export function ReportFrame({ report, p, context, children }: { report: ReportKind; p: ReportParams; context: ReportContext; children: React.ReactNode }) {
   const path = `/reports/${report}`;
   const q = (change: Record<string, string | null> = {}) => `${path}${toQuery(p, change)}`;
+  // The tax report carries the shop's own tax name ("HST", "GST + PST", "Sales tax") when it is short enough for a tab.
+  const taxName = context.taxLabel.length <= 14 ? context.taxLabel : "Tax";
   const range = context.range;
   const days = Math.round((new Date(`${range.to}T00:00:00Z`).getTime() - new Date(`${range.from}T00:00:00Z`).getTime()) / 864e5) + 1;
   const prev = previousRange(range);
@@ -146,7 +148,7 @@ export function ReportFrame({ report, p, context, children }: { report: ReportKi
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
           <ReportIcon className="w-5 h-5 text-orange-400" />
-          {TITLES[report]}
+          {report === "hst" ? `${taxName} Report` : TITLES[report]}
         </h1>
         <p className="text-xs mt-0.5 max-w-3xl" style={{ color: "var(--text-muted)" }}>
           {EXPLAIN[report]}
@@ -166,7 +168,7 @@ export function ReportFrame({ report, p, context, children }: { report: ReportKi
               style={{ background: "var(--bg-surface)", border: on ? "2px solid var(--color-brand-600)" : "1px solid var(--border-subtle)" }}
             >
               <div className="text-sm font-extrabold" style={{ color: on ? "var(--color-brand-600)" : "var(--text-primary)" }}>
-                {t.label}
+                {t.report === "hst" ? taxName : t.label}
               </div>
               <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>
                 {t.blurb}

@@ -16,6 +16,7 @@ import { DeleteInvoiceButton } from "@/components/delete-invoice-button";
 import { SendWhatsAppButton } from "@/components/send-whatsapp-button";
 import { SendReceiptButton } from "@/components/send-receipt-button";
 import { SentEmailsPanel } from "@/components/sent-emails-panel";
+import { invoiceTaxLines, taxLineLabel } from "@/lib/taxes";
 
 export default async function InvoiceDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ created?: string; receipt?: string }> }) {
   const { id } = await params;
@@ -380,12 +381,14 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
                 ${invoice.subtotal.toString()}
               </span>
             </div>
-            <div className="flex justify-between py-1">
-              <span style={{ color: "var(--text-muted)" }}>Tax</span>
-              <span className="num" style={{ color: "var(--text-secondary)" }}>
-                ${invoice.taxAmount.toString()}
-              </span>
-            </div>
+            {invoiceTaxLines(invoice, null).map((t) => (
+              <div key={t.name} className="flex justify-between py-1">
+                <span style={{ color: "var(--text-muted)" }}>{taxLineLabel(t)}</span>
+                <span className="num" style={{ color: "var(--text-secondary)" }}>
+                  ${t.amount}
+                </span>
+              </div>
+            ))}
             <div className="flex justify-between py-2 mt-1 font-extrabold text-base" style={{ borderTop: "1px solid var(--border-subtle)" }}>
               <span style={{ color: "var(--text-primary)" }}>Total</span>
               <span className="num" style={{ color: "var(--text-primary)" }}>

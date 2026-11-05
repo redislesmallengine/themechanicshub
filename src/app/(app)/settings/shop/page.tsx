@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ShopProfileForm } from "@/components/shop-profile-form";
+import { shopTaxes } from "@/lib/taxes";
 
 export default async function ShopProfilePage() {
   const reqHeaders = await headers();
@@ -43,8 +44,8 @@ export default async function ShopProfilePage() {
           initialLabourRate={profile?.labourRate?.toString() ?? ""}
           initialDiagnosticFee={profile?.diagnosticFee?.toString() ?? ""}
           initialDeliveryFee={profile?.deliveryFee?.toString() ?? ""}
-          initialTaxRate={profile?.taxRate?.toString() ?? ""}
-          initialTaxLabel={profile?.taxLabel ?? ""}
+          initialTaxes={shopTaxes(profile).map((t) => ({ name: t.name, rate: String(t.rate) }))}
+          initialCountry={profile?.country === "US" ? "US" : "CA"}
           initialProvince={profile?.province ?? ""}
           initialAgingAlertDays={(profile?.agingAlertDays ?? 14).toString()}
           initialNewJobMode={profile?.newJobMode ?? "steps"}

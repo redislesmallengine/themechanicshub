@@ -167,3 +167,19 @@ test("HST on the payment basis counts only paid invoices, on the day they were p
   assert.equal(r.unpaidTax, 0);
   assert.equal(r.details.rows.length, 2);
 });
+
+test("HST: the tax is also split by tax (GST and PST), and the parts add up to the whole", () => {
+  const two = [{ name: "GST", rate: 5 }, { name: "PST", rate: 7 }];
+  const X = inv({ number: "INV-7", issued: "2026-10-05", taxes: two, tax: 19.44, total: 181.44, lines: [line("Labour", 135), line("Parts", 27)] });
+  const Y = inv({ number: "INV-8", issued: "2026-10-06", taxes: two, tax: 12, total: 112, lines: [line("Labour", 100)] });
+  const r = buildHst(shapeAll([X, Y], emptyFilters(), "hst"), OCT, false, "day", "invoice", null, "2026-10-14");
+  assert.deepEqual(r.byTax.map((t) => t.name), ["GST", "PST"]);
+  assert.equal(Math.round(r.byTax.reduce((s, t) => s + t.collected, 0) * 100) / 100, r.collected.value);
+  assert.equal(r.collected.value, 31.44);
+  assert.equal(r.byTax[0].collected, 13.1); // GST: 8.10 + 5.00
+});
+
+test("HST: invoices with no tax breakdown give no per-tax rows", () => {
+  const r = buildHst(shapeAll([A], emptyFilters(), "hst"), OCT, false, "day", "invoice", null, "2026-10-14");
+  assert.deepEqual(r.byTax, []);
+});

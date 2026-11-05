@@ -128,12 +128,13 @@ export async function OpenWorkOrdersSection({ organizationId, agingDays }: { org
 export async function RevenueTiles({ organizationId }: { organizationId: string }) {
   const r = await getRevenueTiles(organizationId);
   return (
-    <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
       <StatTile label="Revenue This Month" value={fmtMoney(r.revenueThisMonth)} sub={fmtPercentChange(r.revenueThisMonth, r.revenueLastMonth)} href="/reports/sales" />
       <StatTile label="Outstanding" value={fmtMoney(r.outstanding)} sub="not yet due" href="/invoices?status=unpaid" />
       <StatTile label="Overdue" value={fmtMoney(r.overdue)} sub={`${r.overdueCount} invoice${r.overdueCount === 1 ? "" : "s"}`} tone={r.overdue > 0 ? "error" : "neutral"} href="/invoices?status=overdue" />
       <StatTile label="Avg Invoice" value={fmtMoney(r.avgInvoice30d)} sub="last 30 days" href="/reports/sales" />
       <StatTile label="Parts Margin" value={r.partsMarginPercent === null ? "—" : `${r.partsMarginPercent.toFixed(0)}%`} sub="cost vs. sell, this month" />
+      <StatTile label="Tax Collected" value={fmtMoney(r.taxThisMonth)} sub={r.taxByName.length > 1 ? r.taxByName.map((t) => `${t.name} ${fmtMoney(t.amount)}`).join(" · ") : "on invoices paid this month"} href="/reports/hst" />
       <StatTile label="Warranty Claims Outstanding" value={fmtMoney(r.warrantyOutstanding)} sub={`${r.warrantyOutstandingCount} claim${r.warrantyOutstandingCount === 1 ? "" : "s"}`} href="/warranty" />
     </div>
   );

@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { claimInvoiceNumber, generateViewToken, classifyInvoiceType, PAYMENT_METHODS } from "@/lib/invoices";
 import { applyStockAdjustment } from "@/lib/inventory";
 import { partLineName } from "@/lib/parts";
+import { taxBreakdownField } from "@/lib/tax-fields";
 import { readFeeOptions, readBilling, buildInvoiceFromBilling, type Billing } from "@/lib/invoice-lines";
 import { sendInvoice } from "@/app/(app)/invoices/actions";
 
@@ -236,6 +237,7 @@ export async function createQuickJob(formData: FormData) {
           ...(paid ? { status: "paid", paidAt: now, paymentMethod, paymentReference } : {}),
           notes: repairNotes,
           ...totals,
+          taxBreakdown: taxBreakdownField(totals.taxAmount, shopProfile),
           lineItems: { create: lines },
         },
       });

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createQuickJob } from "@/app/(app)/work-orders/quick/actions";
 import { PAYMENT_METHODS } from "@/lib/invoices";
 import { flatPriceTotals } from "@/lib/pricing";
+import { allocateTax, taxLineLabel, type TaxDef } from "@/lib/taxes";
 import { SearchSelect } from "@/components/search-select";
 import { partLineName } from "@/lib/parts";
 import { STATUS_LABELS } from "@/lib/work-orders";
@@ -48,6 +49,8 @@ interface ShopRates {
   deliveryFeeDefault: string;
   taxRate: number;
   taxLabel: string;
+  /** The shop's taxes, for showing each on its own line. taxRate is their sum. */
+  taxes: TaxDef[];
 }
 
 const STEP_NAMES = ["diagnosed", "approved", "repaired", "billed", "paid", "pickedUp"] as const;
@@ -730,14 +733,17 @@ export function QuickJobForm({
                           <span style={{ color: "var(--text-primary)" }}>{money(l.amount)}</span>
                         </div>
                       ))}
-                      {shop.taxRate > 0 && preview.lines.length > 0 && (
-                        <div className="flex justify-between gap-3">
-                          <span style={{ color: "var(--text-secondary)" }}>
-                            {shop.taxLabel} {shop.taxRate}%{preview.taxIncluded ? " (included)" : ""}
-                          </span>
-                          <span style={{ color: "var(--text-primary)" }}>{money(preview.tax)}</span>
-                        </div>
-                      )}
+                      {shop.taxRate > 0 &&
+                        preview.lines.length > 0 &&
+                        allocateTax(preview.tax, shop.taxes).map((t) => (
+                          <div key={t.name} className="flex justify-between gap-3">
+                            <span style={{ color: "var(--text-secondary)" }}>
+                              {taxLineLabel(t)}
+                              {preview.taxIncluded ? " (included)" : ""}
+                            </span>
+                            <span style={{ color: "var(--text-primary)" }}>{money(Number(t.amount))}</span>
+                          </div>
+                        ))}
                       <div className="flex justify-between gap-3 pt-1 font-extrabold" style={{ borderTop: "1px solid var(--border-subtle)", color: "var(--text-primary)" }}>
                         <span>Estimated total</span>
                         <span>{money(preview.total)}</span>

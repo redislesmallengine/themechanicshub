@@ -11,6 +11,8 @@ import { claimInvoiceNumber, generateViewToken, computeTotals, classifyInvoiceTy
 import { applyStockAdjustment } from "@/lib/inventory";
 import { unitPriceFor } from "@/lib/pricing";
 import { partLineName } from "@/lib/parts";
+import { taxBreakdownField } from "@/lib/tax-fields";
+import { canMarkNoTax, combinedRate, shopTaxes } from "@/lib/taxes";
 import { readFeeOptions, buildWorkOrderInvoiceLines, readBillingRows, buildInvoiceFromRows } from "@/lib/invoice-lines";
 import { renderInvoicePdfFromRecord } from "@/lib/invoice-pdf";
 
@@ -71,7 +73,7 @@ async function recalcTotals(invoiceId: string, organizationId: string) {
     hasWorkOrder: !!invoice?.workOrderId || combinedWorkOrderCount > 0,
     lineItems: lineItems.map((l) => ({ type: l.type, partId: l.partId })),
   });
-  await prisma.invoice.update({ where: { id: invoiceId }, data: { ...totals, invoiceType } });
+  await prisma.invoice.update({ where: { id: invoiceId }, data: { ...totals, invoiceType, taxBreakdown: taxBreakdownField(totals.taxAmount, shopProfile) } });
 }
 
 interface NewLineItemData {
@@ -157,6 +159,7 @@ export async function generateInvoiceFromWorkOrder(workOrderId: string, formData
         // What the technician wrote under "Work performed" -- editable on the invoice afterwards.
         notes: workOrder.repairNotes?.trim() || null,
         ...totals,
+        taxBreakdown: taxBreakdownField(totals.taxAmount, shopProfile),
         lineItems: { create: lines },
       },
     });
@@ -224,16 +227,18 @@ export async function finishJob(workOrderId: string, formData: FormData) {
   const read = readBillingRows(formData);
   if ("error" in read) return { error: read.error };
   if (read.rows.length === 0) return { error: "There is nothing to bill yet. Add labour, a service, a part or another charge." };
+  // Marking a line "no tax" by hand is only for US shops; elsewhere every line is taxed (a saved service flagged "no tax" keeps its flag).
+  const rows = canMarkNoTax(shopProfile?.country) ? read.rows : read.rows.map((r) => (r.kind === "service" ? r : { ...r, taxable: true }));
   const jobPartIds = new Set(workOrder.parts.map((p) => p.id));
-  if (read.rows.some((r) => r.workOrderPartId && !jobPartIds.has(r.workOrderPartId))) return { error: "A part on this bill was taken off the job. Reload the page and check the rows." };
+  if (rows.some((r) => r.workOrderPartId && !jobPartIds.has(r.workOrderPartId))) return { error: "A part on this bill was taken off the job. Reload the page and check the rows." };
   const { lines, totals } = buildInvoiceFromRows({
-    rows: read.rows,
+    rows,
     taxIncluded: formData.get("taxMode") === "included",
-    taxRate: Number(shopProfile?.taxRate ?? 0),
+    taxRate: combinedRate(shopTaxes(shopProfile)),
     unitCosts: Object.fromEntries(workOrder.parts.map((p) => [p.id, p.unitCostPrice?.toString() ?? null])),
   });
   const invoiceNotes = String(formData.get("invoiceNotes") ?? "").trim() || null;
-  const labourTotal = read.rows.filter((r) => r.kind === "labour").reduce((sum, r) => sum + r.quantity, 0);
+  const labourTotal = rows.filter((r) => r.kind === "labour").reduce((sum, r) => sum + r.quantity, 0);
   const labourHours = labourTotal > 0 ? (labourTotal.toFixed(2) as unknown as typeof workOrder.labourHours) : workOrder.labourHours;
 
   const now = new Date();
@@ -261,6 +266,7 @@ export async function finishJob(workOrderId: string, formData: FormData) {
         ...(warranty ? { payerType: "warranty", warrantyProviderId, claimNumber } : {}),
         notes: invoiceNotes,
         ...totals,
+        taxBreakdown: taxBreakdownField(totals.taxAmount, shopProfile),
         lineItems: { create: lines },
       },
     });
@@ -429,6 +435,7 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
         viewToken: generateViewToken(),
         notes: combinedNotes,
         ...totals,
+        taxBreakdown: taxBreakdownField(totals.taxAmount, shopProfile),
         lineItems: { create: lines },
       },
     });

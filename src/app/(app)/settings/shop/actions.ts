@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { uploadLogo, deleteImage } from "@/lib/storage";
+import { CANADIAN_PROVINCES, US_STATES } from "@/lib/provinces";
+import { combinedLabel, combinedRate, type TaxDef } from "@/lib/taxes";
 
 const MAX_LOGO_BYTES = 4 * 1024 * 1024; // 4MB — well under the 5mb server-action body limit (next.config.ts) once multipart overhead is accounted for
 
@@ -62,10 +64,30 @@ export async function saveShopProfile(formData: FormData) {
   if (!address) return { error: "Address is required." };
   const phone = String(formData.get("phone") ?? "").trim();
   if (!phone) return { error: "Phone is required." };
-  const taxLabel = String(formData.get("taxLabel") ?? "").trim();
-  if (!taxLabel) return { error: "Tax label is required." };
+  const country = formData.get("country") === "US" ? "US" : "CA";
   const province = String(formData.get("province") ?? "").trim();
-  if (!province) return { error: "Province is required." };
+  if (!province) return { error: country === "US" ? "State is required." : "Province is required." };
+  if (!(country === "US" ? US_STATES : CANADIAN_PROVINCES).includes(province as never)) return { error: country === "US" ? "Choose a US state." : "Choose a Canadian province." };
+
+  // The shop's taxes: one or more, each a name and a rate. The combined rate and the names together are what the rest of the app works from.
+  let rawTaxes: unknown;
+  try {
+    rawTaxes = JSON.parse(String(formData.get("taxes") ?? "[]"));
+  } catch {
+    return { error: "The taxes couldn't be read. Reload the page and try again." };
+  }
+  if (!Array.isArray(rawTaxes) || rawTaxes.length === 0 || rawTaxes.length > 6) return { error: "Add at least one tax (up to six)." };
+  const taxList: TaxDef[] = [];
+  for (const t of rawTaxes) {
+    const name = String((t as { name?: unknown })?.name ?? "").trim().slice(0, 30);
+    const rateRaw = String((t as { rate?: unknown })?.rate ?? "").trim();
+    const rate = Number(rateRaw);
+    if (!name) return { error: "Give each tax a name." };
+    if (!rateRaw || !Number.isFinite(rate) || rate < 0 || rate > 100) return { error: `Enter a rate between 0 and 100 for ${name}.` };
+    taxList.push({ name, rate: Math.round(rate * 100) / 100 });
+  }
+  const taxLabel = combinedLabel(taxList);
+  const taxRate = { value: combinedRate(taxList).toFixed(2) };
 
   const labourRate = parseDecimal(formData.get("labourRate"), "Labour rate", true);
   if ("error" in labourRate) return { error: labourRate.error };
@@ -73,8 +95,6 @@ export async function saveShopProfile(formData: FormData) {
   if ("error" in diagnosticFee) return { error: diagnosticFee.error };
   const deliveryFee = parseDecimal(formData.get("deliveryFee"), "Delivery fee", false);
   if ("error" in deliveryFee) return { error: deliveryFee.error };
-  const taxRate = parseDecimal(formData.get("taxRate"), "Tax rate", true);
-  if ("error" in taxRate) return { error: taxRate.error };
 
   const agingAlertDaysRaw = String(formData.get("agingAlertDays") ?? "14").trim();
   const agingAlertDays = Number(agingAlertDaysRaw);
@@ -122,6 +142,8 @@ export async function saveShopProfile(formData: FormData) {
       deliveryFee: deliveryFee.value,
       taxRate: taxRate.value,
       taxLabel: taxLabel || null,
+      taxes: taxList,
+      country,
       province: province || null,
       agingAlertDays,
       newJobMode,
@@ -138,6 +160,8 @@ export async function saveShopProfile(formData: FormData) {
       deliveryFee: deliveryFee.value,
       taxRate: taxRate.value,
       taxLabel: taxLabel || null,
+      taxes: taxList,
+      country,
       province: province || null,
       agingAlertDays,
       newJobMode,

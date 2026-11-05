@@ -11,6 +11,7 @@ import { buildInvoiceFromRows, type BillingRow, type BillingRowKind } from "@/li
 import { AddPartPicker, type AvailablePart } from "@/components/add-part-picker";
 import { SearchSelect } from "@/components/search-select";
 import { secondaryButton, dangerButton } from "@/lib/ui";
+import { allocateTax, canMarkNoTax, combinedRate, taxLineLabel, type TaxDef } from "@/lib/taxes";
 
 export interface ServiceOption {
   id: string;
@@ -87,8 +88,8 @@ export function BillingScreen({
   shopName,
   hstNumber,
   warrantyProviders,
-  taxRate,
-  taxLabel,
+  taxes,
+  country,
 }: {
   workOrderId: string;
   status: "inRepair" | "readyForPickup";
@@ -108,9 +109,14 @@ export function BillingScreen({
   shopName: string;
   hstNumber: string | null;
   warrantyProviders: { id: string; name: string }[];
-  taxRate: number;
-  taxLabel: string;
+  /** The shop's taxes; every one applies to every taxable line. */
+  taxes: TaxDef[];
+  country: string;
 }) {
+  const taxRate = combinedRate(taxes);
+  // With one tax the screen names it ("HST included"); with several it just says "tax".
+  const taxLabel = taxes.length === 1 ? taxes[0].name : "tax";
+  const noTaxTick = canMarkNoTax(country);
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +132,7 @@ export function BillingScreen({
     return start;
   });
   const [partPrices, setPartPrices] = useState<Record<string, string>>({});
+  const [partNoTax, setPartNoTax] = useState<Record<string, boolean>>({});
   const [taxMode, setTaxMode] = useState<"before" | "included">("before");
   const [notes, setNotes] = useState(initialNotes);
   const [picker, setPicker] = useState<null | "service" | "part">(null);
@@ -159,12 +166,13 @@ export function BillingScreen({
   const billRows: BillingRow[] = displayRows.flatMap((d) => {
     if (d.part) {
       const price = Number(partPrices[d.part.id] ?? d.part.unitSellPrice ?? "0");
-      return [{ kind: "part" as const, description: d.part.name, quantity: d.part.quantity, unitPrice: Number.isFinite(price) ? price : 0, taxable: true, workOrderPartId: d.part.id }];
+      return [{ kind: "part" as const, description: d.part.name, quantity: d.part.quantity, unitPrice: Number.isFinite(price) ? price : 0, taxable: !partNoTax[d.part.id], workOrderPartId: d.part.id }];
     }
     const row = toBillRow(d.typed!);
     return row ? [row] : [];
   });
   const bill = buildInvoiceFromRows({ rows: billRows, taxIncluded: taxMode === "included", taxRate });
+  const taxSplit = allocateTax(Number(bill.totals.taxAmount), taxes);
   const hasBill = billRows.length > 0;
   const total = hasBill ? `$${bill.totals.total}` : "$0.00";
 
@@ -327,6 +335,12 @@ export function BillingScreen({
                         Remove
                       </button>
                     </div>
+                    {noTaxTick && (
+                      <label className="flex items-center gap-2 text-base font-bold">
+                      <input type="checkbox" checked={!!partNoTax[p.id]} onChange={(e) => setPartNoTax((cur) => ({ ...cur, [p.id]: e.target.checked }))} style={{ accentColor: "#0F52BA", width: "1.25rem", height: "1.25rem" }} />
+                      No tax on this line
+                    </label>
+                    )}
                   </div>
                 );
               }
@@ -373,6 +387,12 @@ export function BillingScreen({
                       Remove
                     </button>
                   </div>
+                  {noTaxTick && (
+                    <label className="flex items-center gap-2 text-base font-bold">
+                      <input type="checkbox" checked={!t.taxable} onChange={(e) => updateTyped(t.key, { taxable: !e.target.checked })} style={{ accentColor: "#0F52BA", width: "1.25rem", height: "1.25rem" }} />
+                      No tax on this line
+                    </label>
+                  )}
                   {t.kind === "labour" && t.unitPrice === "" && <p className="text-sm font-bold" style={{ color: "var(--color-warning-solid)" }}>No hourly rate is set in Shop Profile. Type the rate for this job.</p>}
                 </div>
               );
@@ -440,14 +460,13 @@ export function BillingScreen({
                 <span>Subtotal</span>
                 <span>{hasBill ? `$${bill.totals.subtotal}` : "$0.00"}</span>
               </div>
-              {taxRate > 0 && (
-                <div className="flex justify-between">
-                  <span>
-                    {taxLabel} ({taxRate}%)
-                  </span>
-                  <span>{hasBill ? `$${bill.totals.taxAmount}` : "$0.00"}</span>
-                </div>
-              )}
+              {taxRate > 0 &&
+                taxSplit.map((t) => (
+                  <div key={t.name} className="flex justify-between">
+                    <span>{taxLineLabel(t)}</span>
+                    <span>{hasBill ? `$${t.amount}` : "$0.00"}</span>
+                  </div>
+                ))}
               <div className="flex justify-between text-2xl font-extrabold pt-1" style={{ borderTop: "2px solid var(--text-primary)" }}>
                 <span>Total</span>
                 <span>{total}</span>
@@ -512,12 +531,13 @@ export function BillingScreen({
                 <span>Subtotal</span>
                 <span>${hasBill ? bill.totals.subtotal : "0.00"}</span>
               </div>
-              {taxRate > 0 && (
-                <div className="flex justify-between">
-                  <span>{taxLabel}</span>
-                  <span>${hasBill ? bill.totals.taxAmount : "0.00"}</span>
-                </div>
-              )}
+              {taxRate > 0 &&
+                taxSplit.map((t) => (
+                  <div key={t.name} className="flex justify-between">
+                    <span>{t.name}</span>
+                    <span>${hasBill ? t.amount : "0.00"}</span>
+                  </div>
+                ))}
               <div className="flex justify-between text-xl font-extrabold pt-1" style={{ borderTop: "2px solid #0f172a" }}>
                 <span>Total</span>
                 <span>{total}</span>

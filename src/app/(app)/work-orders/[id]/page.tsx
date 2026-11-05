@@ -9,6 +9,7 @@ import { invoiceChip } from "@/lib/invoices";
 import { ensureInvoiceShortCode } from "@/lib/invoice-short-link";
 import { partLineName } from "@/lib/parts";
 import { secondaryButton } from "@/lib/ui";
+import { shopTaxes } from "@/lib/taxes";
 import { WorkOrderDiagnosisForm } from "@/components/work-order-diagnosis-form";
 import { JobStepper } from "@/components/job-stepper";
 import { JobStageCard } from "@/components/job-stage-card";
@@ -418,8 +419,8 @@ export default async function WorkOrderDetailPage({ params, searchParams }: { pa
             shopName={organization?.name ?? "Your shop"}
             hstNumber={shopProfile?.hstNumber ?? null}
             warrantyProviders={warrantyProviders}
-            taxRate={shopProfile?.taxRate ? Number(shopProfile.taxRate) : 0}
-            taxLabel={shopProfile?.taxLabel ?? "Tax"}
+            taxes={shopTaxes(shopProfile)}
+            country={shopProfile?.country ?? "CA"}
           />
         </div>
       )}

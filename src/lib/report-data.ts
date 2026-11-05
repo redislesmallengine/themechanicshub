@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { localMidnight } from "@/lib/report-range";
 import { addDays, classifyLine, toLocalDate, type ReportInvoice, type ReportLine } from "@/lib/report-engine";
 import { partLineName } from "@/lib/parts";
+import { invoiceTaxLines } from "@/lib/taxes";
 
 const WORK_ORDER = {
   select: {
@@ -27,7 +28,7 @@ export async function loadReportInvoices(params: { organizationId: string; timeZ
   const start = localMidnight(fy, fm, fd, timeZone);
   const end = localMidnight(ty, tm, td, timeZone);
 
-  const [rows, firsts, draftCount] = await Promise.all([
+  const [rows, firsts, draftCount, shop] = await Promise.all([
     prisma.invoice.findMany({
       where: {
         organizationId,
@@ -45,6 +46,7 @@ export async function loadReportInvoices(params: { organizationId: string; timeZ
     }),
     prisma.invoice.groupBy({ by: ["customerId"], where: { organizationId, status: { notIn: ["draft", "void"] }, customerId: { not: null } }, _min: { createdAt: true } }),
     prisma.invoice.count({ where: { organizationId, status: "draft" } }),
+    prisma.shopProfile.findUnique({ where: { organizationId }, select: { taxLabel: true, taxRate: true } }),
   ]);
   const firstInvoice = new Map(firsts.map((f) => [f.customerId, f._min.createdAt?.getTime() ?? 0]));
 
@@ -86,6 +88,7 @@ export async function loadReportInvoices(params: { organizationId: string; timeZ
       job: wos.length === 0 ? "Counter sale" : wos.length === 1 && wos[0].source === "quick" ? "Quick job" : "Normal job",
       arrival: wos.length === 0 ? "Not applicable" : wos.some((w) => w.dropOffMethod === "pickupDelivery") ? "Shop pickup/delivery" : "Customer drop-off",
       payer: i.payerType === "warranty" ? "Warranty" : "Customer", provider: i.warrantyProvider?.name ?? "",
+      taxes: invoiceTaxLines(i, shop).map((t) => ({ name: t.name, rate: t.rate })),
       subtotal: Number(i.subtotal), tax: Number(i.taxAmount), total: Number(i.total), taxableBase: lines.filter((l) => l.taxable).reduce((t, l) => t + l.total, 0), lines,
     };
   });

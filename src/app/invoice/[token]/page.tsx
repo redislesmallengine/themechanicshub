@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { WrenchIcon } from "@/components/icons";
 import { STATUS_LABELS, STATUS_BADGE, isOverdue, type InvoiceStatus } from "@/lib/invoices";
+import { invoiceTaxLines, taxLineLabel } from "@/lib/taxes";
 
 export default async function PublicInvoicePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -229,14 +230,14 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
                   ${invoice.subtotal.toString()}
                 </span>
               </div>
-              <div className="flex justify-between py-1">
-                <span style={{ color: "var(--text-secondary)" }}>
-                  {shopProfile?.taxLabel ?? "Tax"} ({shopProfile?.taxRate?.toString() ?? "0"}%)
-                </span>
-                <span className="num" style={{ color: "var(--text-secondary)" }}>
-                  ${invoice.taxAmount.toString()}
-                </span>
-              </div>
+              {invoiceTaxLines(invoice, shopProfile).map((t) => (
+                <div key={t.name} className="flex justify-between py-1">
+                  <span style={{ color: "var(--text-secondary)" }}>{taxLineLabel(t)}</span>
+                  <span className="num" style={{ color: "var(--text-secondary)" }}>
+                    ${t.amount}
+                  </span>
+                </div>
+              ))}
               <div className="flex justify-between py-2 mt-1 font-extrabold text-base" style={{ borderTop: "1px solid var(--border-subtle)" }}>
                 <span style={{ color: "var(--text-primary)" }}>Total</span>
                 <span className="num" style={{ color: "var(--text-primary)" }}>

@@ -44,14 +44,15 @@ export async function GET(request: Request) {
     const { context, data } = await runHst(access.organizationId, p, access.canViewMargins);
     span = `${context.range.from}-to-${context.range.to}`;
     lines = [
-      ...head("HST report", context, [
+      ...head(`${context.taxLabel} report`, context, [
         ["Basis", data.basis === "payment" ? "Payment date" : "Invoice date"],
-        ["Line 101 Sales before tax", data.sales.toFixed(2)],
+        [context.country === "US" ? "Sales before tax" : "Line 101 Sales before tax", data.sales.toFixed(2)],
         ["Taxable sales", data.taxableSales.toFixed(2)],
         ["Not taxable", data.nonTaxableSales.toFixed(2)],
-        ["Line 103 Tax collected", data.collected.value.toFixed(2)],
-        ["Line 106 Input tax credits (estimate)", data.credits.toFixed(2)],
-        ["Line 109 Net tax", data.net.toFixed(2)],
+        [context.country === "US" ? "Tax collected" : "Line 103 Tax collected", data.collected.value.toFixed(2)],
+        ...data.byTax.map((t): [string, string] => [`  of which ${t.name} (${t.rate}%)`, t.collected.toFixed(2)]),
+        [context.country === "US" ? "Input tax credits (estimate)" : "Line 106 Input tax credits (estimate)", data.credits.toFixed(2)],
+        [context.country === "US" ? "Net tax" : "Line 109 Net tax", data.net.toFixed(2)],
       ]),
       ...tableRows(data.details),
     ];

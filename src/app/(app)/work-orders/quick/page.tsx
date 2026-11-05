@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { QuickJobForm } from "@/components/quick-job-form";
+import { shopTaxes } from "@/lib/taxes";
 
 export default async function QuickJobPage({ searchParams }: { searchParams: Promise<{ customerId?: string }> }) {
   const { customerId } = await searchParams;
@@ -60,6 +61,7 @@ export default async function QuickJobPage({ searchParams }: { searchParams: Pro
           deliveryFeeDefault: shopProfile?.deliveryFee?.toString() ?? "",
           taxRate: shopProfile?.taxRate ? Number(shopProfile.taxRate) : 0,
           taxLabel: shopProfile?.taxLabel ?? "Tax",
+          taxes: shopTaxes(shopProfile),
         }}
       />
     </div>
