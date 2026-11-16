@@ -10,6 +10,7 @@ import { ensureInvoiceShortCode } from "@/lib/invoice-short-link";
 import { partLineName } from "@/lib/parts";
 import { secondaryButton } from "@/lib/ui";
 import { shopTaxes } from "@/lib/taxes";
+import { parseBillingDraft } from "@/lib/billing-draft";
 import { WorkOrderDiagnosisForm } from "@/components/work-order-diagnosis-form";
 import { JobStepper } from "@/components/job-stepper";
 import { JobStageCard } from "@/components/job-stage-card";
@@ -403,7 +404,9 @@ export default async function WorkOrderDetailPage({ params, searchParams }: { pa
           <BillingScreen
             workOrderId={workOrder.id}
             status={status}
-            initialNotes={workOrder.repairNotes ?? workOrder.diagnosisNotes ?? ""}
+            customerId={workOrder.customer.id}
+            initialDraft={parseBillingDraft(workOrder.billingDraft)}
+            repairNotes={workOrder.repairNotes ?? workOrder.diagnosisNotes ?? ""}
             parts={workOrder.parts.map((p) => ({ id: p.id, name: partLineName(p.name, p.part?.sku), quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null }))}
             availableParts={availableParts.map((p) => ({ id: p.id, name: p.name, sku: p.sku, barcode: p.barcode, quantityOnHand: p.quantityOnHand }))}
             labourHours={workOrder.labourHours?.toString() ?? ""}

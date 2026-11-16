@@ -172,7 +172,14 @@ function InvoiceDocument({ data }: { data: InvoicePdfData }) {
             <Text style={[styles.tableHeadCell, styles.cellTotal]}>Total</Text>
           </View>
           {data.lineItems.map((line, i) =>
-            line.type === "header" ? (
+            line.type === "note" ? (
+              <View key={i} style={{ paddingVertical: 5, paddingHorizontal: 6, borderBottom: "1px solid #F1F5F9" }}>
+                <View style={{ border: "1.5px solid #0F172A", borderRadius: 3, padding: 5 }}>
+                  <Text style={[styles.sectionLabel, { color: "#0F172A", marginBottom: 2 }]}>Notes</Text>
+                  <Text style={{ fontSize: 9 }}>{line.description}</Text>
+                </View>
+              </View>
+            ) : line.type === "header" ? (
               <View key={i} style={styles.tableSectionRow}>
                 <Text style={styles.tableSectionLabel}>{line.description}</Text>
               </View>

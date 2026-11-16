@@ -303,6 +303,29 @@ function LineRow({ line, showMargins }: { line: InvoiceLine; showMargins: boolea
   // A section divider from a combined invoice (one per work order folded
   // in) rather than a priced line -- spans the numeric columns instead of
   // showing zeroed-out qty/price/total.
+  // A machine's note on a combined invoice: shown in a bordered Notes box under its lines.
+  if (line.type === "note") {
+    return (
+      <tr className="dt-row group">
+        <td colSpan={showMargins ? 5 : 4} className="dt-td">
+          <div className="rounded-lg p-3" style={{ border: "2px solid var(--text-primary)" }}>
+            <div className="text-[11px] font-extrabold uppercase tracking-wide mb-1" style={{ color: "var(--text-primary)" }}>
+              Notes
+            </div>
+            <p className="text-sm whitespace-pre-wrap" style={{ color: "var(--text-primary)" }}>
+              {line.description}
+            </p>
+          </div>
+        </td>
+        <td className="dt-td text-right">
+          <button onClick={handleRemove} disabled={pending} className="text-[11px] font-bold disabled:opacity-50" style={{ color: "var(--color-error-solid)" }}>
+            {pending ? "…" : "Remove"}
+          </button>
+        </td>
+      </tr>
+    );
+  }
+
   if (line.type === "header") {
     return (
       <tr className="dt-row group">

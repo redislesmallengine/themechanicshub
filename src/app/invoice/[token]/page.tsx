@@ -194,7 +194,20 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
                 </thead>
                 <tbody>
                   {invoice.lineItems.map((line) =>
-                    line.type === "header" ? (
+                    line.type === "note" ? (
+                      <tr key={line.id} className="dt-row">
+                        <td colSpan={4} className="dt-td">
+                          <div className="rounded-lg p-3" style={{ border: "2px solid var(--text-primary)" }}>
+                            <div className="text-xs font-extrabold uppercase tracking-wide mb-1" style={{ color: "var(--text-primary)" }}>
+                              Notes
+                            </div>
+                            <p className="text-sm whitespace-pre-wrap" style={{ color: "var(--text-primary)" }}>
+                              {line.description}
+                            </p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : line.type === "header" ? (
                       <tr key={line.id} className="dt-row">
                         <td colSpan={4} className="dt-td text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--text-secondary)", background: "var(--bg-surface-subtle)" }}>
                           {line.description}

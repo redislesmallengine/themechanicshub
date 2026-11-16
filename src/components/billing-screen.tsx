@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { finishJob } from "@/app/(app)/invoices/actions";
-import { markReadyForPickup, removeWorkOrderPart } from "@/app/(app)/work-orders/actions";
+import { markReadyForPickup, removeWorkOrderPart, saveBillingDraft } from "@/app/(app)/work-orders/actions";
 import { offerUndo } from "@/lib/job-undo";
 import { PAYMENT_METHODS } from "@/lib/invoices";
 import { buildInvoiceFromRows, type BillingRow, type BillingRowKind } from "@/lib/invoice-lines";
@@ -12,6 +12,7 @@ import { AddPartPicker, type AvailablePart } from "@/components/add-part-picker"
 import { SearchSelect } from "@/components/search-select";
 import { secondaryButton, dangerButton } from "@/lib/ui";
 import { allocateTax, canMarkNoTax, combinedRate, taxLineLabel, type TaxDef } from "@/lib/taxes";
+import type { BillingDraft } from "@/lib/billing-draft";
 
 export interface ServiceOption {
   id: string;
@@ -72,7 +73,9 @@ const nextKey = () => `row-${++keyCounter}`;
 export function BillingScreen({
   workOrderId,
   status,
-  initialNotes,
+  customerId,
+  initialDraft,
+  repairNotes,
   parts,
   availableParts,
   labourHours,
@@ -93,7 +96,11 @@ export function BillingScreen({
 }: {
   workOrderId: string;
   status: "inRepair" | "readyForPickup";
-  initialNotes: string;
+  customerId: string;
+  /** What was typed here before and saved, or null the first time. */
+  initialDraft: BillingDraft | null;
+  /** "What was done" from Repairing: offered by a link, never copied into the invoice notes by itself. */
+  repairNotes: string;
   parts: PartData[];
   availableParts: AvailablePart[];
   labourHours: string;
@@ -125,16 +132,48 @@ export function BillingScreen({
   const errorRef = useRef<HTMLDivElement>(null);
 
   const [typed, setTyped] = useState<TypedRow[]>(() => {
+    // A saved draft comes back exactly as it was left; the first time, the rows start from the job's labour hours and delivery fee.
+    if (initialDraft) return initialDraft.rows.map((r) => ({ key: nextKey(), ...r }));
     const start: TypedRow[] = [];
     const hours = Number(labourHours);
     if (hours > 0) start.push({ key: nextKey(), kind: "labour", description: "Labour", quantity: String(hours), unitPrice: labourRate === null ? "" : labourRate.toFixed(2), taxable: true });
     if (showDeliveryFee && deliveryFeeDefault.trim() !== "") start.push({ key: nextKey(), kind: "other", description: "Pickup/delivery fee", quantity: "1", unitPrice: Number(deliveryFeeDefault).toFixed(2), taxable: true });
     return start;
   });
-  const [partPrices, setPartPrices] = useState<Record<string, string>>({});
-  const [partNoTax, setPartNoTax] = useState<Record<string, boolean>>({});
-  const [taxMode, setTaxMode] = useState<"before" | "included">("before");
-  const [notes, setNotes] = useState(initialNotes);
+  const [partPrices, setPartPrices] = useState<Record<string, string>>(initialDraft?.partPrices ?? {});
+  const [partNoTax, setPartNoTax] = useState<Record<string, boolean>>(initialDraft?.partNoTax ?? {});
+  const [taxMode, setTaxMode] = useState<"before" | "included">(initialDraft?.taxMode ?? "before");
+  const [notes, setNotes] = useState(initialDraft?.notes ?? "");
+
+  // Everything typed on this screen is saved on the job about a second after the last change.
+  const draftJson = JSON.stringify({ rows: typed.map((t) => ({ kind: t.kind, description: t.description, quantity: t.quantity, unitPrice: t.unitPrice, taxable: t.taxable })), partPrices, partNoTax, taxMode, notes });
+  const [savedJson, setSavedJson] = useState(draftJson);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">(initialDraft ? "saved" : "idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const unsaved = draftJson !== savedJson;
+  useEffect(() => {
+    if (draftJson === savedJson) return;
+    const timer = setTimeout(async () => {
+      setSaveState("saving");
+      const result = await saveBillingDraft(workOrderId, draftJson).catch(() => ({ error: "Couldn't reach the server." }));
+      if ("error" in result && result.error) {
+        setSaveState("error");
+        setSaveError(result.error);
+        return;
+      }
+      setSavedJson(draftJson);
+      setSaveState("saved");
+      setSaveError(null);
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [draftJson, savedJson, workOrderId]);
+  // Leaving with something not yet saved asks first.
+  useEffect(() => {
+    if (!unsaved) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [unsaved]);
   const [picker, setPicker] = useState<null | "service" | "part">(null);
   const [serviceId, setServiceId] = useState("");
   const [takingPayment, setTakingPayment] = useState(false);
@@ -298,6 +337,23 @@ export function BillingScreen({
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-end" aria-live="polite">
+        {saveState === "error" ? (
+          <span className="tag text-base font-bold rounded-full px-3 py-1" style={{ background: "var(--color-error-subtle)", color: "var(--color-error-solid)", border: "1.5px solid var(--color-error-solid)" }}>
+            Not saved: {saveError}
+          </span>
+        ) : saveState === "saving" || unsaved ? (
+          <span className="text-base font-bold rounded-full px-3 py-1" style={{ background: "var(--color-warning-subtle)", color: "var(--color-warning-text)", border: "1.5px solid var(--color-warning-solid)" }}>
+            Saving…
+          </span>
+        ) : saveState === "saved" ? (
+          <span className="text-base font-bold rounded-full px-3 py-1" style={{ background: "var(--color-success-subtle)", color: "var(--color-success-text)", border: "1.5px solid var(--color-success-solid)" }}>
+            ✓ Saved. You can leave and come back.
+          </span>
+        ) : (
+          <span className="text-base">Everything you type here is saved automatically.</span>
+        )}
+      </div>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] items-start">
         {/* ---- the rows */}
         <div className="space-y-4">
@@ -475,9 +531,16 @@ export function BillingScreen({
           </div>
 
           <div>
-            <label htmlFor="bill-notes" className="block text-lg font-extrabold mb-1.5">
-              Notes on the invoice
-            </label>
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-1.5">
+              <label htmlFor="bill-notes" className="block text-lg font-extrabold">
+                Notes on the invoice
+              </label>
+              {repairNotes.trim() && !notes.includes(repairNotes.trim()) && (
+                <button type="button" onClick={() => setNotes((cur) => (cur.trim() ? `${cur.trim()}\n${repairNotes.trim()}` : repairNotes.trim()))} className={secondaryButton}>
+                  Use the repair notes
+                </button>
+              )}
+            </div>
             <textarea id="bill-notes" rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="What was done. The customer sees this in a box on their invoice." className="w-full px-4 py-3 rounded-xl" />
           </div>
         </div>
@@ -677,23 +740,18 @@ export function BillingScreen({
 
       <div className="pt-4 flex flex-wrap items-center gap-x-5 gap-y-2" style={{ borderTop: "1.5px solid var(--border-strong)" }}>
         <span className="text-base font-bold">Not ready to price?</span>
-        <Link href="/work-orders" className={secondaryButton}>
-          Come back later: the job stays on Billing
-        </Link>
+        <span className="text-base">What you typed here is saved, so you can just leave and come back.</span>
         {status === "inRepair" && (
           <button type="button" onClick={justMarkReady} disabled={pending} className={secondaryButton}>
             Mark it ready for pickup, price it later
           </button>
         )}
-        {status === "readyForPickup" && (
-          <span className="text-base">
-            Billing this customer for more than one machine at once?{" "}
-            <Link href="/invoices/new" className="font-bold text-brand-600 underline">
-              Combine work orders into one invoice
-            </Link>
-            .
-          </span>
-        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <span className="text-base font-bold">Billing {customerName} for more than one machine?</span>
+        <Link href={`/invoices/new?customerId=${customerId}&mode=combine`} className={secondaryButton}>
+          Combine {customerName}&apos;s jobs into one invoice
+        </Link>
       </div>
     </div>
   );

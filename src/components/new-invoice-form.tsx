@@ -25,18 +25,24 @@ interface InvoiceableWorkOrder {
   id: string;
   label: string;
   complaint: string;
+  /** Billing, Ready or Done. */
+  stage: string;
+  /** What was saved on the job's Billing screen, or null if nothing was. */
+  savedTotal: string | null;
 }
 
 export function NewInvoiceForm({
   customers,
   hasDiagnosticFee,
   initialCustomerId,
+  initialMode = "blank",
 }: {
   customers: CustomerWithEquipment[];
   hasDiagnosticFee: boolean;
   initialCustomerId?: string;
+  initialMode?: "blank" | "combine";
 }) {
-  const [mode, setMode] = useState<"blank" | "combine">("blank");
+  const [mode, setMode] = useState<"blank" | "combine">(initialMode);
   const [customerId, setCustomerId] = useState(initialCustomerId ?? "");
 
   return (
@@ -300,8 +306,8 @@ function CombineWorkOrdersForm({
       </div>
 
       <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-        Bill one customer for 2 or more finished machines on a single invoice — each machine&apos;s labor and parts stay in
-        their own clearly labeled section.
+        Bill one customer for 2 or more machines on a single invoice. Each machine gets its own section with exactly what you saved
+        on its Billing screen, and its own notes under it.
       </p>
 
       <div className="text-xs">
@@ -320,7 +326,7 @@ function CombineWorkOrdersForm({
       {customerId && (
         <div>
           <div className="block font-bold mb-1.5 text-xs" style={{ color: "var(--text-secondary)" }}>
-            Ready-to-invoice work orders
+            Jobs ready to invoice
           </div>
           {loadingWorkOrders ? (
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -328,11 +334,11 @@ function CombineWorkOrdersForm({
             </p>
           ) : workOrders.length === 0 ? (
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              This customer has no finished work orders (Ready or Done) waiting to be invoiced.
+              This customer has no jobs on the Billing step, Ready or Done waiting to be invoiced.
             </p>
           ) : workOrders.length === 1 ? (
             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              Only one work order is ready — combining needs at least 2. Invoice it directly from its work order page instead.
+              Only one job is ready to invoice. Combining needs at least 2. Invoice it directly from its work order page instead.
             </p>
           ) : (
             <div className="space-y-1.5">
@@ -356,6 +362,9 @@ function CombineWorkOrdersForm({
                       {wo.label}
                     </span>
                     <span style={{ color: "var(--text-muted)" }}>{wo.complaint}</span>
+                    <span className="block mt-0.5 font-semibold" style={{ color: wo.savedTotal ? "var(--color-success-solid)" : "var(--text-muted)" }}>
+                      {wo.stage} · {wo.savedTotal ? `Billing saved, $${wo.savedTotal} with tax` : "no billing saved (labour hours and parts will be used)"}
+                    </span>
                   </span>
                 </label>
               ))}

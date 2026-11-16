@@ -4,8 +4,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NewInvoiceForm } from "@/components/new-invoice-form";
 
-export default async function NewInvoicePage({ searchParams }: { searchParams: Promise<{ customerId?: string }> }) {
-  const { customerId } = await searchParams;
+export default async function NewInvoicePage({ searchParams }: { searchParams: Promise<{ customerId?: string; mode?: string }> }) {
+  const { customerId, mode } = await searchParams;
   const reqHeaders = await headers();
   const session = await auth.api.getSession({ headers: reqHeaders });
   if (!session?.session.activeOrganizationId) redirect("/sign-in");
@@ -32,12 +32,13 @@ export default async function NewInvoicePage({ searchParams }: { searchParams: P
           New Invoice
         </h1>
         <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-          For a parts sale or a repair billed on the spot — no work order needed.
+          For a parts sale or a repair billed on the spot — no work order needed. Or combine several of one customer&apos;s jobs.
         </p>
       </div>
       <div className="max-w-3xl">
         <NewInvoiceForm
           hasDiagnosticFee={!!shopProfile?.diagnosticFee}
+          initialMode={mode === "combine" ? "combine" : "blank"}
           initialCustomerId={customers.find((c) => c.id === customerId)?.id ?? ""}
           customers={customers.map((c) => ({
             id: c.id,

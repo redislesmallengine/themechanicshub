@@ -10,6 +10,7 @@ import { sendMail } from "@/lib/email";
 import { loadEmailTemplate, renderTemplate } from "@/lib/email-templates";
 import { applyStockAdjustment } from "@/lib/inventory";
 import { partLineName } from "@/lib/parts";
+import { parseBillingDraft } from "@/lib/billing-draft";
 
 async function requireCanManageWorkOrders(action: "create" | "update" | "delete" = "create") {
   const reqHeaders = await headers();
@@ -94,6 +95,30 @@ export async function restoreWorkOrderState(workOrderId: string, previous: Statu
   });
   revalidateJob(workOrderId);
   return { success: true };
+}
+
+/**
+ * Keeps what was typed on a job's Billing screen (rows, part prices, tax choice, notes) on the job, so leaving the screen
+ * loses nothing and a merged invoice can use it. Only while the job is on Billing (or Ready) and has no invoice yet.
+ */
+export async function saveBillingDraft(workOrderId: string, draftJson: string) {
+  const { organizationId } = await requireCanManageWorkOrders("update");
+  const workOrder = await prisma.workOrder.findUnique({ where: { id: workOrderId }, include: { invoice: { select: { id: true } }, combinedInto: { select: { id: true } } } });
+  if (!workOrder || workOrder.organizationId !== organizationId) return { error: "That work order doesn't exist." };
+  if (workOrder.invoice || workOrder.combinedInto) return { error: "This job already has an invoice, so Billing can't be saved." };
+  const onBilling = (workOrder.status === "inRepair" && !!workOrder.repairFinishedAt) || workOrder.status === "readyForPickup";
+  if (!onBilling) return { error: "This job isn't on Billing anymore. Reload the page to see where it is." };
+  if (draftJson.length > 100_000) return { error: "There is too much on this Billing screen to save." };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(draftJson);
+  } catch {
+    return { error: "Billing couldn't be saved. Reload the page and try again." };
+  }
+  const draft = parseBillingDraft(parsed);
+  if (!draft) return { error: "Billing couldn't be saved. Reload the page and try again." };
+  await prisma.workOrder.update({ where: { id: workOrderId }, data: { billingDraft: draft } });
+  return { success: true as const };
 }
 
 /**

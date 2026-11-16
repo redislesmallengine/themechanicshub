@@ -247,3 +247,26 @@ export function buildInvoiceFromRows(params: { rows: BillingRow[]; taxIncluded: 
   const subtotal = cents(lines.reduce((sum, l) => sum + Number(l.lineTotal), 0));
   return { lines, totals: { subtotal: subtotal.toFixed(2), taxAmount: cents(gross - subtotal).toFixed(2), total: gross.toFixed(2) } };
 }
+
+// ---------------------------------------------------------------------------------------------
+// A merged invoice: one section per machine (a heading, its lines, and optionally its note), totalled together.
+// ---------------------------------------------------------------------------------------------
+
+export type CombinedSection = { header: string; lines: WorkOrderInvoiceLine[]; note?: string | null };
+
+/**
+ * Puts the machines' sections one after another and works out the totals once, with the shop's combined tax rate.
+ * A heading and a note are rows with no money on them: they are not counted in the totals.
+ */
+export function assembleCombinedInvoice(sections: CombinedSection[], taxRate: number): { lines: WorkOrderInvoiceLine[]; totals: Totals } {
+  const lines: WorkOrderInvoiceLine[] = [];
+  const blank = { quantity: "0.00", unitPrice: "0.00", unitCost: null, taxable: false, lineTotal: "0.00" };
+  for (const section of sections) {
+    lines.push({ type: "header", description: section.header, ...blank, sortOrder: lines.length });
+    for (const l of section.lines) lines.push({ ...l, sortOrder: lines.length });
+    const note = section.note?.trim();
+    if (note) lines.push({ type: "note", description: note.slice(0, 4000), ...blank, sortOrder: lines.length });
+  }
+  const priced = lines.filter((l) => l.type !== "header" && l.type !== "note");
+  return { lines, totals: computeTotals(priced.map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), taxable: l.taxable })), taxRate) };
+}

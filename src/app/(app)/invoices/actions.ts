@@ -13,7 +13,9 @@ import { unitPriceFor } from "@/lib/pricing";
 import { partLineName } from "@/lib/parts";
 import { taxBreakdownField } from "@/lib/tax-fields";
 import { canMarkNoTax, combinedRate, shopTaxes } from "@/lib/taxes";
-import { readFeeOptions, buildWorkOrderInvoiceLines, readBillingRows, buildInvoiceFromRows } from "@/lib/invoice-lines";
+import { readFeeOptions, buildWorkOrderInvoiceLines, readBillingRows, buildInvoiceFromRows, assembleCombinedInvoice, type CombinedSection, type WorkOrderInvoiceLine } from "@/lib/invoice-lines";
+import { parseBillingDraft, draftBillingRows } from "@/lib/billing-draft";
+import { Prisma } from "@/generated/prisma/client";
 import { renderInvoicePdfFromRecord } from "@/lib/invoice-pdf";
 
 async function requireCanManageInvoices(action: "create" | "update" | "void" | "delete" = "update") {
@@ -66,7 +68,7 @@ async function recalcTotals(invoiceId: string, organizationId: string) {
   ]);
   // Non-header lines only -- a header's own quantity/price are always 0, but
   // filtering keeps this correct even if that ever changes.
-  const inputs: LineItemInput[] = lineItems.filter((l) => l.type !== "header").map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), taxable: l.taxable }));
+  const inputs: LineItemInput[] = lineItems.filter((l) => l.type !== "header" && l.type !== "note").map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), taxable: l.taxable }));
   const totals = computeTotals(inputs, Number(shopProfile?.taxRate ?? 0));
   const invoiceType = classifyInvoiceType({
     hasEquipment: !!invoice?.equipmentId || !!invoice?.adHocEquipmentLabel || combinedWorkOrderCount > 0,
@@ -246,6 +248,7 @@ export async function finishJob(workOrderId: string, formData: FormData) {
     await tx.workOrder.update({
       where: { id: workOrderId },
       data: {
+        billingDraft: Prisma.DbNull,
         labourHours,
         status: pickedUp ? "closed" : "readyForPickup",
         readyForPickupAt: workOrder.readyForPickupAt ?? now,
@@ -289,36 +292,54 @@ export async function finishJob(workOrderId: string, formData: FormData) {
   return { success: true as const, invoiceId: invoice.id, emailError, receiptSentTo };
 }
 
-/** Work orders for this customer that are ready to fold into a combined invoice — same eligibility rule as generateInvoiceFromWorkOrder, minus the "already has an invoice" case (checked here via both the direct link and the combined-invoice join table). Used by the New Invoice page to build its checklist. */
+/** A job is ready to be billed once its repair is finished (the Billing step) or it is Ready or Done, as long as nothing is invoiced yet. */
+const BILLABLE_JOB = { OR: [{ status: { in: ["readyForPickup", "closed"] } }, { status: "inRepair", repairFinishedAt: { not: null } }] };
+
+/**
+ * Work orders for this customer that can be folded into a combined invoice: jobs on the Billing step, Ready, or Done, with no
+ * invoice yet (checked via both the direct link and the combined-invoice join table). Each says where it is, and what was
+ * saved on its Billing screen (the amount it would add). Used by the New Invoice page to build its checklist.
+ */
 export async function listInvoiceableWorkOrders(customerId: string) {
   const { organizationId } = await requireCanManageInvoices("create");
   if (!customerId) return { success: true as const, workOrders: [] };
 
-  const workOrders = await prisma.workOrder.findMany({
-    where: { organizationId, customerId, status: { in: ["readyForPickup", "closed"] }, invoice: null, combinedInto: null },
-    include: { equipment: { include: { equipmentType: true } } },
-    orderBy: { readyForPickupAt: "asc" },
-  });
+  const [workOrders, shopProfile] = await Promise.all([
+    prisma.workOrder.findMany({
+      where: { organizationId, customerId, ...BILLABLE_JOB, invoice: null, combinedInto: null },
+      include: { equipment: { include: { equipmentType: true } }, parts: { include: { part: { select: { sku: true } } } } },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.shopProfile.findUnique({ where: { organizationId } }),
+  ]);
+  const taxRate = combinedRate(shopTaxes(shopProfile));
+  const noTax = canMarkNoTax(shopProfile?.country);
 
   return {
     success: true as const,
-    workOrders: workOrders.map((wo) => ({
-      id: wo.id,
-      label: [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment",
-      complaint: wo.complaint,
-    })),
+    workOrders: workOrders.map((wo) => {
+      const draft = parseBillingDraft(wo.billingDraft);
+      const rows = draft ? draftBillingRows(draft, wo.parts.map((p) => ({ id: p.id, name: partLineName(p.name, p.part?.sku), quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null })), noTax) : [];
+      return {
+        id: wo.id,
+        label: [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment",
+        complaint: wo.complaint,
+        stage: wo.status === "inRepair" ? "Billing" : wo.status === "closed" ? "Done" : "Ready",
+        // what the saved Billing screen comes to; null when nothing was saved there
+        savedTotal: draft && rows.length > 0 ? buildInvoiceFromRows({ rows, taxIncluded: draft.taxMode === "included", taxRate }).totals.total : null,
+      };
+    }),
   };
 }
 
 /**
- * Folds 2+ ready-to-invoice work orders for the SAME customer into one
- * invoice, instead of one invoice per machine — see InvoiceWorkOrder's
- * schema comment for why this is a separate join table rather than widening
- * Invoice.workOrderId. Each work order's labor/parts/diagnostic fee are
- * pulled in exactly like generateInvoiceFromWorkOrder, just looped, with a
- * non-priced "header" line item (its equipment's name) inserted before each
- * one's lines so the invoice reads as clearly separated per-machine
- * sections rather than one undifferentiated list.
+ * Folds 2+ billable work orders for the SAME customer into one invoice, instead of one invoice per machine -- see
+ * InvoiceWorkOrder's schema comment for why this is a separate join table rather than widening Invoice.workOrderId.
+ * Each machine becomes a section: a non-priced "header" line (its equipment's name), its lines, and its note.
+ *
+ * A job whose Billing screen was saved contributes exactly those rows (services, parts at the prices typed, other
+ * charges) and exactly that note. A job with nothing saved keeps the older behaviour: labour hours, parts and the
+ * ticked fees, with its "Work performed" as the note. Jobs still on the Billing step move to Ready, as they are billed.
  */
 export async function generateCombinedInvoice(customerId: string, formData: FormData) {
   const { organizationId } = await requireCanManageInvoices("create");
@@ -336,94 +357,61 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
   if (workOrders.length !== workOrderIds.length) return { error: "One of those work orders no longer exists." };
   for (const wo of workOrders) {
     if (wo.organizationId !== organizationId || wo.customerId !== customerId) return { error: "Every work order must belong to this customer." };
-    if (wo.status !== "readyForPickup" && wo.status !== "closed") return { error: "Every work order must be Ready, or Done, first." };
+    const billable = wo.status === "readyForPickup" || wo.status === "closed" || (wo.status === "inRepair" && !!wo.repairFinishedAt);
+    if (!billable) return { error: "Every work order must be on the Billing step, Ready, or Done first." };
     if (wo.invoice || wo.combinedInto) return { error: "One of those work orders already has an invoice." };
   }
 
   const shopProfile = await prisma.shopProfile.findUnique({ where: { organizationId } });
   const includeDiagnosticFee = formData.get("includeDiagnosticFee") === "on";
+  const taxRate = combinedRate(shopTaxes(shopProfile));
+  const noTax = canMarkNoTax(shopProfile?.country);
 
-  const lines: { type: string; description: string; quantity: string; unitPrice: string; unitCost: string | null; taxable: boolean; lineTotal: string; sortOrder: number }[] = [];
-  let sortOrder = 0;
-
+  const sections: CombinedSection[] = [];
+  const labourHoursByJob = new Map<string, number>();
   for (const wo of workOrders) {
     const equipmentLabel = [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment";
-    lines.push({ type: "header", description: equipmentLabel, quantity: "0.00", unitPrice: "0.00", unitCost: null, taxable: false, lineTotal: "0.00", sortOrder: sortOrder++ });
+    const draft = parseBillingDraft(wo.billingDraft);
+    const draftRows = draft
+      ? draftBillingRows(draft, wo.parts.map((p) => ({ id: p.id, name: partLineName(p.name, p.part?.sku), quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null })), noTax)
+      : [];
 
+    if (draft && draftRows.length > 0) {
+      // Exactly what was saved on this job's Billing screen.
+      const built = buildInvoiceFromRows({ rows: draftRows, taxIncluded: draft.taxMode === "included", taxRate, unitCosts: Object.fromEntries(wo.parts.map((p) => [p.id, p.unitCostPrice?.toString() ?? null])) });
+      sections.push({ header: equipmentLabel, lines: built.lines, note: draft.notes });
+      const hours = draftRows.filter((r) => r.kind === "labour").reduce((sum, r) => sum + r.quantity, 0);
+      if (hours > 0) labourHoursByJob.set(wo.id, hours);
+      continue;
+    }
+
+    // Nothing saved on Billing: labour hours, parts and the ticked fees, as before.
+    const lines: WorkOrderInvoiceLine[] = [];
     if (wo.labourHours && shopProfile?.labourRate) {
       const hours = Number(wo.labourHours);
       const rate = Number(shopProfile.labourRate);
-      lines.push({
-        type: "labor",
-        description: `Labor (${hours} hrs @ $${rate.toFixed(2)}/hr)`,
-        quantity: hours.toFixed(2),
-        unitPrice: rate.toFixed(2),
-        unitCost: null,
-        taxable: true,
-        lineTotal: (hours * rate).toFixed(2),
-        sortOrder: sortOrder++,
-      });
+      lines.push({ type: "labor", description: `Labor (${hours} hrs @ $${rate.toFixed(2)}/hr)`, quantity: hours.toFixed(2), unitPrice: rate.toFixed(2), unitCost: null, taxable: true, lineTotal: (hours * rate).toFixed(2), sortOrder: 0 });
     }
-
     for (const part of wo.parts) {
       const unitPrice = Number(part.unitSellPrice ?? 0);
-      lines.push({
-        type: "part",
-        description: partLineName(part.name, part.part?.sku),
-        quantity: part.quantity.toFixed(2),
-        unitPrice: unitPrice.toFixed(2),
-        unitCost: part.unitCostPrice?.toString() ?? null,
-        taxable: true,
-        lineTotal: (part.quantity * unitPrice).toFixed(2),
-        sortOrder: sortOrder++,
-      });
+      lines.push({ type: "part", description: partLineName(part.name, part.part?.sku), quantity: part.quantity.toFixed(2), unitPrice: unitPrice.toFixed(2), unitCost: part.unitCostPrice?.toString() ?? null, taxable: true, lineTotal: (part.quantity * unitPrice).toFixed(2), sortOrder: 0 });
     }
-
     if (includeDiagnosticFee && shopProfile?.diagnosticFee) {
       const fee = Number(shopProfile.diagnosticFee);
-      lines.push({
-        type: "fee",
-        description: `Diagnostic Fee — ${equipmentLabel}`,
-        quantity: "1.00",
-        unitPrice: fee.toFixed(2),
-        unitCost: null,
-        taxable: true,
-        lineTotal: fee.toFixed(2),
-        sortOrder: sortOrder++,
-      });
+      lines.push({ type: "fee", description: `Diagnostic Fee — ${equipmentLabel}`, quantity: "1.00", unitPrice: fee.toFixed(2), unitCost: null, taxable: true, lineTotal: fee.toFixed(2), sortOrder: 0 });
     }
-
-    // Per-work-order, not a checkbox like the diagnostic fee above -- a
-    // combined invoice can mix a pickup/delivery machine with a plain
-    // drop-off one, so this is driven by each work order's own
-    // dropOffMethod rather than one toggle applied to all of them.
+    // Per-work-order, not a checkbox like the diagnostic fee above -- a combined invoice can mix a pickup/delivery machine with a
+    // plain drop-off one, so this is driven by each work order's own dropOffMethod rather than one toggle applied to all of them.
     if (wo.dropOffMethod === "pickupDelivery" && shopProfile?.deliveryFee) {
       const fee = Number(shopProfile.deliveryFee);
-      lines.push({
-        type: "fee",
-        description: `Pickup/Delivery Fee — ${equipmentLabel}`,
-        quantity: "1.00",
-        unitPrice: fee.toFixed(2),
-        unitCost: null,
-        taxable: true,
-        lineTotal: fee.toFixed(2),
-        sortOrder: sortOrder++,
-      });
+      lines.push({ type: "fee", description: `Pickup/Delivery Fee — ${equipmentLabel}`, quantity: "1.00", unitPrice: fee.toFixed(2), unitCost: null, taxable: true, lineTotal: fee.toFixed(2), sortOrder: 0 });
     }
+    sections.push({ header: equipmentLabel, lines, note: wo.repairNotes });
   }
 
-  const totals = computeTotals(
-    lines.filter((l) => l.type !== "header").map((l) => ({ quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), taxable: l.taxable })),
-    Number(shopProfile?.taxRate ?? 0)
-  );
+  const { lines, totals } = assembleCombinedInvoice(sections, taxRate);
 
-  // One paragraph per job that has "Work performed" written, headed by its equipment.
-  const combinedNotes =
-    workOrders
-      .filter((wo) => wo.repairNotes?.trim())
-      .map((wo) => `${[wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment"}: ${wo.repairNotes!.trim()}`)
-      .join("\n\n") || null;
-
+  const now = new Date();
   const invoice = await prisma.$transaction(async (tx) => {
     const invoiceNumber = await claimInvoiceNumber(tx, organizationId);
     const created = await tx.invoice.create({
@@ -433,18 +421,31 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
         invoiceType: classifyInvoiceType({ hasEquipment: true, hasWorkOrder: true, lineItems: lines.map((l) => ({ type: l.type })) }),
         invoiceNumber,
         viewToken: generateViewToken(),
-        notes: combinedNotes,
         ...totals,
         taxBreakdown: taxBreakdownField(totals.taxAmount, shopProfile),
         lineItems: { create: lines },
       },
     });
     await tx.invoiceWorkOrder.createMany({ data: workOrders.map((wo) => ({ invoiceId: created.id, workOrderId: wo.id })) });
+    // Billed now: a job still on the Billing step becomes Ready, and what was saved on Billing has done its job.
+    for (const wo of workOrders) {
+      const hours = labourHoursByJob.get(wo.id);
+      await tx.workOrder.update({
+        where: { id: wo.id },
+        data: {
+          billingDraft: Prisma.DbNull,
+          ...(hours ? { labourHours: hours.toFixed(2) } : {}),
+          ...(wo.status === "inRepair" ? { status: "readyForPickup", readyForPickupAt: wo.readyForPickupAt ?? now } : {}),
+        },
+      });
+    }
     return created;
   });
 
   for (const wo of workOrders) revalidatePath(`/work-orders/${wo.id}`);
+  revalidatePath("/work-orders");
   revalidatePath("/invoices");
+  revalidatePath("/dashboard");
   redirect(`/invoices/${invoice.id}`);
 }
 
