@@ -349,6 +349,15 @@ function Header({
               className="absolute right-0 top-full mt-2 w-44 rounded-lg py-1 z-40"
               style={{ background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", boxShadow: "var(--shadow-md)" }}
             >
+              <Link
+                href="/account/password"
+                onClick={() => setMenuOpen(false)}
+                className="block w-full text-left px-3 py-2 text-xs font-semibold hover:bg-slate-100"
+                style={{ color: "var(--text-primary)" }}
+              >
+                Change password
+              </Link>
+              <div className="my-1 h-px" style={{ background: "var(--border-subtle)" }} />
               <button
                 onClick={handleSignOut}
                 className="w-full text-left px-3 py-2 text-xs font-semibold hover:bg-slate-100"
