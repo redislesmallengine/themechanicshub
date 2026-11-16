@@ -15,7 +15,6 @@ import { taxBreakdownField } from "@/lib/tax-fields";
 import { canMarkNoTax, combinedRate, shopTaxes } from "@/lib/taxes";
 import { readFeeOptions, buildWorkOrderInvoiceLines, readBillingRows, buildInvoiceFromRows, assembleCombinedInvoice, type CombinedSection, type WorkOrderInvoiceLine } from "@/lib/invoice-lines";
 import { parseBillingDraft, draftBillingRows } from "@/lib/billing-draft";
-import { Prisma } from "@/generated/prisma/client";
 import { renderInvoicePdfFromRecord } from "@/lib/invoice-pdf";
 
 async function requireCanManageInvoices(action: "create" | "update" | "void" | "delete" = "update") {
@@ -248,7 +247,6 @@ export async function finishJob(workOrderId: string, formData: FormData) {
     await tx.workOrder.update({
       where: { id: workOrderId },
       data: {
-        billingDraft: Prisma.DbNull,
         labourHours,
         status: pickedUp ? "closed" : "readyForPickup",
         readyForPickupAt: workOrder.readyForPickupAt ?? now,
@@ -427,13 +425,13 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
       },
     });
     await tx.invoiceWorkOrder.createMany({ data: workOrders.map((wo) => ({ invoiceId: created.id, workOrderId: wo.id })) });
-    // Billed now: a job still on the Billing step becomes Ready, and what was saved on Billing has done its job.
+    // Billed now: a job still on the Billing step becomes Ready. What was saved on Billing is kept, so that deleting this
+    // invoice and starting again does not lose it.
     for (const wo of workOrders) {
       const hours = labourHoursByJob.get(wo.id);
       await tx.workOrder.update({
         where: { id: wo.id },
         data: {
-          billingDraft: Prisma.DbNull,
           ...(hours ? { labourHours: hours.toFixed(2) } : {}),
           ...(wo.status === "inRepair" ? { status: "readyForPickup", readyForPickupAt: wo.readyForPickupAt ?? now } : {}),
         },
