@@ -7,6 +7,7 @@ import { SearchIcon } from "@/components/icons";
 import { Pagination } from "@/components/pagination";
 import { DeleteWorkOrderButton } from "@/components/delete-work-order-button";
 import { SortTh } from "@/components/sortable-th";
+import { formatWorkOrderNumber, parseWorkOrderSearch } from "@/lib/work-order-number";
 import { WorkOrderQuickAction } from "@/components/work-order-quick-action";
 import { WorkOrderStatusMover } from "@/components/work-order-status-mover";
 import { parseSort, sortQuery } from "@/lib/sort";
@@ -26,7 +27,7 @@ const HISTORY_STATUSES = ["closed", "declined"];
 
 // Pipeline order -- what sorting by Status (and Next step, which follows from it) means.
 const STATUS_RANK = ["droppedOff", "diagnosing", "awaitingApproval", "inRepair", "readyForPickup", "closed", "declined"];
-const SORT_FIELDS = ["customer", "equipment", "status", "invoice", "technician", "stage", "next"] as const;
+const SORT_FIELDS = ["number", "customer", "equipment", "status", "invoice", "technician", "stage", "next"] as const;
 // Where an invoice stands, for sorting the Invoice column: none, then in the order money moves.
 const INVOICE_RANK = ["none", "draft", "sent", "viewed", "overdue", "paid", "void"];
 
@@ -63,6 +64,8 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
         ...(searchTerm
           ? {
               OR: [
+                // "1042", "WO-1042" and "wo1042" all find work order 1042
+                ...(parseWorkOrderSearch(searchTerm) !== null ? [{ number: parseWorkOrderSearch(searchTerm) as number }] : []),
                 { customer: { name: { contains: searchTerm, mode: "insensitive" as const } } },
                 { customer: { phone: { contains: searchTerm, mode: "insensitive" as const } } },
                 { customer: { email: { contains: searchTerm, mode: "insensitive" as const } } },
@@ -141,6 +144,8 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
   // the whole fetched set, with the same stable tie-break.
   const sortKey = (wo: (typeof workOrders)[number]): string | number => {
     switch (sort.field) {
+      case "number":
+        return wo.number;
       case "customer":
         return wo.customer.name.toLowerCase();
       case "equipment":
@@ -213,7 +218,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
               type="text"
               name="q"
               defaultValue={q ?? ""}
-              placeholder="Search customer, equipment…"
+              placeholder="Search customer, equipment, WO #…"
               className="w-56 pl-9 pr-3 py-2 rounded-lg text-xs font-medium"
               style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-strong)", color: "var(--text-primary)" }}
             />
@@ -271,6 +276,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
           <table className="dt-table">
             <thead className="dt-head">
               <tr>
+                <SortTh label="WO #" field="number" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} firstDir="desc" />
                 <SortTh label="Customer" field="customer" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} />
                 <SortTh label="Equipment" field="equipment" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} />
                 <SortTh label="Status" field="status" sort={sort.field} dir={sort.dir} basePath="/work-orders" params={filterParams} />
@@ -284,7 +290,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
             <tbody>
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
+                  <td colSpan={9} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
                     {searchTerm || filter ? "No work orders match that." : "No active work orders — create one to get started."}
                   </td>
                 </tr>
@@ -317,6 +323,11 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
                 const showDelete = (woStatus === "droppedOff" || woStatus === "declined" || isOwner) && !invoiceId && canDelete.success;
                 return (
                   <tr key={wo.id} className="dt-row" style={attention ? { background: "var(--color-error-subtle)" } : billingFlag ? { background: "var(--color-warning-subtle)" } : undefined}>
+                    <td className="dt-td num text-sm whitespace-nowrap">
+                      <Link href={`/work-orders/${wo.id}`} className="font-bold hover:underline" style={{ color: "var(--text-primary)" }}>
+                        {formatWorkOrderNumber(wo.number)}
+                      </Link>
+                    </td>
                     <td className="dt-td">
                       <Link href={`/work-orders/${wo.id}`} className="font-bold text-sm hover:underline" style={{ color: "var(--text-primary)" }}>
                         {wo.customer.name}

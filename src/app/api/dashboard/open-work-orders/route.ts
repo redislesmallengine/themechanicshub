@@ -5,6 +5,7 @@ import { getOpenWorkOrders, getOpenWorkOrderCount } from "@/lib/dashboard";
 
 export interface OpenWorkOrderRow {
   id: string;
+  number: number;
   status: string;
   updatedAt: string;
   readyForPickupAt: string | null;
@@ -43,6 +44,7 @@ export async function GET(request: NextRequest) {
     total,
     workOrders: workOrders.map((wo) => ({
       id: wo.id,
+      number: wo.number,
       status: wo.status,
       updatedAt: wo.updatedAt.toISOString(),
       readyForPickupAt: wo.readyForPickupAt ? wo.readyForPickupAt.toISOString() : null,

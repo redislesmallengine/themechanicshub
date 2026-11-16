@@ -8,6 +8,7 @@ import { claimInvoiceNumber, generateViewToken, classifyInvoiceType, PAYMENT_MET
 import { applyStockAdjustment } from "@/lib/inventory";
 import { partLineName } from "@/lib/parts";
 import { taxBreakdownField } from "@/lib/tax-fields";
+import { claimWorkOrderNumber } from "@/lib/work-order-number";
 import { readFeeOptions, readBilling, buildInvoiceFromBilling, type Billing } from "@/lib/invoice-lines";
 import { sendInvoice } from "@/app/(app)/invoices/actions";
 
@@ -197,9 +198,11 @@ export async function createQuickJob(formData: FormData) {
       equipmentId = equipment.id;
     }
 
+    const number = await claimWorkOrderNumber(tx, organizationId);
     const workOrder = await tx.workOrder.create({
       data: {
         organizationId,
+        number,
         customerId,
         equipmentId,
         complaint,

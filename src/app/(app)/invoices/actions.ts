@@ -12,6 +12,7 @@ import { applyStockAdjustment } from "@/lib/inventory";
 import { unitPriceFor } from "@/lib/pricing";
 import { partLineName } from "@/lib/parts";
 import { taxBreakdownField } from "@/lib/tax-fields";
+import { formatWorkOrderNumber } from "@/lib/work-order-number";
 import { canMarkNoTax, combinedRate, shopTaxes } from "@/lib/taxes";
 import { readFeeOptions, buildWorkOrderInvoiceLines, readBillingRows, buildInvoiceFromRows, assembleCombinedInvoice, type CombinedSection, type WorkOrderInvoiceLine } from "@/lib/invoice-lines";
 import { parseBillingDraft, draftBillingRows } from "@/lib/billing-draft";
@@ -377,7 +378,7 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
     if (draft && draftRows.length > 0) {
       // Exactly what was saved on this job's Billing screen.
       const built = buildInvoiceFromRows({ rows: draftRows, taxIncluded: draft.taxMode === "included", taxRate, unitCosts: Object.fromEntries(wo.parts.map((p) => [p.id, p.unitCostPrice?.toString() ?? null])) });
-      sections.push({ header: equipmentLabel, lines: built.lines, note: draft.notes });
+      sections.push({ header: `${equipmentLabel} · ${formatWorkOrderNumber(wo.number)}`, lines: built.lines, note: draft.notes });
       const hours = draftRows.filter((r) => r.kind === "labour").reduce((sum, r) => sum + r.quantity, 0);
       if (hours > 0) labourHoursByJob.set(wo.id, hours);
       continue;
@@ -404,7 +405,7 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
       const fee = Number(shopProfile.deliveryFee);
       lines.push({ type: "fee", description: `Pickup/Delivery Fee — ${equipmentLabel}`, quantity: "1.00", unitPrice: fee.toFixed(2), unitCost: null, taxable: true, lineTotal: fee.toFixed(2), sortOrder: 0 });
     }
-    sections.push({ header: equipmentLabel, lines, note: wo.repairNotes });
+    sections.push({ header: `${equipmentLabel} · ${formatWorkOrderNumber(wo.number)}`, lines, note: wo.repairNotes });
   }
 
   const { lines, totals } = assembleCombinedInvoice(sections, taxRate);

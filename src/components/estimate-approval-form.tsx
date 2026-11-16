@@ -8,6 +8,7 @@ export function EstimateApprovalForm({
   token,
   shopName,
   equipmentLabel,
+  workOrderNumber,
   complaint,
   estimateAmount,
   estimateNotes,
@@ -15,6 +16,7 @@ export function EstimateApprovalForm({
   token: string;
   shopName: string;
   equipmentLabel: string;
+  workOrderNumber: string;
   complaint: string;
   estimateAmount: string;
   estimateNotes: string;
@@ -75,7 +77,7 @@ export function EstimateApprovalForm({
               Repair Estimate
             </h1>
             <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
-              {equipmentLabel}
+              {equipmentLabel} · Work order {workOrderNumber}
             </p>
 
             <div className="rounded-lg p-4 mb-6" style={{ background: "var(--bg-surface-subtle)", border: "1px solid var(--border-subtle)" }}>

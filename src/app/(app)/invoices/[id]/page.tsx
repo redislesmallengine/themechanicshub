@@ -17,6 +17,7 @@ import { SendWhatsAppButton } from "@/components/send-whatsapp-button";
 import { SendReceiptButton } from "@/components/send-receipt-button";
 import { SentEmailsPanel } from "@/components/sent-emails-panel";
 import { invoiceTaxLines, taxLineLabel } from "@/lib/taxes";
+import { formatWorkOrderNumber } from "@/lib/work-order-number";
 
 export default async function InvoiceDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ created?: string; receipt?: string }> }) {
   const { id } = await params;
@@ -87,7 +88,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               {" "}
               ·{" "}
               <Link href={`/work-orders/${invoice.workOrderId}`} className="font-semibold text-brand-600">
-                ← Back to the job
+                ← Back to the job{invoice.workOrder ? ` (${formatWorkOrderNumber(invoice.workOrder.number)})` : ""}
               </Link>
             </>
           )}

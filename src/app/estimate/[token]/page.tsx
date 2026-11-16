@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { EstimateApprovalForm } from "@/components/estimate-approval-form";
 import { WrenchIcon } from "@/components/icons";
+import { formatWorkOrderNumber } from "@/lib/work-order-number";
 
 export default async function EstimatePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -38,6 +39,7 @@ export default async function EstimatePage({ params }: { params: Promise<{ token
       token={token}
       shopName={workOrder.organization.name}
       equipmentLabel={equipmentLabel}
+      workOrderNumber={formatWorkOrderNumber(workOrder.number)}
       complaint={workOrder.complaint}
       estimateAmount={workOrder.estimateAmount.toString()}
       estimateNotes={workOrder.estimateNotes ?? ""}

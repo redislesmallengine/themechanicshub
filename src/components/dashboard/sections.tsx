@@ -107,6 +107,7 @@ export async function OpenWorkOrdersSection({ organizationId, agingDays }: { org
   const [workOrders, total] = await Promise.all([getOpenWorkOrders(organizationId, 5, 0), getOpenWorkOrderCount(organizationId)]);
   const initialWorkOrders = workOrders.map((wo) => ({
     id: wo.id,
+    number: wo.number,
     status: wo.status,
     updatedAt: wo.updatedAt.toISOString(),
     readyForPickupAt: wo.readyForPickupAt ? wo.readyForPickupAt.toISOString() : null,

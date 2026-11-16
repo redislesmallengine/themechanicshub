@@ -11,6 +11,7 @@ import { loadEmailTemplate, renderTemplate } from "@/lib/email-templates";
 import { applyStockAdjustment } from "@/lib/inventory";
 import { partLineName } from "@/lib/parts";
 import { parseBillingDraft } from "@/lib/billing-draft";
+import { claimWorkOrderNumber, formatWorkOrderNumber } from "@/lib/work-order-number";
 
 async function requireCanManageWorkOrders(action: "create" | "update" | "delete" = "create") {
   const reqHeaders = await headers();
@@ -174,8 +175,11 @@ export async function createWorkOrder(formData: FormData) {
     }
   }
 
-  const workOrder = await prisma.workOrder.create({
-    data: { organizationId, customerId, equipmentId, complaint, dropOffMethod, preApprovalRequired, notToExceedAmount, source: "standard" },
+  const workOrder = await prisma.$transaction(async (tx) => {
+    const number = await claimWorkOrderNumber(tx, organizationId);
+    return tx.workOrder.create({
+      data: { organizationId, number, customerId, equipmentId, complaint, dropOffMethod, preApprovalRequired, notToExceedAmount, source: "standard" },
+    });
   });
 
   revalidatePath("/work-orders");
@@ -258,13 +262,14 @@ export async function updateRepairNotes(workOrderId: string, formData: FormData)
 /** Shared by sendEstimate (real send) and previewEstimateEmail (preview only) so the two can never drift apart. Renders the shop's saved template (Settings -> Email Templates) or the built-in default if they haven't customized it. */
 async function buildEstimateEmail(
   organizationId: string,
-  params: { customerName: string; equipmentLabel: string; shopName: string; amount: number; estimateNotes: string; url: string }
+  params: { customerName: string; equipmentLabel: string; workOrderNumber: string; shopName: string; amount: number; estimateNotes: string; url: string }
 ) {
   const template = await loadEmailTemplate(organizationId, "estimate");
   const data = {
     customer_name: params.customerName,
     shop_name: params.shopName,
     equipment_label: params.equipmentLabel,
+    work_order_number: params.workOrderNumber,
     amount: `$${params.amount.toFixed(2)}`,
     estimate_notes: params.estimateNotes,
     approval_link: params.url,
@@ -295,6 +300,7 @@ export async function previewEstimateEmail(workOrderId: string, formData: FormDa
   const { subject, html } = await buildEstimateEmail(organizationId, {
     customerName: customer?.name ?? "there",
     equipmentLabel,
+    workOrderNumber: formatWorkOrderNumber(workOrder.number),
     shopName: shop?.name ?? "your shop",
     amount,
     estimateNotes,
@@ -337,6 +343,7 @@ export async function sendEstimate(workOrderId: string, formData: FormData) {
   const { subject, html } = await buildEstimateEmail(organizationId, {
     customerName: customer.name,
     equipmentLabel,
+    workOrderNumber: formatWorkOrderNumber(workOrder.number),
     shopName: shop?.name ?? "your shop",
     amount,
     estimateNotes,

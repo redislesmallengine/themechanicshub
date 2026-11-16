@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { CustomersIcon, EquipmentIcon, InventoryIcon, SearchIcon, WorkOrderIcon } from "@/components/icons";
 import { STATUS_LABELS, type WorkOrderStatus } from "@/lib/work-orders";
+import { formatWorkOrderNumber, parseWorkOrderSearch } from "@/lib/work-order-number";
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q } = await searchParams;
@@ -55,6 +56,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           where: {
             organizationId,
             OR: [
+              ...(parseWorkOrderSearch(query) !== null ? [{ number: parseWorkOrderSearch(query) as number }] : []),
               { complaint: { contains: query, mode: "insensitive" } },
               { customer: { name: { contains: query, mode: "insensitive" } } },
               { equipment: { serialNumber: { contains: query, mode: "insensitive" } } },
@@ -123,6 +125,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                       <WorkOrderIcon className="w-4 h-4 text-amber-400 shrink-0" />
                       <div>
                         <div className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
+                          <span className="num mr-2">{formatWorkOrderNumber(wo.number)}</span>
                           {wo.customer.name} — {equipmentLabel}
                         </div>
                         <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>

@@ -44,19 +44,21 @@ export const EMAIL_TEMPLATE_META: Record<EmailTemplateKey, EmailTemplateMeta> = 
       { token: "customer_name", description: "Customer's name" },
       { token: "shop_name", description: "Your shop's name" },
       { token: "equipment_label", description: "Make/model of the equipment" },
+      { token: "work_order_number", description: "The job's work order number, e.g. WO-1042" },
       { token: "amount", description: "Estimate amount, e.g. $145.00" },
       { token: "estimate_notes", description: "What the estimate covers, in plain language" },
       { token: "approval_link", description: "Link for the customer to approve or decline — required" },
     ],
     requiredTokens: ["approval_link"],
     defaultSubject: "Repair estimate for {{equipment_label}} — {{shop_name}}",
-    defaultHtml: `<p>Here's the estimate for {{equipment_label}}:</p>
+    defaultHtml: `<p>Here's the estimate for {{equipment_label}} (work order {{work_order_number}}):</p>
 <p><b>{{amount}}</b> — {{estimate_notes}}</p>
 <p><a href="{{approval_link}}">Review and approve or decline</a></p>
 <p>If you'd rather talk it through, just give the shop a call.</p>`,
     sampleData: {
       customer_name: "Jordan Smith",
       equipment_label: "Honda GX160",
+      work_order_number: "WO-1042",
       amount: "$145.00",
       estimate_notes: "Carburetor rebuild and a new spark plug",
       approval_link: "https://example.com/estimate/sample-link",

@@ -10,6 +10,7 @@ import { ensureInvoiceShortCode } from "@/lib/invoice-short-link";
 import { partLineName } from "@/lib/parts";
 import { secondaryButton } from "@/lib/ui";
 import { shopTaxes } from "@/lib/taxes";
+import { formatWorkOrderNumber } from "@/lib/work-order-number";
 import { parseBillingDraft } from "@/lib/billing-draft";
 import { WorkOrderDiagnosisForm } from "@/components/work-order-diagnosis-form";
 import { JobStepper } from "@/components/job-stepper";
@@ -189,7 +190,10 @@ export default async function WorkOrderDetailPage({ params, searchParams }: { pa
         </p>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className="num font-extrabold text-base" style={{ color: "var(--text-primary)" }} title="Work order number">
+                {formatWorkOrderNumber(workOrder.number)}
+              </span>
               <span className={`dt-badge dt-badge--${STATUS_BADGE[status]}`}>
                 <span className="dt-badge-dot" />
                 {STATUS_LABELS[status]}

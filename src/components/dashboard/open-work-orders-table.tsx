@@ -6,6 +6,7 @@ import { STATUS_LABELS as WO_STATUS_LABELS, STATUS_BADGE as WO_STATUS_BADGE, now
 import type { OpenWorkOrderRow } from "@/app/api/dashboard/open-work-orders/route";
 import { PhoneLink } from "@/components/phone-link";
 import { Spinner } from "@/components/dashboard/skeletons";
+import { formatWorkOrderNumber } from "@/lib/work-order-number";
 
 async function fetchOpenWorkOrdersPage(page: number, pageSize: number): Promise<{ workOrders: OpenWorkOrderRow[]; total: number }> {
   const controller = new AbortController();
@@ -110,6 +111,7 @@ export function OpenWorkOrdersTable({
           <table className="dt-table" style={{ minWidth: 640 }}>
             <thead className="dt-head">
               <tr>
+                <th className="dt-th text-left">WO #</th>
                 <th className="dt-th text-left">Customer</th>
                 <th className="dt-th text-left">Equipment</th>
                 <th className="dt-th text-left">Status</th>
@@ -119,7 +121,7 @@ export function OpenWorkOrdersTable({
             <tbody>
               {workOrders.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
+                  <td colSpan={5} className="dt-td text-center text-sm py-8" style={{ color: "var(--text-muted)" }}>
                     Nothing open —{" "}
                     <Link href="/work-orders/new" className="font-semibold text-brand-600">
                       create a work order
@@ -133,6 +135,11 @@ export function OpenWorkOrdersTable({
                 const isAging = status === "readyForPickup" && wo.readyForPickupAt && (now - new Date(wo.readyForPickupAt).getTime()) / 86400000 > agingDays;
                 return (
                   <tr key={wo.id} className="dt-row">
+                    <td className="dt-td num text-sm whitespace-nowrap">
+                      <Link href={`/work-orders/${wo.id}`} className="font-bold hover:underline" style={{ color: "var(--text-primary)" }}>
+                        {formatWorkOrderNumber(wo.number)}
+                      </Link>
+                    </td>
                     <td className="dt-td">
                       <Link href={`/work-orders/${wo.id}`} className="font-bold text-sm hover:underline" style={{ color: "var(--text-primary)" }}>
                         {wo.customerName}

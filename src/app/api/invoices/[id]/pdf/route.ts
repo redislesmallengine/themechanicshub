@@ -15,6 +15,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     include: {
       lineItems: { orderBy: { sortOrder: "asc" } },
       customer: true,
+      workOrder: { select: { number: true } },
       equipment: { include: { equipmentType: true } },
       warrantyProvider: true,
       organization: { include: { shopProfile: true } },

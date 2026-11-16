@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { WrenchIcon } from "@/components/icons";
 import { STATUS_LABELS, STATUS_BADGE, isOverdue, type InvoiceStatus } from "@/lib/invoices";
 import { invoiceTaxLines, taxLineLabel } from "@/lib/taxes";
+import { formatWorkOrderNumber } from "@/lib/work-order-number";
 
 export default async function PublicInvoicePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -14,6 +15,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
     include: {
       lineItems: { orderBy: { sortOrder: "asc" } },
       customer: true,
+      workOrder: { select: { number: true } },
       equipment: { include: { equipmentType: true } },
       combinedWorkOrders: { include: { workOrder: { include: { equipment: { include: { equipmentType: true } } } } } },
       warrantyProvider: true,
@@ -100,6 +102,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
               <p className="text-xs mt-0.5 font-medium" style={{ color: "var(--text-secondary)" }}>
                 Issued {invoice.issueDate.toLocaleDateString()} ·{" "}
                 {isPaid ? (invoice.paidAt ? `Paid ${invoice.paidAt.toLocaleDateString()}` : "Paid") : `Due ${invoice.dueDate.toLocaleDateString()}`}
+                {invoice.workOrder ? ` · Work order ${formatWorkOrderNumber(invoice.workOrder.number)}` : ""}
               </p>
             </div>
             <div className="flex flex-col items-end gap-1.5">

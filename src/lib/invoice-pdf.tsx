@@ -1,5 +1,6 @@
 import { Document, Page, View, Text, Image, Link, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import { invoiceTaxLines, taxLineLabel, type TaxLine } from "@/lib/taxes";
+import { formatWorkOrderNumber } from "@/lib/work-order-number";
 import { getImage } from "@/lib/storage";
 
 // Pure-JS PDF generation (no headless Chrome — that would be a heavy
@@ -50,6 +51,8 @@ const styles = StyleSheet.create({
 
 export interface InvoicePdfData {
   invoiceNumber: string;
+  /** The job's work order number (WO-1042), when the invoice is for one job. */
+  workOrderNumber?: string | null;
   status: string;
   issueDate: Date;
   dueDate: Date;
@@ -119,6 +122,12 @@ function InvoiceDocument({ data }: { data: InvoicePdfData }) {
               <View style={styles.metaRow}>
                 <Text style={styles.muted}>Due</Text>
                 <Text style={{ marginLeft: 8 }}>{fmtDate(data.dueDate)}</Text>
+              </View>
+            )}
+            {data.workOrderNumber && (
+              <View style={styles.metaRow}>
+                <Text style={styles.muted}>Work order</Text>
+                <Text style={{ marginLeft: 8 }}>{data.workOrderNumber}</Text>
               </View>
             )}
           </View>
@@ -307,6 +316,7 @@ export interface InvoiceWithRelationsForPdf {
   subtotal: unknown;
   taxAmount: unknown;
   taxBreakdown?: unknown;
+  workOrder?: { number: number } | null;
   total: unknown;
   paidAt: Date | null;
   paymentMethod: string | null;
@@ -353,6 +363,7 @@ export async function renderInvoicePdfFromRecord(invoice: InvoiceWithRelationsFo
       : null;
   return renderInvoicePdf({
     invoiceNumber: invoice.invoiceNumber,
+    workOrderNumber: invoice.workOrder ? formatWorkOrderNumber(invoice.workOrder.number) : null,
     status: invoice.status,
     issueDate: invoice.issueDate,
     dueDate: invoice.dueDate,
