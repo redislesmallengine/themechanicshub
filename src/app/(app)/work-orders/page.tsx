@@ -1,3 +1,4 @@
+import { describeEquipment } from "@/lib/equipment-label";
 import Link from "next/link";
 import { PhoneLink } from "@/components/phone-link";
 import { headers } from "next/headers";
@@ -136,7 +137,7 @@ export default async function WorkOrdersPage({ searchParams }: { searchParams: P
   }
 
   function equipmentLabelOf(wo: (typeof workOrders)[number]): string {
-    return [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment";
+    return describeEquipment(wo.equipment, "Equipment");
   }
 
   // Default: needs-attention jobs first, then most recently touched (the query already orders by

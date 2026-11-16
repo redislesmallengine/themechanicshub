@@ -1,3 +1,4 @@
+import { describeEquipment } from "@/lib/equipment-label";
 import Link from "next/link";
 import {
   getShopFloorCounts,
@@ -114,7 +115,7 @@ export async function OpenWorkOrdersSection({ organizationId, agingDays }: { org
     customerName: wo.customer.name,
     customerContact: wo.customer.phone ?? wo.customer.email ?? "",
     customerPhone: wo.customer.phone ?? null,
-    equipmentLabel: [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment",
+    equipmentLabel: describeEquipment(wo.equipment, "Equipment"),
   }));
 
   return <OpenWorkOrdersClientTable initialWorkOrders={initialWorkOrders} initialTotal={total} agingDays={agingDays} />;

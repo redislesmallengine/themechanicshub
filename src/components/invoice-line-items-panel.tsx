@@ -1,6 +1,8 @@
 "use client";
 
 import { SearchSelect } from "@/components/search-select";
+import { MachineBanner } from "@/components/machine-banner";
+import { splitMachineHeading } from "@/lib/equipment-label";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { addCustomLineItem, addInventoryLineItem, removeLineItem, addServiceLineItem } from "@/app/(app)/invoices/actions";
@@ -54,7 +56,8 @@ function SectionPicker({ headerLines }: { headerLines: SectionHeader[] }) {
       <select id="sectionHeaderId" name="sectionHeaderId" defaultValue={headerLines[headerLines.length - 1]?.id} className="w-full px-3 py-2 rounded-lg text-xs font-semibold" style={inputStyle}>
         {headerLines.map((h) => (
           <option key={h.id} value={h.id}>
-            {h.description}
+            {splitMachineHeading(h.description).title}
+            {splitMachineHeading(h.description).subtitle ? ` · ${splitMachineHeading(h.description).subtitle}` : ""}
           </option>
         ))}
       </select>
@@ -283,7 +286,7 @@ function AddLineTabs({ invoiceId, availableParts, services, headerLines }: { inv
   );
 }
 
-function LineRow({ line, showMargins }: { line: InvoiceLine; showMargins: boolean }) {
+function LineRow({ line, showMargins, sectionNumber }: { line: InvoiceLine; showMargins: boolean; sectionNumber?: number }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -329,10 +332,10 @@ function LineRow({ line, showMargins }: { line: InvoiceLine; showMargins: boolea
   if (line.type === "header") {
     return (
       <tr className="dt-row group">
-        <td colSpan={showMargins ? 5 : 4} className="dt-td text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--text-muted)", background: "var(--bg-surface-subtle)" }}>
-          {line.description}
+        <td colSpan={showMargins ? 5 : 4} className="dt-td bg-brand-50">
+          <MachineBanner number={sectionNumber} description={line.description} />
         </td>
-        <td className="dt-td text-right" style={{ background: "var(--bg-surface-subtle)" }}>
+        <td className="dt-td text-right bg-brand-50">
           <button onClick={handleRemove} disabled={pending} className="text-[11px] font-bold disabled:opacity-50" style={{ color: "var(--color-error-solid)" }}>
             {pending ? "…" : "Remove"}
           </button>
@@ -424,7 +427,7 @@ export function InvoiceLineItemsPanel({
                 </tr>
               )}
               {lines.map((line) => (
-                <LineRow key={line.id} line={line} showMargins={showMargins} />
+                <LineRow key={line.id} line={line} showMargins={showMargins} sectionNumber={line.type === "header" && headerLines.length > 1 ? headerLines.findIndex((h) => h.id === line.id) + 1 : undefined} />
               ))}
             </tbody>
           </table>

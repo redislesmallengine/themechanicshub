@@ -1,3 +1,4 @@
+import { describeEquipment } from "@/lib/equipment-label";
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
       customerName: wo.customer.name,
       customerContact: wo.customer.phone ?? wo.customer.email ?? "",
       customerPhone: wo.customer.phone ?? null,
-      equipmentLabel: [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment",
+      equipmentLabel: describeEquipment(wo.equipment, "Equipment"),
     })),
   };
 

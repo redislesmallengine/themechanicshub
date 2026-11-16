@@ -1,3 +1,4 @@
+import { describeEquipment } from "@/lib/equipment-label";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -45,7 +46,7 @@ export default async function QuickJobPage({ searchParams }: { searchParams: Pro
           email: c.email,
           equipment: c.equipment.map((eq) => ({
             id: eq.id,
-            label: [eq.make, eq.model].filter(Boolean).join(" / ") || eq.equipmentType?.name || (eq.serialNumber ? `S/N ${eq.serialNumber}` : "Unnamed equipment"),
+            label: describeEquipment(eq, eq.serialNumber ? `S/N ${eq.serialNumber}` : "Unnamed equipment"),
           })),
         }))}
         initialCustomerId={customers.find((c) => c.id === customerId)?.id ?? ""}

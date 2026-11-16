@@ -1,3 +1,4 @@
+import { describeEquipment } from "@/lib/equipment-label";
 import Link from "next/link";
 import { PhoneLink, CallButton } from "@/components/phone-link";
 import { notFound, redirect } from "next/navigation";
@@ -103,7 +104,7 @@ export default async function WorkOrderDetailPage({ params, searchParams }: { pa
   const viewStep = (viewableSteps(status, repairFinished, !!linkedInvoice) as string[]).includes(view ?? "") ? (view as StepTarget) : null;
   const viewLabel = viewStep ? (STEP_ROW.find((x) => x.target === viewStep)?.label ?? "") : "";
   const currentLabel = status === "declined" ? STATUS_LABELS.declined : STEP_ROW[stepIndex(status, repairFinished)].label;
-  const equipmentLabel = [workOrder.equipment.make, workOrder.equipment.model].filter(Boolean).join(" / ") || workOrder.equipment.equipmentType?.name || "Equipment";
+  const equipmentLabel = describeEquipment(workOrder.equipment, "Equipment");
   // The option shows whenever this work order was marked Shop
   // Pickup/Delivery at intake -- independent of whether Shop Profile has a
   // default amount, so a shop that hasn't set one yet still gets prompted

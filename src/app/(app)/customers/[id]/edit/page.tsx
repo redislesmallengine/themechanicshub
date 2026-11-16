@@ -1,3 +1,4 @@
+import { describeEquipment } from "@/lib/equipment-label";
 import { notFound, redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
@@ -58,7 +59,7 @@ export default async function EditCustomerPage({ params }: { params: Promise<{ i
             showAddLink={false}
             equipment={customer.equipment.map((eq) => ({
               id: eq.id,
-              label: [eq.make, eq.model].filter(Boolean).join(" / ") || eq.equipmentType?.name || "Unnamed equipment",
+              label: describeEquipment(eq, "Unnamed equipment"),
               typeName: eq.equipmentType?.name ?? null,
               serialNumber: eq.serialNumber,
               photoKey: eq.photoKey,

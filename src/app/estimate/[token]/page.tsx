@@ -1,3 +1,4 @@
+import { describeEquipment } from "@/lib/equipment-label";
 import { prisma } from "@/lib/prisma";
 import { EstimateApprovalForm } from "@/components/estimate-approval-form";
 import { WrenchIcon } from "@/components/icons";
@@ -32,7 +33,7 @@ export default async function EstimatePage({ params }: { params: Promise<{ token
     );
   }
 
-  const equipmentLabel = [workOrder.equipment.make, workOrder.equipment.model].filter(Boolean).join(" / ") || workOrder.equipment.equipmentType?.name || "your equipment";
+  const equipmentLabel = describeEquipment(workOrder.equipment, "your equipment");
 
   return (
     <EstimateApprovalForm

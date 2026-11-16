@@ -1,3 +1,5 @@
+import { describeEquipment, equipmentMakeModel, equipmentTypeName } from "@/lib/equipment-label";
+import { MachineBanner } from "@/components/machine-banner";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -56,8 +58,9 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
   const shopProfile = invoice.organization.shopProfile;
   const overdue = isOverdue(invoice.status, invoice.dueDate);
   const equipmentLabel = invoice.equipment
-    ? [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" / ") || invoice.equipment.equipmentType?.name || "Equipment"
+    ? describeEquipment(invoice.equipment, "Equipment")
     : invoice.adHocEquipmentLabel;
+  const headerIds = invoice.lineItems.filter((l) => l.type === "header").map((l) => l.id);
   // A paid invoice doubles as the customer's receipt — headed and totalled as one.
   const isPaid = status === "paid";
   const shopEmail = shopProfile?.email ?? shopProfile?.invoiceReplyToEmail ?? null;
@@ -156,14 +159,21 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
             {invoice.combinedWorkOrders.length > 0 ? (
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{ color: "var(--text-secondary)" }}>
-                  Machines
+                  Machines ({invoice.combinedWorkOrders.length})
                 </div>
-                {invoice.combinedWorkOrders.map((cwo) => {
+                {invoice.combinedWorkOrders.map((cwo, i) => {
                   const eq = cwo.workOrder.equipment;
-                  const label = [eq.make, eq.model].filter(Boolean).join(" / ") || eq.equipmentType?.name || "Equipment";
+                  const type = equipmentTypeName(eq);
+                  const detail = equipmentMakeModel(eq);
                   return (
-                    <p key={cwo.id} className="font-bold" style={{ color: "var(--text-primary)" }}>
-                      {label}
+                    <p key={cwo.id} className="flex gap-2 mb-1">
+                      <span style={{ color: "var(--text-secondary)" }}>{i + 1}.</span>
+                      <span>
+                        <span className="font-bold" style={{ color: "var(--text-primary)" }}>
+                          {type || detail || "Equipment"}
+                        </span>
+                        {type && detail && <span style={{ color: "var(--text-secondary)" }}> · {detail}</span>}
+                      </span>
                     </p>
                   );
                 })}
@@ -212,8 +222,8 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
                       </tr>
                     ) : line.type === "header" ? (
                       <tr key={line.id} className="dt-row">
-                        <td colSpan={4} className="dt-td text-[11px] font-bold uppercase tracking-wide" style={{ color: "var(--text-secondary)", background: "var(--bg-surface-subtle)" }}>
-                          {line.description}
+                        <td colSpan={4} className="dt-td bg-brand-50">
+                          <MachineBanner number={headerIds.length > 1 ? headerIds.indexOf(line.id) + 1 : undefined} description={line.description} />
                         </td>
                       </tr>
                     ) : (

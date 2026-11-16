@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { describeEquipment } from "@/lib/equipment-label";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -189,7 +190,7 @@ export default async function EquipmentListPage({ searchParams }: { searchParams
                       </Link>
                       <DeleteEquipmentButton
                         equipmentId={eq.id}
-                        label={[eq.make, eq.model].filter(Boolean).join(" / ") || "this equipment"}
+                        label={describeEquipment(eq, "this equipment")}
                       />
                     </div>
                   </td>

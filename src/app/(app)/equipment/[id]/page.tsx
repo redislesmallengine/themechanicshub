@@ -1,3 +1,4 @@
+import { describeEquipment } from "@/lib/equipment-label";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { headers } from "next/headers";
@@ -57,7 +58,7 @@ export default async function EquipmentDetailPage({ params, searchParams }: { pa
         </p>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
-            {[equipment.make, equipment.model].filter(Boolean).join(" / ") || equipment.equipmentType?.name || "Equipment"}
+            {describeEquipment(equipment, "Equipment")}
           </h1>
           <div className="flex items-center gap-3">
             <Link
@@ -72,7 +73,7 @@ export default async function EquipmentDetailPage({ params, searchParams }: { pa
             </Link>
             <DeleteEquipmentButton
               equipmentId={equipment.id}
-              label={[equipment.make, equipment.model].filter(Boolean).join(" / ") || "this equipment"}
+              label={describeEquipment(equipment, "this equipment")}
               redirectTo={`/customers/${equipment.customer.id}`}
             />
           </div>

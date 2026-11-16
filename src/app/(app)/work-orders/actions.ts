@@ -1,5 +1,6 @@
 "use server";
 
+import { describeEquipment } from "@/lib/equipment-label";
 import { randomBytes } from "node:crypto";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -296,7 +297,7 @@ export async function previewEstimateEmail(workOrderId: string, formData: FormDa
     prisma.organization.findUnique({ where: { id: organizationId } }),
   ]);
 
-  const equipmentLabel = [equipment?.make, equipment?.model].filter(Boolean).join(" / ") || equipment?.equipmentType?.name || "your equipment";
+  const equipmentLabel = equipment ? describeEquipment(equipment, "your equipment") : "your equipment";
   const { subject, html } = await buildEstimateEmail(organizationId, {
     customerName: customer?.name ?? "there",
     equipmentLabel,
@@ -339,7 +340,7 @@ export async function sendEstimate(workOrderId: string, formData: FormData) {
   });
 
   const url = `${process.env.BETTER_AUTH_URL}/estimate/${token}`;
-  const equipmentLabel = [equipment?.make, equipment?.model].filter(Boolean).join(" / ") || equipment?.equipmentType?.name || "your equipment";
+  const equipmentLabel = equipment ? describeEquipment(equipment, "your equipment") : "your equipment";
   const { subject, html } = await buildEstimateEmail(organizationId, {
     customerName: customer.name,
     equipmentLabel,

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { describeEquipment } from "@/lib/equipment-label";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
@@ -182,7 +183,7 @@ export default async function WarrantyClaimsPage({ searchParams }: { searchParam
                   const stage = claimStage(c.status);
                   const late = claimIsLate(c.status, c.sentAt, nowMs);
                   const waiting = stage === "submitted" ? daysSince(c.sentAt, nowMs) : null;
-                  const machine = [c.equipment?.make, c.equipment?.model].filter(Boolean).join(" / ") || c.equipment?.equipmentType?.name || c.adHocEquipmentLabel || "";
+                  const machine = c.equipment ? describeEquipment(c.equipment, c.adHocEquipmentLabel || "") : c.adHocEquipmentLabel || "";
                   return (
                     <tr key={c.id} className="dt-row" style={late ? { background: "var(--color-error-subtle)" } : undefined}>
                       <td className="dt-td">

@@ -1,3 +1,4 @@
+import { describeEquipment } from "@/lib/equipment-label";
 import Link from "next/link";
 import { PhoneLink, CallButton } from "@/components/phone-link";
 import { notFound, redirect } from "next/navigation";
@@ -32,7 +33,7 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
 
   const workOrdersWithLabel = customer.workOrders.map((wo) => ({
     ...wo,
-    equipmentLabel: [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment",
+    equipmentLabel: describeEquipment(wo.equipment, "Equipment"),
   }));
 
   const activeWorkOrders = customer.workOrders.filter((wo) => wo.status !== "closed" && wo.status !== "declined").length;
@@ -195,7 +196,7 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
           showAddLink={false}
           equipment={customer.equipment.map((eq) => ({
             id: eq.id,
-            label: [eq.make, eq.model].filter(Boolean).join(" / ") || eq.equipmentType?.name || "Unnamed equipment",
+            label: describeEquipment(eq, "Unnamed equipment"),
             typeName: eq.equipmentType?.name ?? null,
             serialNumber: eq.serialNumber,
             photoKey: eq.photoKey,

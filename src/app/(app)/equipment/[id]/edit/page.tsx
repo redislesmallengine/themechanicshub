@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { describeEquipment } from "@/lib/equipment-label";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -11,7 +12,7 @@ export default async function EditEquipmentPage({ params }: { params: Promise<{ 
   if (!session?.session.activeOrganizationId) redirect("/sign-in");
 
   const organizationId = session.session.activeOrganizationId;
-  const equipment = await prisma.equipment.findUnique({ where: { id }, include: { customer: true } });
+  const equipment = await prisma.equipment.findUnique({ where: { id }, include: { customer: true, equipmentType: true } });
   if (!equipment || equipment.organizationId !== organizationId) notFound();
 
   const [equipmentTypes, equipmentMakes, engineTypes] = await Promise.all([
@@ -29,7 +30,7 @@ export default async function EditEquipmentPage({ params }: { params: Promise<{ 
           </a>{" "}
           <span style={{ color: "var(--text-muted)" }}>/</span>{" "}
           <a href={`/equipment/${equipment.id}`} className="font-semibold text-brand-600">
-            {[equipment.make, equipment.model].filter(Boolean).join(" / ") || "Equipment"}
+            {describeEquipment(equipment)}
           </a>
         </p>
         <h1 className="text-2xl font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>

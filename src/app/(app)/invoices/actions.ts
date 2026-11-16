@@ -1,5 +1,6 @@
 "use server";
 
+import { describeEquipment, machineHeading } from "@/lib/equipment-label";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -321,7 +322,7 @@ export async function listInvoiceableWorkOrders(customerId: string) {
       const rows = draft ? draftBillingRows(draft, wo.parts.map((p) => ({ id: p.id, name: partLineName(p.name, p.part?.sku), quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null })), noTax) : [];
       return {
         id: wo.id,
-        label: [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment",
+        label: describeEquipment(wo.equipment, "Equipment"),
         complaint: wo.complaint,
         stage: wo.status === "inRepair" ? "Billing" : wo.status === "closed" ? "Done" : "Ready",
         // what the saved Billing screen comes to; null when nothing was saved there
@@ -369,7 +370,7 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
   const sections: CombinedSection[] = [];
   const labourHoursByJob = new Map<string, number>();
   for (const wo of workOrders) {
-    const equipmentLabel = [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment";
+    const equipmentLabel = describeEquipment(wo.equipment, "Equipment");
     const draft = parseBillingDraft(wo.billingDraft);
     const draftRows = draft
       ? draftBillingRows(draft, wo.parts.map((p) => ({ id: p.id, name: partLineName(p.name, p.part?.sku), quantity: p.quantity, unitSellPrice: p.unitSellPrice?.toString() ?? null })), noTax)
@@ -378,7 +379,7 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
     if (draft && draftRows.length > 0) {
       // Exactly what was saved on this job's Billing screen.
       const built = buildInvoiceFromRows({ rows: draftRows, taxIncluded: draft.taxMode === "included", taxRate, unitCosts: Object.fromEntries(wo.parts.map((p) => [p.id, p.unitCostPrice?.toString() ?? null])) });
-      sections.push({ header: `${equipmentLabel} · ${formatWorkOrderNumber(wo.number)}`, lines: built.lines, note: draft.notes });
+      sections.push({ header: machineHeading(wo.equipment, formatWorkOrderNumber(wo.number)), lines: built.lines, note: draft.notes });
       const hours = draftRows.filter((r) => r.kind === "labour").reduce((sum, r) => sum + r.quantity, 0);
       if (hours > 0) labourHoursByJob.set(wo.id, hours);
       continue;
@@ -405,7 +406,7 @@ export async function generateCombinedInvoice(customerId: string, formData: Form
       const fee = Number(shopProfile.deliveryFee);
       lines.push({ type: "fee", description: `Pickup/Delivery Fee — ${equipmentLabel}`, quantity: "1.00", unitPrice: fee.toFixed(2), unitCost: null, taxable: true, lineTotal: fee.toFixed(2), sortOrder: 0 });
     }
-    sections.push({ header: `${equipmentLabel} · ${formatWorkOrderNumber(wo.number)}`, lines, note: wo.repairNotes });
+    sections.push({ header: machineHeading(wo.equipment, formatWorkOrderNumber(wo.number)), lines, note: wo.repairNotes });
   }
 
   const { lines, totals } = assembleCombinedInvoice(sections, taxRate);

@@ -1,3 +1,4 @@
+import { describeEquipment, splitMachineHeading } from "@/lib/equipment-label";
 import { Document, Page, View, Text, Image, Link, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import { invoiceTaxLines, taxLineLabel, type TaxLine } from "@/lib/taxes";
 import { formatWorkOrderNumber } from "@/lib/work-order-number";
@@ -24,7 +25,7 @@ const styles = StyleSheet.create({
   tableHeadRow: { flexDirection: "row", backgroundColor: "#0F294A", paddingVertical: 6, paddingHorizontal: 6 },
   tableHeadCell: { color: "#fff", fontSize: 8, fontWeight: 700, textTransform: "uppercase" },
   tableRow: { flexDirection: "row", paddingVertical: 6, paddingHorizontal: 6, borderBottom: "1px solid #F1F5F9" },
-  tableSectionRow: { flexDirection: "row", paddingVertical: 5, paddingHorizontal: 6, backgroundColor: "#F1F5F9", borderBottom: "1px solid #E2E8F0" },
+  tableSectionRow: { flexDirection: "row", paddingVertical: 6, paddingHorizontal: 6, backgroundColor: "#EFF6FF", borderBottom: "1px solid #DBEAFE" },
   tableSectionLabel: { fontSize: 8, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: 0.5 },
   cellDesc: { flex: 3 },
   cellQty: { flex: 1, textAlign: "right" },
@@ -189,8 +190,20 @@ function InvoiceDocument({ data }: { data: InvoicePdfData }) {
                 </View>
               </View>
             ) : line.type === "header" ? (
-              <View key={i} style={styles.tableSectionRow}>
-                <Text style={styles.tableSectionLabel}>{line.description}</Text>
+              <View key={i} style={[styles.tableSectionRow, { alignItems: "center" }]}>
+                {(() => {
+                  const n = data.lineItems.filter((l) => l.type === "header").length > 1 ? data.lineItems.slice(0, i).filter((l) => l.type === "header").length + 1 : 0;
+                  const { title, subtitle } = splitMachineHeading(line.description);
+                  return (
+                    <>
+                      {n > 0 && <Text style={{ fontSize: 9, fontWeight: 700, color: "#FFFFFF", backgroundColor: "#1D4ED8", borderRadius: 8, width: 16, height: 16, textAlign: "center", paddingTop: 3, marginRight: 8 }}>{n}</Text>}
+                      <View>
+                        <Text style={{ fontSize: 10, fontWeight: 700, color: "#1E40AF" }}>{title}</Text>
+                        {subtitle && <Text style={{ fontSize: 8, color: "#475569" }}>{subtitle}</Text>}
+                      </View>
+                    </>
+                  );
+                })()}
               </View>
             ) : (
               <View key={i} style={styles.tableRow}>
@@ -351,7 +364,7 @@ export async function renderInvoicePdfFromRecord(invoice: InvoiceWithRelationsFo
   const shopProfile = invoice.organization.shopProfile;
   const equipment = invoice.equipment
     ? {
-        label: [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" / ") || invoice.equipment.equipmentType?.name || "Equipment",
+        label: describeEquipment(invoice.equipment, "Equipment"),
         make: invoice.equipment.make,
         model: invoice.equipment.model,
         serialNumber: invoice.equipment.serialNumber,

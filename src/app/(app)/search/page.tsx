@@ -1,3 +1,4 @@
+import { describeEquipment } from "@/lib/equipment-label";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
@@ -114,7 +115,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
             ) : (
               <div className="space-y-1.5">
                 {workOrders.map((wo) => {
-                  const equipmentLabel = [wo.equipment.make, wo.equipment.model].filter(Boolean).join(" / ") || wo.equipment.equipmentType?.name || "Equipment";
+                  const equipmentLabel = describeEquipment(wo.equipment, "Equipment");
                   return (
                     <Link
                       key={wo.id}
@@ -191,7 +192,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                     <EquipmentIcon className="w-4 h-4 text-violet-400 shrink-0" />
                     <div>
                       <div className="font-bold text-sm" style={{ color: "var(--text-primary)" }}>
-                        {[eq.make, eq.model].filter(Boolean).join(" / ") || eq.equipmentType?.name || "Equipment"}
+                        {describeEquipment(eq, "Equipment")}
                         {eq.serialNumber ? ` — S/N ${eq.serialNumber}` : ""}
                       </div>
                       <div className="text-[11px]" style={{ color: "var(--text-muted)" }}>

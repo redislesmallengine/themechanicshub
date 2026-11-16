@@ -1,3 +1,4 @@
+import { describeEquipment } from "@/lib/equipment-label";
 import Link from "next/link";
 import { PhoneLink } from "@/components/phone-link";
 import { notFound, redirect } from "next/navigation";
@@ -59,7 +60,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
   const overdue = isOverdue(invoice.status, invoice.dueDate);
   const editable = isEditable(invoice.status) && canUpdate.success;
   const equipmentLabel = invoice.equipment
-    ? [invoice.equipment.make, invoice.equipment.model].filter(Boolean).join(" / ") || invoice.equipment.equipmentType?.name || "Equipment"
+    ? describeEquipment(invoice.equipment, "Equipment")
     : invoice.adHocEquipmentLabel;
   const hasInventoryLines = invoice.lineItems.some((l) => !!l.partId);
   const canEditParty = editable && !invoice.workOrderId && invoice.combinedWorkOrders.length === 0;
@@ -304,12 +305,12 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
           </div>
           {invoice.combinedWorkOrders.length > 0 ? (
             <div className="space-y-1.5">
-              {invoice.combinedWorkOrders.map((cwo) => {
+              {invoice.combinedWorkOrders.map((cwo, i) => {
                 const eq = cwo.workOrder.equipment;
-                const label = [eq.make, eq.model].filter(Boolean).join(" / ") || eq.equipmentType?.name || "Equipment";
+                const label = describeEquipment(eq, "Equipment");
                 return (
                   <Link key={cwo.id} href={`/work-orders/${cwo.workOrder.id}`} className="block text-sm font-bold text-brand-600 hover:underline">
-                    {label}
+                    {i + 1}. {label}
                   </Link>
                 );
               })}
@@ -440,7 +441,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
               email: c.email,
               equipment: c.equipment.map((eq) => ({
                 id: eq.id,
-                label: [eq.make, eq.model].filter(Boolean).join(" / ") || eq.equipmentType?.name || (eq.serialNumber ? `S/N ${eq.serialNumber}` : "Unnamed equipment"),
+                label: describeEquipment(eq, eq.serialNumber ? `S/N ${eq.serialNumber}` : "Unnamed equipment"),
               })),
             }))}
             initialCustomerId={invoice.customerId ?? ""}

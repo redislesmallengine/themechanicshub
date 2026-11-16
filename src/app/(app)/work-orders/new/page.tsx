@@ -1,3 +1,4 @@
+import { describeEquipment } from "@/lib/equipment-label";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
@@ -37,7 +38,7 @@ export default async function NewWorkOrderPage({ searchParams }: { searchParams:
             email: c.email,
             equipment: c.equipment.map((eq) => ({
               id: eq.id,
-              label: [eq.make, eq.model].filter(Boolean).join(" / ") || eq.equipmentType?.name || (eq.serialNumber ? `S/N ${eq.serialNumber}` : "Unnamed equipment"),
+              label: describeEquipment(eq, eq.serialNumber ? `S/N ${eq.serialNumber}` : "Unnamed equipment"),
             })),
           }))}
         />
