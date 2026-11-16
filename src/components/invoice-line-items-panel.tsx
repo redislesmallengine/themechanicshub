@@ -1,5 +1,6 @@
 "use client";
 
+import { money } from "@/lib/money";
 import { SearchSelect } from "@/components/search-select";
 import { MachineBanner } from "@/components/machine-banner";
 import { splitMachineHeading } from "@/lib/equipment-label";
@@ -363,7 +364,7 @@ function LineRow({ line, showMargins, sectionNumber }: { line: InvoiceLine; show
         {line.quantity}
       </td>
       <td className="dt-td num text-sm" style={{ color: "var(--text-secondary)" }}>
-        ${line.unitPrice}
+        ${money(line.unitPrice)}
       </td>
       {showMargins && (
         <td className="dt-td num text-sm" style={{ color: "var(--text-muted)" }}>
@@ -371,7 +372,7 @@ function LineRow({ line, showMargins, sectionNumber }: { line: InvoiceLine; show
         </td>
       )}
       <td className="dt-td num text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-        ${line.lineTotal}
+        ${money(line.lineTotal)}
       </td>
       <td className="dt-td text-right">
         <button onClick={handleRemove} disabled={pending} className="text-[11px] font-bold disabled:opacity-50" style={{ color: "var(--color-error-solid)" }}>

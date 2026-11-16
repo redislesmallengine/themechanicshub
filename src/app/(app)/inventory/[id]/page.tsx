@@ -1,3 +1,4 @@
+import { money } from "@/lib/money";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { headers } from "next/headers";
@@ -90,8 +91,8 @@ export default async function PartDetailPage({ params }: { params: Promise<{ id:
             </div>
           </div>
           <Field label="Reorder Point" value={part.reorderPoint.toString()} />
-          <Field label="Cost Price" value={part.costPrice ? `$${part.costPrice.toString()}` : null} />
-          <Field label="Sell Price" value={part.sellPrice ? `$${part.sellPrice.toString()}` : null} />
+          <Field label="Cost Price" value={part.costPrice ? `$${money(part.costPrice)}` : null} />
+          <Field label="Sell Price" value={part.sellPrice ? `$${money(part.sellPrice)}` : null} />
           <Field label="Barcode" value={part.barcode} />
           <Field label="Bin Location" value={part.binLocation} />
         </div>

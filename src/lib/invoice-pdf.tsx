@@ -1,3 +1,4 @@
+import { money } from "@/lib/money";
 import { describeEquipment, splitMachineHeading } from "@/lib/equipment-label";
 import { Document, Page, View, Text, Image, Link, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
 import { invoiceTaxLines, taxLineLabel, type TaxLine } from "@/lib/taxes";
@@ -190,7 +191,7 @@ function InvoiceDocument({ data }: { data: InvoicePdfData }) {
                 </View>
               </View>
             ) : line.type === "header" ? (
-              <View key={i} style={[styles.tableSectionRow, { alignItems: "center" }]}>
+              <View key={i} style={[styles.tableSectionRow, { alignItems: "center" }]} minPresenceAhead={60}>
                 {(() => {
                   const n = data.lineItems.filter((l) => l.type === "header").length > 1 ? data.lineItems.slice(0, i).filter((l) => l.type === "header").length + 1 : 0;
                   const { title, subtitle } = splitMachineHeading(line.description);
@@ -216,7 +217,7 @@ function InvoiceDocument({ data }: { data: InvoicePdfData }) {
           )}
         </View>
 
-        <View style={styles.totals}>
+        <View style={styles.totals} wrap={false}>
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Subtotal</Text>
             <Text>${data.subtotal}</Text>
@@ -398,12 +399,12 @@ export async function renderInvoicePdfFromRecord(invoice: InvoiceWithRelationsFo
     claimNumber: invoice.claimNumber,
     warrantyProvider: invoice.warrantyProvider,
     taxLines: invoiceTaxLines({ taxBreakdown: invoice.taxBreakdown, taxAmount: String(invoice.taxAmount) }, shopProfile as { taxLabel: string | null; taxRate: string | null } | null),
-    subtotal: String(invoice.subtotal),
-    total: String(invoice.total),
+    subtotal: money(invoice.subtotal),
+    total: money(invoice.total),
     paidAt: invoice.paidAt,
     paymentMethod: invoice.paymentMethod,
     voidedAt: invoice.voidedAt,
     voidReason: invoice.voidReason,
-    lineItems: invoice.lineItems.map((l) => ({ type: l.type, description: l.description, quantity: String(l.quantity), unitPrice: String(l.unitPrice), lineTotal: String(l.lineTotal) })),
+    lineItems: invoice.lineItems.map((l) => ({ type: l.type, description: l.description, quantity: String(l.quantity), unitPrice: money(l.unitPrice), lineTotal: money(l.lineTotal) })),
   });
 }

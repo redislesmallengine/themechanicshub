@@ -1,3 +1,4 @@
+import { money } from "@/lib/money";
 import { describeEquipment } from "@/lib/equipment-label";
 import Link from "next/link";
 import { PhoneLink, CallButton } from "@/components/phone-link";
@@ -297,7 +298,7 @@ export default async function CustomerDetailPage({ params, searchParams }: { par
                           </span>
                         </td>
                         <td className="dt-td num text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                          ${inv.total.toString()}
+                          ${money(inv.total)}
                         </td>
                         <td className="dt-td num text-sm" style={{ color: "var(--text-muted)" }}>
                           {inv.createdAt.toLocaleDateString()}

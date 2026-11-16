@@ -1,3 +1,4 @@
+import { money } from "@/lib/money";
 import { describeEquipment } from "@/lib/equipment-label";
 import Link from "next/link";
 import { PhoneLink, CallButton } from "@/components/phone-link";
@@ -131,16 +132,16 @@ export default async function WorkOrderDetailPage({ params, searchParams }: { pa
   const showStory = status === "inRepair" || status === "readyForPickup" || status === "closed";
   const approvalMethodText = workOrder.approvalMethod === "phone" ? "by phone" : workOrder.approvalMethod === "in-person" ? "in person" : "through the online link";
   const toldCustomer = workOrder.estimateAmount
-    ? `$${workOrder.estimateAmount.toString()} — ${workOrder.estimateNotes ?? ""}${workOrder.decidedByName ? ` Approved by ${workOrder.decidedByName} ${approvalMethodText} on ${workOrder.decidedAt?.toLocaleDateString() ?? ""}.` : ""}`
+    ? `$${money(workOrder.estimateAmount)} — ${workOrder.estimateNotes ?? ""}${workOrder.decidedByName ? ` Approved by ${workOrder.decidedByName} ${approvalMethodText} on ${workOrder.decidedAt?.toLocaleDateString() ?? ""}.` : ""}`
     : workOrder.decidedByName
-      ? `No written estimate — go-ahead given ${approvalMethodText} by ${workOrder.decidedByName} on ${workOrder.decidedAt?.toLocaleDateString() ?? ""}.${workOrder.notToExceedAmount ? ` Not to exceed $${workOrder.notToExceedAmount.toString()}.` : ""}`
+      ? `No written estimate — go-ahead given ${approvalMethodText} by ${workOrder.decidedByName} on ${workOrder.decidedAt?.toLocaleDateString() ?? ""}.${workOrder.notToExceedAmount ? ` Not to exceed $${money(workOrder.notToExceedAmount)}.` : ""}`
       : "—";
 
   const invoiceCard = linkedInvoice ? (
         <div id="invoice-card" className="rounded-xl p-5" style={{ background: "var(--bg-surface)", border: "2px solid var(--color-brand-600)" }}>
           <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
             <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-              Invoice {linkedInvoice.invoiceNumber} · ${linkedInvoice.total.toString()}
+              Invoice {linkedInvoice.invoiceNumber} · ${money(linkedInvoice.total)}
               {workOrder.combinedInto && (
                 <span className="ml-2 text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>
                   combined with other equipment
@@ -202,7 +203,7 @@ export default async function WorkOrderDetailPage({ params, searchParams }: { pa
               {moneyChip && linkedInvoice ? (
                 <Link href={`/invoices/${linkedInvoice.id}`} className={`dt-badge dt-badge--${moneyChip.badge}`} title="Open the invoice">
                   <span className="dt-badge-dot" />
-                  Invoice: {moneyChip.label} · ${linkedInvoice.total.toString()}
+                  Invoice: {moneyChip.label} · ${money(linkedInvoice.total)}
                 </Link>
               ) : (
                 jobIsDone && (

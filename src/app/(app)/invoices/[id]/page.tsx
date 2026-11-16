@@ -1,3 +1,4 @@
+import { money } from "@/lib/money";
 import { describeEquipment } from "@/lib/equipment-label";
 import Link from "next/link";
 import { PhoneLink } from "@/components/phone-link";
@@ -380,7 +381,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <div className="flex justify-between py-1">
               <span style={{ color: "var(--text-muted)" }}>Subtotal</span>
               <span className="num" style={{ color: "var(--text-secondary)" }}>
-                ${invoice.subtotal.toString()}
+                ${money(invoice.subtotal)}
               </span>
             </div>
             {invoiceTaxLines(invoice, null).map((t) => (
@@ -394,7 +395,7 @@ export default async function InvoiceDetailPage({ params, searchParams }: { para
             <div className="flex justify-between py-2 mt-1 font-extrabold text-base" style={{ borderTop: "1px solid var(--border-subtle)" }}>
               <span style={{ color: "var(--text-primary)" }}>Total</span>
               <span className="num" style={{ color: "var(--text-primary)" }}>
-                ${invoice.total.toString()}
+                ${money(invoice.total)}
               </span>
             </div>
           </div>

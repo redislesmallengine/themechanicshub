@@ -1,3 +1,4 @@
+import { money } from "@/lib/money";
 import { describeEquipment, equipmentMakeModel, equipmentTypeName } from "@/lib/equipment-label";
 import { MachineBanner } from "@/components/machine-banner";
 import { headers } from "next/headers";
@@ -235,10 +236,10 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
                           {line.quantity.toString()}
                         </td>
                         <td className="dt-td num text-sm" style={{ color: "var(--text-secondary)" }}>
-                          ${line.unitPrice.toString()}
+                          ${money(line.unitPrice)}
                         </td>
                         <td className="dt-td num text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                          ${line.lineTotal.toString()}
+                          ${money(line.lineTotal)}
                         </td>
                       </tr>
                     )
@@ -253,7 +254,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
               <div className="flex justify-between py-1">
                 <span style={{ color: "var(--text-secondary)" }}>Subtotal</span>
                 <span className="num" style={{ color: "var(--text-secondary)" }}>
-                  ${invoice.subtotal.toString()}
+                  ${money(invoice.subtotal)}
                 </span>
               </div>
               {invoiceTaxLines(invoice, shopProfile).map((t) => (
@@ -267,7 +268,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
               <div className="flex justify-between py-2 mt-1 font-extrabold text-base" style={{ borderTop: "1px solid var(--border-subtle)" }}>
                 <span style={{ color: "var(--text-primary)" }}>Total</span>
                 <span className="num" style={{ color: "var(--text-primary)" }}>
-                  ${invoice.total.toString()}
+                  ${money(invoice.total)}
                 </span>
               </div>
               {isPaid && (
@@ -275,7 +276,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
                   <div className="flex justify-between py-1">
                     <span style={{ color: "var(--text-secondary)" }}>Paid{invoice.paymentMethod ? ` — ${invoice.paymentMethod}` : ""}</span>
                     <span className="num" style={{ color: "var(--text-secondary)" }}>
-                      ${invoice.total.toString()}
+                      ${money(invoice.total)}
                     </span>
                   </div>
                   <div className="flex justify-between py-2 mt-1 font-extrabold text-base" style={{ borderTop: "1px solid var(--border-subtle)" }}>

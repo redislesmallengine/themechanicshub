@@ -1,3 +1,4 @@
+import { money } from "@/lib/money";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
@@ -333,7 +334,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                       })()}
                     </td>
                     <td className="dt-td num text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-                      ${inv.total.toString()}
+                      ${money(inv.total)}
                     </td>
                     <td className="dt-td num text-sm" style={{ color: "var(--text-muted)" }}>
                       {inv.dueDate.toLocaleDateString()}
