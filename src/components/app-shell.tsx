@@ -498,7 +498,7 @@ interface MenuSection {
 // The sidebar, as a tree. Every parent is also a page of its own (click the label to open
 // it, the chevron to expand), so no destination is lost by nesting. Which branches exist
 // follows the same permissions the flat menu used: shop settings, reports, site admin.
-function buildMenu({ canManageSettings, canViewReports, isSiteAdmin, pendingShopCount }: { canManageSettings: boolean; canViewReports: boolean; isSiteAdmin: boolean; pendingShopCount: number }): MenuSection[] {
+function buildMenu({ canManageSettings, canConfigureEmail, canViewReports, isSiteAdmin, pendingShopCount }: { canManageSettings: boolean; canConfigureEmail: boolean; canViewReports: boolean; isSiteAdmin: boolean; pendingShopCount: number }): MenuSection[] {
   const partsList: TreeNode = { href: "/inventory", label: "Part #", icon: InventoryIcon, color: "text-indigo-400" };
 
   const operations: TreeNode[] = [
@@ -549,7 +549,7 @@ function buildMenu({ canManageSettings, canViewReports, isSiteAdmin, pendingShop
       icon: StoreIcon,
       color: "text-teal-400",
       nodes: [
-        { href: "/settings/email", label: "Email", icon: SettingsIcon, color: "text-rose-400" },
+        ...(canConfigureEmail ? [{ href: "/settings/email", label: "Email", icon: SettingsIcon, color: "text-rose-400" }] : []),
         { href: "/settings/email-templates", label: "Email Templates", icon: SettingsIcon, color: "text-rose-400" },
         { href: "/settings/warranty-providers", label: "Warranty Providers", icon: InvoiceIcon, color: "text-sky-400" },
       ],
@@ -631,6 +631,7 @@ export function AppShell({
   user,
   roleLabel,
   canManageSettings,
+  canConfigureEmail,
   canViewReports,
   isSiteAdmin,
   pendingShopCount = 0,
@@ -639,6 +640,7 @@ export function AppShell({
   user: { name: string; email: string };
   roleLabel?: string;
   canManageSettings?: boolean;
+  canConfigureEmail?: boolean;
   canViewReports?: boolean;
   isSiteAdmin?: boolean;
   /** Shops waiting for the site administrator's approval -- shown beside Shop Approvals. */
@@ -648,7 +650,7 @@ export function AppShell({
   const pathname = usePathname();
   const collapsed = useSyncExternalStore(subscribeCollapsed, getCollapsedSnapshot, getCollapsedServerSnapshot);
   const menuStyle = useSyncExternalStore(subscribeMenuStyle, getMenuStyleSnapshot, getMenuStyleServerSnapshot);
-  const menu = buildMenu({ canManageSettings: !!canManageSettings, canViewReports: !!canViewReports, isSiteAdmin: !!isSiteAdmin, pendingShopCount });
+  const menu = buildMenu({ canManageSettings: !!canManageSettings, canConfigureEmail: !!canConfigureEmail, canViewReports: !!canViewReports, isSiteAdmin: !!isSiteAdmin, pendingShopCount });
   // Separate from `collapsed` (the desktop icon-rail preference, persisted)
   // — this is the mobile off-canvas drawer's open/closed state, always
   // starts closed, never persisted. Below the md breakpoint the sidebar is
@@ -705,7 +707,7 @@ export function AppShell({
           )}
 
           {canManageSettings && (
-            <NavGroup label="Configuration" icon={SettingsIcon} iconColor="text-teal-400" items={CONFIG_NAV} collapsed={collapsed} pathname={pathname} onNavigate={closeMobileMenu} />
+            <NavGroup label="Configuration" icon={SettingsIcon} iconColor="text-teal-400" items={canConfigureEmail ? CONFIG_NAV : CONFIG_NAV.filter((i) => i.href !== "/settings/email")} collapsed={collapsed} pathname={pathname} onNavigate={closeMobileMenu} />
           )}
 
           {isSiteAdmin && (

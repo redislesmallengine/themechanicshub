@@ -38,6 +38,10 @@ model User {
   // access (Prisma Studio / TablePlus), never auto-granted by a migration.
   isSiteAdmin Boolean @default(false)
 
+  // May open Configuration -> Email (see src/lib/email-access.ts). Off by default; switched on by hand for the few people who run
+  // the platform's email, never granted by the app itself.
+  canConfigureEmail Boolean @default(false)
+
   sessions             Session[]
   accounts             Account[]
   memberships          Member[]

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getUsageSummary } from "@/lib/email";
+import { canConfigureEmail } from "@/lib/email-access";
 import { EmailSettingsForm } from "@/components/email-settings-form";
 
 export default async function EmailSettingsPage() {
@@ -14,7 +15,7 @@ export default async function EmailSettingsPage() {
     headers: reqHeaders,
     body: { permissions: { shopSettings: ["update"] } },
   });
-  if (!allowed.success) redirect("/dashboard");
+  if (!allowed.success || !(await canConfigureEmail(session.user))) redirect("/dashboard");
 
   const organizationId = session.session.activeOrganizationId;
   const [settings, usage] = await Promise.all([

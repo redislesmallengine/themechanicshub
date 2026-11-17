@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { encrypt } from "@/lib/crypto";
 import { sendMail } from "@/lib/email";
+import { canConfigureEmail } from "@/lib/email-access";
 import { loadEmailTemplate, renderTemplate } from "@/lib/email-templates";
 
 async function requireCanManageSettings() {
@@ -18,6 +19,7 @@ async function requireCanManageSettings() {
     body: { permissions: { shopSettings: ["update"] } },
   });
   if (!allowed.success) throw new Error("You don't have permission to change shop settings.");
+  if (!(await canConfigureEmail(session.user))) throw new Error("Email settings are managed by the platform.");
 
   return { organizationId: session.session.activeOrganizationId, userEmail: session.user.email };
 }

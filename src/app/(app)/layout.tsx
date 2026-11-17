@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { AppShell } from "@/components/app-shell";
 import { UndoToastHost } from "@/components/undo-toast";
 import { OWNER_ROLE } from "@/lib/rbac";
+import { canConfigureEmail } from "@/lib/email-access";
 
 // Real enforcement lives here, in the Server Component — not in proxy.ts.
 // Per Next.js's own guidance (node_modules/next/dist/docs .../proxy.md):
@@ -64,10 +65,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const canViewReports = membership ? (await auth.api.hasPermission({ headers: reqHeaders, body: { permissions: { report: ["view"] } } })).success : false;
 
   const isSiteAdmin = session.user.isSiteAdmin ?? false;
+  const showEmailSettings = canManageSettings && (await canConfigureEmail(session.user));
   const pendingShopCount = isSiteAdmin ? await prisma.organization.count({ where: { approvalStatus: "pending" } }) : 0;
 
   return (
-    <AppShell user={session.user} roleLabel={roleLabel} canManageSettings={canManageSettings} canViewReports={canViewReports} isSiteAdmin={isSiteAdmin} pendingShopCount={pendingShopCount}>
+    <AppShell user={session.user} roleLabel={roleLabel} canManageSettings={canManageSettings} canConfigureEmail={showEmailSettings} canViewReports={canViewReports} isSiteAdmin={isSiteAdmin} pendingShopCount={pendingShopCount}>
       {children}
       <UndoToastHost />
     </AppShell>
